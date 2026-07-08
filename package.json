@@ -1,0 +1,16 @@
+{
+  "name": "pool-maintenance",
+  "version": "1.0.0",
+  "description": "Pool maintenance backend server",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["express", "api", "pool-maintenance"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}
