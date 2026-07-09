@@ -10,12 +10,14 @@ import type { PoolSettings } from '../src/domain/settings';
 function makeMeasurement(overrides: Partial<Measurement> = {}): Measurement {
   return {
     id: 'test-1',
-    date: '2026-07-09',
     measuredAt: '2026-07-09T10:35:00.000Z',
     ph: 7.4,
-    freeChlorine: 2.0,
-    alkalinity: 100,
-    cyanuricAcid: 40,
+    ec: 6640,
+    tds: 3230,
+    salt: 3380,
+    orp: 672,
+    fac: 2.0,
+    temperature: 31.0,
     ...overrides,
   };
 }
@@ -32,13 +34,13 @@ function makeSettings(overrides: Partial<PoolSettings> = {}): PoolSettings {
 
 describe('getTargetRange', () => {
   it('returns chlorine range for chlorine pools', () => {
-    const r = getTargetRange('freeChlorine', 'chlorine');
+    const r = getTargetRange('fac', 'chlorine');
     expect(r.min).toBe(1);
     expect(r.max).toBe(3);
   });
 
   it('returns saltwater range for saltwater pools', () => {
-    const r = getTargetRange('freeChlorine', 'saltwater');
+    const r = getTargetRange('fac', 'saltwater');
     expect(r.min).toBe(3);
     expect(r.max).toBe(5);
   });
@@ -75,6 +77,13 @@ describe('calculateRecommendations', () => {
     expect(result.missingReason).toContain('pH');
   });
 
+  it('returns canCalculate=false when FAC is missing', () => {
+    const m = makeMeasurement({ fac: undefined as unknown as number });
+    const result = calculateRecommendations(m, makeSettings());
+    expect(result.canCalculate).toBe(false);
+    expect(result.missingReason).toContain('FAC');
+  });
+
   it('returns canCalculate=false when volume is 0', () => {
     const result = calculateRecommendations(makeMeasurement(), makeSettings({ volume: 0 }));
     expect(result.canCalculate).toBe(false);
@@ -102,9 +111,9 @@ describe('calculateRecommendations', () => {
     expect(phItem!.amountGrams).toBeGreaterThan(0);
   });
 
-  it('recommends chlorine when free chlorine is low', () => {
+  it('recommends chlorine when FAC is low', () => {
     const result = calculateRecommendations(
-      makeMeasurement({ freeChlorine: 0.5 }),
+      makeMeasurement({ fac: 0.5 }),
       makeSettings(),
     );
     const clItem = result.items.find((i) => i.chemical.includes('hypochlorite'));
@@ -112,9 +121,9 @@ describe('calculateRecommendations', () => {
     expect(clItem!.amountGrams).toBeGreaterThan(0);
   });
 
-  it('flags warning-level danger when free chlorine is 0', () => {
+  it('flags danger-level when FAC is 0', () => {
     const result = calculateRecommendations(
-      makeMeasurement({ freeChlorine: 0 }),
+      makeMeasurement({ fac: 0 }),
       makeSettings(),
     );
     const clItem = result.items.find((i) => i.chemical.includes('hypochlorite'));
@@ -122,44 +131,14 @@ describe('calculateRecommendations', () => {
     expect(clItem!.danger?.label).toBe('warning');
   });
 
-  it('shows no-adjustment-needed for chlorine above target', () => {
+  it('shows no-adjustment-needed for FAC above target', () => {
     const result = calculateRecommendations(
-      makeMeasurement({ freeChlorine: 5 }),
+      makeMeasurement({ fac: 5 }),
       makeSettings(),
     );
     const clItem = result.items.find((i) => i.chemical.startsWith('—'));
     expect(clItem).toBeDefined();
     expect(clItem!.amount).toBe('None needed');
-  });
-
-  it('recommends sodium bicarbonate for low alkalinity', () => {
-    const result = calculateRecommendations(
-      makeMeasurement({ alkalinity: 50 }),
-      makeSettings(),
-    );
-    const item = result.items.find((i) => i.chemical.includes('bicarbonate'));
-    expect(item).toBeDefined();
-    expect(item!.amountGrams).toBeGreaterThan(0);
-  });
-
-  it('recommends cyanuric acid for low CYA', () => {
-    const result = calculateRecommendations(
-      makeMeasurement({ cyanuricAcid: 10 }),
-      makeSettings(),
-    );
-    const item = result.items.find((i) => i.chemical.includes('Cyanuric'));
-    expect(item).toBeDefined();
-    expect(item!.amountGrams).toBeGreaterThan(0);
-  });
-
-  it('recommends partial drain for high CYA', () => {
-    const result = calculateRecommendations(
-      makeMeasurement({ cyanuricAcid: 150 }),
-      makeSettings(),
-    );
-    const item = result.items.find((i) => i.amount === 'Partial drain & refill');
-    expect(item).toBeDefined();
-    expect(item!.reason).toContain('Cyanuric');
   });
 
   it('recommends salt for saltwater pools with low salt', () => {
@@ -174,7 +153,7 @@ describe('calculateRecommendations', () => {
 
   it('does not recommend salt for saltwater pools when salt is missing', () => {
     const result = calculateRecommendations(
-      makeMeasurement({ salt: undefined }),
+      makeMeasurement({ salt: undefined as unknown as number }),
       makeSettings({ poolType: 'saltwater' }),
     );
     const item = result.items.find((i) => i.chemical.includes('salt'));
@@ -183,7 +162,15 @@ describe('calculateRecommendations', () => {
 
   it('returns empty items when all values are in range', () => {
     const result = calculateRecommendations(makeMeasurement(), makeSettings());
-    // pH 7.4, FC 2.0, Alk 100, CYA 40 are all ideal — no items needed
     expect(result.items.length).toBe(0);
+  });
+
+  it('adds ORP warning when ORP is below target', () => {
+    const result = calculateRecommendations(
+      makeMeasurement({ orp: 400 }),
+      makeSettings(),
+    );
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings.some((w) => w.includes('ORP'))).toBe(true);
   });
 });

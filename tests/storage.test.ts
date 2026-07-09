@@ -31,6 +31,20 @@ beforeEach(() => {
   });
 });
 
+const SAMPLE_MEASUREMENT: Measurement = {
+  id: 'm1',
+  measuredAt: '2026-07-09T10:35:00.000Z',
+  ph: 7.4,
+  ec: 6640,
+  tds: 3230,
+  salt: 3380,
+  orp: 672,
+  fac: 0.8,
+  temperature: 31.0,
+};
+
+// ── Settings ───────────────────────────────────────────────────────
+
 describe('settings persistence', () => {
   it('returns defaults when nothing is stored', () => {
     const s = loadSettings();
@@ -59,53 +73,35 @@ describe('settings persistence', () => {
   });
 });
 
+// ── Measurements ───────────────────────────────────────────────────
+
 describe('measurements persistence', () => {
   it('returns empty array when nothing is stored', () => {
     expect(loadMeasurements()).toEqual([]);
   });
 
   it('round-trips measurements', () => {
-    const m: Measurement = {
-      id: '1',
-      date: '2026-07-09',
-      measuredAt: '2026-07-09T10:35:00.000Z',
-      ph: 7.4,
-      freeChlorine: 2.0,
-      alkalinity: 100,
-      cyanuricAcid: 40,
-    };
-    saveMeasurements([m]);
+    saveMeasurements([SAMPLE_MEASUREMENT]);
     const loaded = loadMeasurements();
     expect(loaded).toHaveLength(1);
     expect(loaded[0].ph).toBe(7.4);
+    expect(loaded[0].ec).toBe(6640);
+    expect(loaded[0].tds).toBe(3230);
+    expect(loaded[0].salt).toBe(3380);
+    expect(loaded[0].orp).toBe(672);
+    expect(loaded[0].fac).toBe(0.8);
+    expect(loaded[0].temperature).toBe(31.0);
   });
 
   it('adds a measurement', () => {
-    const m: Measurement = {
-      id: 'a',
-      date: '2026-07-09',
-      measuredAt: '2026-07-09T10:35:00.000Z',
-      ph: 7.0,
-      freeChlorine: 1,
-      alkalinity: 80,
-      cyanuricAcid: 30,
-    };
-    const list = addMeasurement(m);
+    const list = addMeasurement({ ...SAMPLE_MEASUREMENT, id: 'a' });
     expect(list).toHaveLength(1);
     expect(loadMeasurements()).toHaveLength(1);
   });
 
   it('deletes a measurement by id', () => {
-    const m1: Measurement = {
-      id: '1',
-      date: '2026-07-09',
-      measuredAt: '2026-07-09T10:35:00.000Z',
-      ph: 7.4,
-      freeChlorine: 2,
-      alkalinity: 100,
-      cyanuricAcid: 40,
-    };
-    const m2: Measurement = { ...m1, id: '2' };
+    const m1 = { ...SAMPLE_MEASUREMENT, id: '1' };
+    const m2 = { ...SAMPLE_MEASUREMENT, id: '2' };
     saveMeasurements([m1, m2]);
     const result = deleteMeasurement('1');
     expect(result).toHaveLength(1);
@@ -116,14 +112,17 @@ describe('measurements persistence', () => {
     store.set('pool-maintenance:measurements', 'not-json');
     expect(loadMeasurements()).toEqual([]);
   });
+});
 
+// ── Data migration ─────────────────────────────────────────────────
+
+describe('data migration', () => {
   it('migrates old date-only records to measuredAt using local noon', () => {
-    // Simulate an old record that only has `date` (no `measuredAt`)
     const oldRecord = {
       id: 'old1',
       date: '2026-07-04',
       ph: 7.4,
-      freeChlorine: 2,
+      freeChlorine: 2.0,
       alkalinity: 100,
       cyanuricAcid: 40,
     };
@@ -133,29 +132,74 @@ describe('measurements persistence', () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].measuredAt).toBeDefined();
 
-    // Should have been converted to local noon (UTC time depends on timezone offset)
-    // The date part should be 2026-07-04 and time should be around 12:00 local
+    // Date part should be 2026-07-04 and time around 12:00 local
     const d = new Date(loaded[0].measuredAt);
     expect(d.getUTCFullYear()).toBe(2026);
     expect(d.getUTCMonth()).toBe(6); // July is month 6 (0-indexed)
     expect(d.getUTCDate()).toBe(4);
   });
 
-  it('does not modify records that already have measuredAt', () => {
-    const record = {
-      id: 'new1',
-      date: '2026-07-09',
-      measuredAt: '2026-07-09T10:35:00.000Z',
+  it('maps old freeChlorine to fac', () => {
+    const oldRecord = {
+      id: 'old1',
+      date: '2026-07-04',
+      measuredAt: '2026-07-04T12:00:00.000Z',
       ph: 7.4,
-      freeChlorine: 2,
+      freeChlorine: 2.5,
       alkalinity: 100,
       cyanuricAcid: 40,
     };
-    store.set('pool-maintenance:measurements', JSON.stringify([record]));
+    store.set('pool-maintenance:measurements', JSON.stringify([oldRecord]));
+
+    const loaded = loadMeasurements();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].fac).toBe(2.5);
+  });
+
+  it('removes legacy fields (freeChlorine, alkalinity, cyanuricAcid, date)', () => {
+    const oldRecord = {
+      id: 'old1',
+      date: '2026-07-04',
+      measuredAt: '2026-07-04T12:00:00.000Z',
+      ph: 7.4,
+      freeChlorine: 2.0,
+      alkalinity: 100,
+      cyanuricAcid: 40,
+    };
+    store.set('pool-maintenance:measurements', JSON.stringify([oldRecord]));
+
+    const loaded = loadMeasurements();
+    const loadedRaw = loaded[0] as unknown as Record<string, unknown>;
+    expect(loadedRaw.freeChlorine).toBeUndefined();
+    expect(loadedRaw.alkalinity).toBeUndefined();
+    expect(loadedRaw.cyanuricAcid).toBeUndefined();
+    expect(loadedRaw.date).toBeUndefined();
+  });
+
+  it('does not modify records that already have measuredAt', () => {
+    store.set('pool-maintenance:measurements', JSON.stringify([SAMPLE_MEASUREMENT]));
 
     const loaded = loadMeasurements();
     expect(loaded).toHaveLength(1);
     expect(loaded[0].measuredAt).toBe('2026-07-09T10:35:00.000Z');
+  });
+
+  it('preserves fac when it already exists alongside freeChlorine', () => {
+    const record = {
+      id: 'm1',
+      measuredAt: '2026-07-09T10:35:00.000Z',
+      ph: 7.4,
+      fac: 0.8,
+      freeChlorine: 99, // should be ignored since fac already set
+      ec: 6640,
+      tds: 3230,
+      salt: 3380,
+      orp: 672,
+      temperature: 31.0,
+    };
+    store.set('pool-maintenance:measurements', JSON.stringify([record]));
+    const loaded = loadMeasurements();
+    expect(loaded[0].fac).toBe(0.8);
   });
 });
 
@@ -167,15 +211,6 @@ const SAMPLE_POOL_CONFIG: PoolSettings = {
   volumeUnit: 'liters',
   poolType: 'chlorine',
   unitSystem: 'metric',
-};
-const SAMPLE_MEASUREMENT: Measurement = {
-  id: 'm1',
-  date: '2026-07-09',
-  measuredAt: '2026-07-09T10:35:00.000Z',
-  ph: 7.4,
-  freeChlorine: 2.0,
-  alkalinity: 100,
-  cyanuricAcid: 40,
 };
 
 describe('exportData', () => {
@@ -204,13 +239,19 @@ describe('exportData', () => {
     expect(data.poolConfig).toEqual(SAMPLE_POOL_CONFIG);
   });
 
-  it('includes measurements', () => {
+  it('includes measurements with new digital meter fields', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     saveMeasurements([SAMPLE_MEASUREMENT]);
     const data = exportData(FIXED_NOW);
     expect(data.measurements).toHaveLength(1);
     expect(data.measurements[0].id).toBe('m1');
     expect(data.measurements[0].ph).toBe(7.4);
+    expect(data.measurements[0].ec).toBe(6640);
+    expect(data.measurements[0].tds).toBe(3230);
+    expect(data.measurements[0].salt).toBe(3380);
+    expect(data.measurements[0].orp).toBe(672);
+    expect(data.measurements[0].fac).toBe(0.8);
+    expect(data.measurements[0].temperature).toBe(31.0);
   });
 
   it('returns empty measurements array when none saved', () => {
@@ -225,9 +266,9 @@ describe('parseImportData', () => {
     store.clear();
   });
 
-  it('restores pool configuration from schema v2 format', () => {
+  it('restores pool configuration from schema v3 format', () => {
     const json = JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       exportedAt: '2026-07-09T10:35:00.000Z',
       poolConfig: SAMPLE_POOL_CONFIG,
       measurements: [SAMPLE_MEASUREMENT],
@@ -294,11 +335,27 @@ describe('parseImportData', () => {
     expect(result.measurements[0].measuredAt).toBeDefined();
     const d = new Date(result.measurements[0].measuredAt);
     expect(d.getUTCFullYear()).toBe(2026);
-    expect(d.getUTCMonth()).toBe(6); // July
+    expect(d.getUTCMonth()).toBe(6);
     expect(d.getUTCDate()).toBe(4);
   });
 
-  it('migrates old date-only measurements inside v2 format', () => {
+  it('maps freeChlorine to fac during import migration', () => {
+    const json = JSON.stringify([
+      {
+        id: 'old1',
+        date: '2026-07-04',
+        measuredAt: '2026-07-04T12:00:00.000Z',
+        ph: 7.4,
+        freeChlorine: 2.5,
+        alkalinity: 100,
+        cyanuricAcid: 40,
+      },
+    ]);
+    const result = parseImportData(json);
+    expect(result.measurements[0].fac).toBe(2.5);
+  });
+
+  it('migrates old v2 schema exports with freeChlorine to fac', () => {
     const json = JSON.stringify({
       schemaVersion: 2,
       exportedAt: '2026-07-09T10:35:00.000Z',
@@ -307,6 +364,7 @@ describe('parseImportData', () => {
         {
           id: 'old1',
           date: '2026-07-04',
+          measuredAt: '2026-07-04T12:00:00.000Z',
           ph: 7.2,
           freeChlorine: 1.5,
           alkalinity: 90,
@@ -316,7 +374,7 @@ describe('parseImportData', () => {
     });
     const result = parseImportData(json);
     expect(result.measurements).toHaveLength(1);
-    expect(result.measurements[0].measuredAt).toBeDefined();
+    expect(result.measurements[0].fac).toBe(1.5);
   });
 
   it('preserves poolConfig from the import when present', () => {
@@ -327,7 +385,7 @@ describe('parseImportData', () => {
       unitSystem: 'imperial',
     };
     const json = JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       exportedAt: '2026-07-09T12:00:00.000Z',
       poolConfig: config,
       measurements: [],
@@ -358,8 +416,8 @@ describe('mergeMeasurements', () => {
       { ...SAMPLE_MEASUREMENT, id: '2' },
     ];
     const incoming: Measurement[] = [
-      { ...SAMPLE_MEASUREMENT, id: '2' }, // duplicate
-      { ...SAMPLE_MEASUREMENT, id: '3' }, // new
+      { ...SAMPLE_MEASUREMENT, id: '2' },
+      { ...SAMPLE_MEASUREMENT, id: '3' },
     ];
     const merged = mergeMeasurements(existing, incoming);
     expect(merged).toHaveLength(3);

@@ -22,6 +22,10 @@ function dateToLocalDatetime(d: Date): string {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
+function getNum(id: string): number {
+  return parseFloat((document.getElementById(id) as HTMLInputElement).value);
+}
+
 export class MeasurementForm {
   private form: HTMLFormElement;
   private errorsEl: HTMLElement;
@@ -44,25 +48,18 @@ export class MeasurementForm {
     e.preventDefault();
 
     const dateTimeLocal = this.dateTimeInput.value;
-    const ph = parseFloat((document.getElementById('mPh') as HTMLInputElement).value);
-    const freeChlorine = parseFloat((document.getElementById('mFreeChlorine') as HTMLInputElement).value);
-    const alkalinity = parseFloat((document.getElementById('mAlkalinity') as HTMLInputElement).value);
-    const cyanuricAcid = parseFloat((document.getElementById('mCyanuricAcid') as HTMLInputElement).value);
-    const saltRaw = (document.getElementById('mSalt') as HTMLInputElement).value;
-    const tempRaw = (document.getElementById('mTemperature') as HTMLInputElement).value;
-    const notes = (document.getElementById('mNotes') as HTMLTextAreaElement).value;
-
     const measuredAt = dateTimeLocal ? localDatetimeToISO(dateTimeLocal) : '';
+    const notes = (document.getElementById('mNotes') as HTMLTextAreaElement).value;
 
     const partial: Partial<Measurement> = {
       measuredAt,
-      date: measuredAt ? measuredAt.slice(0, 10) : '',
-      ph: isNaN(ph) ? undefined : ph,
-      freeChlorine: isNaN(freeChlorine) ? undefined : freeChlorine,
-      alkalinity: isNaN(alkalinity) ? undefined : alkalinity,
-      cyanuricAcid: isNaN(cyanuricAcid) ? undefined : cyanuricAcid,
-      salt: saltRaw ? parseFloat(saltRaw) : undefined,
-      temperature: tempRaw ? parseFloat(tempRaw) : undefined,
+      ph: getNum('mPh'),
+      ec: getNum('mEc'),
+      tds: getNum('mTds'),
+      salt: getNum('mSalt'),
+      orp: getNum('mOrp'),
+      fac: getNum('mFac'),
+      temperature: getNum('mTemperature'),
       notes: notes || undefined,
     };
 
@@ -76,14 +73,14 @@ export class MeasurementForm {
 
     const measurement: Measurement = {
       id: generateId(),
-      date: measuredAt ? measuredAt.slice(0, 10) : '',
       measuredAt,
-      ph: ph,
-      freeChlorine: freeChlorine,
-      alkalinity: alkalinity,
-      cyanuricAcid: cyanuricAcid,
-      salt: partial.salt,
-      temperature: partial.temperature,
+      ph: partial.ph!,
+      ec: partial.ec!,
+      tds: partial.tds!,
+      salt: partial.salt!,
+      orp: partial.orp!,
+      fac: partial.fac!,
+      temperature: partial.temperature!,
       notes: partial.notes,
     };
 
