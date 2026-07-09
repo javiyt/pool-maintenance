@@ -6,10 +6,19 @@ import { addMeasurement } from './domain/storage';
 import { calculateRecommendations } from './domain/chemistry';
 import { loadSettings } from './domain/storage';
 
+function toLocalDatetime(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 function init(): void {
-  // Set today's date as default on the date input
-  const dateInput = document.getElementById('mDate') as HTMLInputElement;
-  dateInput.value = new Date().toISOString().slice(0, 10);
+  // Set default date-time to right now on the datetime-local input
+  const dateTimeInput = document.getElementById('mDateTime') as HTMLInputElement;
+  dateTimeInput.value = toLocalDatetime(new Date());
 
   const settingsPanel = new SettingsPanel();
   const measurementForm = new MeasurementForm();

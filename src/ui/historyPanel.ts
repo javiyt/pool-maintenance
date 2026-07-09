@@ -35,8 +35,8 @@ export class HistoryPanel {
       return;
     }
 
-    // Reverse chronological order
-    const sorted = [...list].sort((a, b) => b.date.localeCompare(a.date));
+    // Reverse chronological order by measuredAt
+    const sorted = [...list].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt));
 
     const items = sorted.map((m) => {
       const vals: string[] = [];
@@ -50,7 +50,7 @@ export class HistoryPanel {
       return `
         <div class="history-item" data-id="${escapeHtml(m.id)}">
           <div class="history-meta">
-            <span class="history-date">${escapeHtml(formatDate(m.date))}</span>
+            <span class="history-date">${escapeHtml(formatDateTime(m.measuredAt))}</span>
             <button class="history-delete" data-id="${escapeHtml(m.id)}">Delete</button>
           </div>
           <div class="history-values">
@@ -102,10 +102,11 @@ export class HistoryPanel {
         const data = JSON.parse(reader.result as string);
         if (!Array.isArray(data)) throw new Error('Not an array');
 
-        // Basic validation — each item must have at least id and date
+        // Basic validation — each item must have at least id and measuredAt
+        // (also accept date for backward compat with old export files)
         for (const item of data) {
-          if (!item.id || !item.date) {
-            throw new Error('Each measurement must have an id and a date.');
+          if (!item.id || (!item.measuredAt && !item.date)) {
+            throw new Error('Each measurement must have an id and a date/measuredAt.');
           }
         }
 
@@ -126,10 +127,16 @@ export class HistoryPanel {
   }
 }
 
-function formatDate(iso: string): string {
+function formatDateTime(iso: string): string {
   try {
-    const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   } catch {
     return iso;
   }

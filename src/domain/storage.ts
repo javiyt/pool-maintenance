@@ -26,13 +26,27 @@ export function saveSettings(settings: PoolSettings): void {
 
 // ── Measurements ───────────────────────────────────────────────────
 
+/**
+ * Migrate old date-only records to the measuredAt field.
+ *
+ * Before v2.1, measurements only had a `date` (YYYY-MM-DD) field.
+ * This converts those to an ISO 8601 measuredAt using local noon
+ * as the default time.
+ */
+function migrateMeasurement(m: Measurement): Measurement {
+  if (m.measuredAt) return m;
+  // Old record — convert date to measuredAt using local noon
+  const localNoon = new Date(`${m.date}T12:00:00`);
+  return { ...m, measuredAt: localNoon.toISOString() };
+}
+
 export function loadMeasurements(): Measurement[] {
   try {
     const raw = localStorage.getItem(key('measurements'));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed;
+    return parsed.map(migrateMeasurement);
   } catch {
     return [];
   }

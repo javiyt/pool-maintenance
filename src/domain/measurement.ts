@@ -1,6 +1,7 @@
 export interface Measurement {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD (kept for backward compatibility with old records)
+  measuredAt: string; // ISO 8601, e.g. "2026-07-09T10:35:00.000Z"
   ph: number;
   freeChlorine: number;
   alkalinity: number;
@@ -60,8 +61,8 @@ export function validateMeasurement(m: Partial<Measurement>): ValidationResult {
     errors.temperature = 'Temperature must be between -10 and 60 °C.';
   }
 
-  if (!m.date) {
-    errors.date = 'Date is required.';
+  if (!m.measuredAt) {
+    errors.measuredAt = 'Date and time is required.';
   }
 
   return { valid: Object.keys(errors).length === 0, errors };
