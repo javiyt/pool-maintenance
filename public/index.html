@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pool Maintenance - Water Chemistry</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T36/Rpr7r+LJqD+4dKbN60BQ9R0Aq1eCp1jYfHlXmGv2xI+V9cOqPzUWuJjJk" crossorigin="anonymous">
+  <style>
+    /* Mobile-first responsive design */
+    body {
+      background-color: #f8f9fa;
+      padding-bottom: 60px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    
+    /* Input fields styling */
+    .measurement-input {
+      background-color: #ffffff;
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+    }
+    
+    .measurement-input:focus {
+      background-color: #fff;
+      border-color: #0d6efd;
+      box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+    }
+    
+    /* Label styling */
+    .measurement-input ~ label {
+      font-weight: 600;
+      color: #495057;
+    }
+    
+    /* Results card */
+    .results-container {
+      background-color: #f8f9fa;
+      border-radius: 0.5rem;
+      padding: 1.25rem;
+      margin-top: 1.5rem;
+    }
+    
+    .results-card {
+      background-color: #ffffff;
+      border: 1px solid #dee2e6;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .results-title {
+      background-color: #f8f9fa;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #dee2e6;
+      border-radius: 0.75rem 0.75rem 0 0;
+    }
+    
+    .results-title h4 {
+      margin: 0;
+      font-weight: 700;
+      color: #212529;
+    }
+    
+    /* Alert messages */
+    .alert-message {
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .alert-success {
+      background-color: #d1e7dd;
+      color: #0f5132;
+    }
+    
+    .alert-warning {
+      background-color: #fff3cd;
+      color: #664d03;
+    }
+    
+    .alert-danger {
+      background-color: #f8d7da;
+      color: #842029;
+    }
+    
+    /* Form validation styles */
+    .was-invalid:focus {
+      box-shadow: 0 0 0 0.25rem rgba(249, 134, 158, 0.5);
+    }
+    
+    /* Button styling */
+    .btn-primary {
+      background-color: #0d6efd;
+      border: none;
+      padding: 0.875rem 1.75rem;
+      font-weight: 600;
+    }
+    
+    .btn-primary:hover {
+      background-color: #0b5ed1;
+      border-color: #0a58ca;
+    }
+    
+    /* Mobile optimization */
+    @media (max-width: 768px) {
+      body {
+        padding-bottom: 80px;
+      }
+      
+      .results-container {
+        margin-top: 1rem;
+      }
+      
+      .form-label {
+        font-size: 0.875rem;
+        padding-left: 0.5rem;
+      }
+    }
+    
+    /* Scrollable content area */
+    .scroll-content {
+      overflow-y-auto;
+    }
+  </style>
+</head>
+<body>
+  <main class="container py-4 scroll-content">
+    <h2 class="mb-4 text-center fw-bold" style="font-family: sans-serif;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-droplet" viewBox="0 0 16 16">
+        <path d="M13.154 8.79a.284.284 0 0 0 .223-.12l.068-.104A1.25 1.25 0 0 0 12.8 6a.5.5 0 0 0 .499-.545c0-.297-.126-.583-.347-.856l-1.108-1.35A1.25 1.25 0 0 0 9.5 1.95a.5.5 0 0 0 .5-.544c-.012-.012-.02-.021-.028-.021h-3a.5.5 0 0 0-.5-.545L3.596 0a1.25 1.25 0 0 0-.068.22l-.009.009c0 .016-.001.034-.001.51v1.118c0 .247.082.484.227.692l1.128 1.374a1.25 1.25 0 0 0 .55 1.078c0 .002.12.004.12-.104v-1.49h3V6a3 3 0 0 1 2.922 2.224l.032.095z"/>
+        <path d="M8 4.985c.276.361.653.653 1.105.843v1.44h-1.8a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5h1.299c-.076-.04-.152-.14-.229-.263A3 3 0 0 1 8 3.958 3.577 3.577 0 0 1 8 6a.5.5 0 0 0 .5.5h1.8v-1.44a3.882 3.882 0 0 1-.296-.677V4.985z"/>
+      </svg>
+      Water Chemistry Checker
+    </h2>
+
+    <div class="card bg-light border">
+      <div class="card-body">
+        <form id="waterForm">
+          <!-- pH Input -->
+          <div class="mb-3">
+            <label for="ph" class="form-label">pH Level</label>
+            <input type="number" step="0.1" step2 input="ph" name="ph" class="measurement-input" min="0" max="14" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- EC Input -->
+          <div class="mb-3">
+            <label for="ec" class="form-label">EC (Electrical Conductivity)</label>
+            <input type="number" step="0.1" name="ec" class="measurement-input" min="0" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- TDS Input -->
+          <div class="mb-3">
+            <label for="tds" class="form-label">TDS (Total Dissolved Solids)</label>
+            <input type="number" step="0.1" name="tds" class="measurement-input" min="0" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- Salt Input -->
+          <div class="mb-3">
+            <label for="salt" class="form-label">Salt Concentration</label>
+            <input type="number" step="0.1" name="salt" class="measurement-input" min="0" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- ORP Input -->
+          <div class="mb-3">
+            <label for="orp" class="form-label">ORP (Oxidation-Reduction Potential)</label>
+            <input type="number" step="1" name="orp" class="measurement-input" min="0" max="1400" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- FAC Input -->
+          <div class="mb-3">
+            <label for="fac" class="form-label">FAC (Free Available Chlorine)</label>
+            <input type="number" step="0.1" name="fac" class="measurement-input" min="0" max="100" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- Temperature Input -->
+          <div class="mb-3">
+            <label for="temperature" class="form-label">Temperature</label>
+            <input type="number" step="0.1" name="temperature" class="measurement-input" min="0" max="50" required pattern="[0-9]*(\.[0-9]?)?"/>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="d-grid gap-3 col-6 mx-auto mt-4">
+            <button type="submit" class="btn btn-primary" style="min-height: 2.5rem; font-weight: 600;">
+              Save & Calculate
+            </button>
+          </div>
+        </form>
+
+        <!-- Results Container -->
+        <div class="results-container">
+          <div class="results-card">
+            <div class="results-title">
+              <h4 style="text-transform: capitalize;">Chemical Recommendations</h4>
+            </div>
+            <div id="resultsContent"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="fixed-bottom text-center mt-2" style="background-color: #f8f9fa; padding: 0.5rem;">
+    <small class="text-muted">Pool Maintenance System • Water Quality Checker</small>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-GfUOKGw9bZCfPpN1hM6eJqFgQvD0R7rjyK0s0Xo5cYHjE7A0Tz7W4JL7+8vIa2l" crossorigin="anonymous"></script>
+</body>
+</html>
