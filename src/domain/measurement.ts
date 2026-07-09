@@ -1,13 +1,13 @@
 export interface Measurement {
   id: string;
-  date: string; // YYYY-MM-DD (kept for backward compatibility with old records)
   measuredAt: string; // ISO 8601, e.g. "2026-07-09T10:35:00.000Z"
-  ph: number;
-  freeChlorine: number;
-  alkalinity: number;
-  cyanuricAcid: number;
-  salt?: number;
-  temperature?: number;
+  ph: number; // pH
+  ec: number; // electrical conductivity, µS/cm
+  tds: number; // total dissolved solids, ppm
+  salt: number; // salt level, ppm
+  orp: number; // oxidation-reduction potential, mV
+  fac: number; // free available chlorine, ppm
+  temperature: number; // water temperature, °C
   notes?: string;
 }
 
@@ -29,36 +29,42 @@ export function validateMeasurement(m: Partial<Measurement>): ValidationResult {
     errors.ph = 'pH is required.';
   }
 
-  if (m.freeChlorine !== undefined) {
-    if (m.freeChlorine < 0 || m.freeChlorine > 20) {
-      errors.freeChlorine = 'Free chlorine must be between 0 and 20 ppm.';
+  if (m.ec !== undefined) {
+    if (m.ec <= 0) errors.ec = 'EC must be a positive number.';
+  } else {
+    errors.ec = 'EC is required.';
+  }
+
+  if (m.tds !== undefined) {
+    if (m.tds <= 0) errors.tds = 'TDS must be a positive number.';
+  } else {
+    errors.tds = 'TDS is required.';
+  }
+
+  if (m.salt !== undefined) {
+    if (m.salt <= 0) errors.salt = 'Salt must be a positive number.';
+  } else {
+    errors.salt = 'Salt is required.';
+  }
+
+  if (m.orp !== undefined) {
+    if (m.orp <= 0) errors.orp = 'ORP must be a positive number.';
+  } else {
+    errors.orp = 'ORP is required.';
+  }
+
+  if (m.fac !== undefined) {
+    if (m.fac < 0) errors.fac = 'FAC must be zero or a positive number.';
+  } else {
+    errors.fac = 'FAC is required.';
+  }
+
+  if (m.temperature !== undefined) {
+    if (m.temperature < -10 || m.temperature > 60) {
+      errors.temperature = 'Temperature must be between -10 and 60 °C.';
     }
   } else {
-    errors.freeChlorine = 'Free chlorine is required.';
-  }
-
-  if (m.alkalinity !== undefined) {
-    if (m.alkalinity < 0 || m.alkalinity > 500) {
-      errors.alkalinity = 'Alkalinity must be between 0 and 500 ppm.';
-    }
-  } else {
-    errors.alkalinity = 'Alkalinity is required.';
-  }
-
-  if (m.cyanuricAcid !== undefined) {
-    if (m.cyanuricAcid < 0 || m.cyanuricAcid > 300) {
-      errors.cyanuricAcid = 'Cyanuric acid must be between 0 and 300 ppm.';
-    }
-  } else {
-    errors.cyanuricAcid = 'Cyanuric acid is required.';
-  }
-
-  if (m.salt !== undefined && (m.salt < 0 || m.salt > 10000)) {
-    errors.salt = 'Salt must be between 0 and 10,000 ppm.';
-  }
-
-  if (m.temperature !== undefined && (m.temperature < -10 || m.temperature > 60)) {
-    errors.temperature = 'Temperature must be between -10 and 60 °C.';
+    errors.temperature = 'Temperature is required.';
   }
 
   if (!m.measuredAt) {

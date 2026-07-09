@@ -27,17 +27,36 @@ export function saveSettings(settings: PoolSettings): void {
 // ── Measurements ───────────────────────────────────────────────────
 
 /**
- * Migrate old date-only records to the measuredAt field.
+ * Migrate an old record to the current PoolMeasurement shape.
  *
- * Before v2.1, measurements only had a `date` (YYYY-MM-DD) field.
- * This converts those to an ISO 8601 measuredAt using local noon
- * as the default time.
+ * v1→v2: Records had `date` (YYYY-MM-DD) without `measuredAt`.
+ *         Converts date to ISO 8601 measuredAt using local noon.
+ *
+ * v2→v3: Records may contain fields like freeChlorine, alkalinity,
+ *         cyanuricAcid, or a `date` field. Maps freeChlorine → fac
+ *         and ensures measuredAt exists.
  */
-function migrateMeasurement(m: Record<string, unknown>): Measurement {
-  if (m.measuredAt) return m as unknown as Measurement;
-  // Old record — convert date to measuredAt using local noon
-  const localNoon = new Date(`${String(m.date)}T12:00:00`);
-  return { ...(m as unknown as Measurement), measuredAt: localNoon.toISOString() };
+function migrateMeasurement(raw: Record<string, unknown>): Measurement {
+  const r = { ...raw } as Record<string, unknown>;
+
+  // Ensure measuredAt exists (migrate from date-only)
+  if (!r.measuredAt && r.date) {
+    const localNoon = new Date(`${String(r.date)}T12:00:00`);
+    r.measuredAt = localNoon.toISOString();
+  }
+
+  // Map old freeChlorine to fac if fac is not already set
+  if (r.freeChlorine !== undefined && r.fac === undefined) {
+    r.fac = r.freeChlorine;
+  }
+
+  // Remove legacy fields that are no longer in the model
+  delete r.date;
+  delete r.freeChlorine;
+  delete r.alkalinity;
+  delete r.cyanuricAcid;
+
+  return r as unknown as Measurement;
 }
 
 export function loadMeasurements(): Measurement[] {
@@ -71,7 +90,7 @@ export function deleteMeasurement(id: string): Measurement[] {
 
 // ── Export / Import ────────────────────────────────────────────────
 
-export const EXPORT_SCHEMA_VERSION = 2;
+export const EXPORT_SCHEMA_VERSION = 3;
 
 export interface ExportData {
   schemaVersion: number;
@@ -104,9 +123,12 @@ export function exportData(now?: Date): ExportData {
 /**
  * Parse and validate an import JSON string.
  *
- * Supports two formats:
- * - v2+: `{ schemaVersion, poolConfig, measurements }`
- * - Legacy: a plain `Measurement[]` array
+ * Supports:
+ * - v3: `{ schemaVersion: 3, poolConfig, measurements }` — current format
+ * - v2: `{ schemaVersion: 2, poolConfig, measurements }` — old measurement shape
+ * - v1 (legacy): a plain `Measurement[]` array
+ *
+ * All formats are migrated through `migrateMeasurement` for backward compat.
  *
  * @throws If the JSON is invalid or the shape is unrecognized.
  */

@@ -45,11 +45,12 @@ export class HistoryPanel {
     const items = sorted.map((m) => {
       const vals: string[] = [];
       vals.push(`pH ${m.ph.toFixed(1)}`);
-      vals.push(`FC ${m.freeChlorine.toFixed(1)}`);
-      vals.push(`Alk ${m.alkalinity}`);
-      vals.push(`CYA ${m.cyanuricAcid}`);
-      if (m.salt !== undefined) vals.push(`Salt ${m.salt}`);
-      if (m.temperature !== undefined) vals.push(`${m.temperature.toFixed(0)}°C`);
+      vals.push(`EC ${m.ec} µS/cm`);
+      vals.push(`TDS ${m.tds} ppm`);
+      vals.push(`Salt ${m.salt} ppm`);
+      vals.push(`ORP ${m.orp} mV`);
+      vals.push(`FAC ${m.fac.toFixed(1)} ppm`);
+      vals.push(`${m.temperature.toFixed(1)} °C`);
 
       return `
         <div class="history-item" data-id="${escapeHtml(m.id)}">

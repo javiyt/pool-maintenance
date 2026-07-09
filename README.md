@@ -15,7 +15,7 @@ Track water chemistry measurements, understand whether your pool water is okay, 
 ## Features
 
 - **Pool settings** — set your pool volume, type (chlorine / saltwater), and preferred units.
-- **Measurement form** — record pH, free chlorine, alkalinity, cyanuric acid, plus optional salt, temperature and notes.
+- **Measurement form** — record pH, EC (µS/cm), TDS (ppm), salt (ppm), ORP (mV), FAC (ppm), and temperature (°C) from a digital pool meter.
 - **Validation** — prevents impossible values and shows clear error messages.
 - **Chemistry recommendations** — get approximate dosage amounts with target ranges and warnings when values are dangerous.
 - **Measurement history** — view in reverse chronological order, delete entries, export to JSON, and import from JSON.
@@ -52,12 +52,13 @@ All chemical dosage formulas are **approximate** and assume standard residential
 | Parameter | Target range | Adjustment | Approximate rate |
 |---|---|---|---|
 | pH | 7.2–7.6 | Sodium bisulfate (lower) / sodium carbonate (raise) | ~15 g / 1,000 L per 0.1 pH (lower); ~12 g / 1,000 L per 0.1 pH (raise) |
-| Free chlorine | 1–3 ppm (chlorine) / 3–5 ppm (saltwater) | Calcium hypochlorite | ~2.5 g / 1,000 L per 1.0 ppm |
-| Total alkalinity | 80–120 ppm | Sodium bicarbonate (raise) / sodium bisulfate (lower) | ~18 g / 1,000 L per 10 ppm |
-| Cyanuric acid | 30–50 ppm | Cyanuric acid granulate | ~13 g / 1,000 L per 10 ppm |
+| FAC (free available chlorine) | 1–3 ppm (chlorine) / 3–5 ppm (saltwater) | Calcium hypochlorite | ~2.5 g / 1,000 L per 1.0 ppm |
+| ORP | 650–800 mV | — (sanitation indicator) | N/A — monitored, not chemically adjusted directly |
 | Salt (saltwater pools) | 2,700–3,400 ppm | Pool salt | ~1 kg / 1,000 L per 100 ppm |
+| EC | Informational | — | N/A |
+| TDS | Informational | — | N/A |
 
-High cyanuric acid and high salt cannot be chemically reduced — partial drain and refill is the recommended approach.
+High salt cannot be chemically reduced — partial drain and refill is the recommended approach.
 
 These rates are rough guidelines. Actual results depend on water temperature, bather load, rainfall, and other factors. **Always measure twice and add chemicals gradually.**
 
@@ -67,11 +68,11 @@ The app supports exporting and importing data as JSON files. This makes it possi
 
 ### Export
 
-Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 2):
+Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 3):
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "exportedAt": "2026-07-09T10:35:00.000Z",
   "poolConfig": {
     "volume": 50000,
@@ -82,12 +83,14 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
   "measurements": [
     {
       "id": "1700000000-a1b2c3",
-      "date": "2026-07-09",
       "measuredAt": "2026-07-09T10:35:00.000Z",
       "ph": 7.4,
-      "freeChlorine": 2.0,
-      "alkalinity": 100,
-      "cyanuricAcid": 40
+      "ec": 6640,
+      "tds": 3230,
+      "salt": 3380,
+      "orp": 672,
+      "fac": 0.8,
+      "temperature": 31.0
     }
   ]
 }
@@ -95,17 +98,32 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
 
 | Field | Type | Description |
 |---|---|---|
-| `schemaVersion` | number | Format version (`2`). Used for forward compatibility. |
+| `schemaVersion` | number | Format version (`3`). Used for forward compatibility. |
 | `exportedAt` | string (ISO 8601) | When the file was exported. |
 | `poolConfig` | object | The pool settings (volume, type, units) at time of export. |
-| `measurements` | array | Array of measurement records, each with `id`, `measuredAt`, and chemical values. |
+| `measurements` | array | Array of measurement records with digital meter fields. |
+
+### Measurement fields
+
+| Field | Unit | Description |
+|---|---|---|
+| `id` | — | Unique identifier |
+| `measuredAt` | ISO 8601 | Date and time of the measurement |
+| `ph` | — | pH level |
+| `ec` | µS/cm | Electrical conductivity |
+| `tds` | ppm | Total dissolved solids |
+| `salt` | ppm | Salt level |
+| `orp` | mV | Oxidation-reduction potential |
+| `fac` | ppm | Free available chlorine |
+| `temperature` | °C | Water temperature |
 
 ### Import
 
-Click **Import JSON** and select a `.json` file. The app accepts two formats:
+Click **Import JSON** and select a `.json` file. The app accepts three formats:
 
-1. **Schema v2** (recommended) — the full format shown above. Restores both measurements and pool configuration.
-2. **Legacy format** — a plain array of measurement objects (schema v1). Only imports measurements; pool configuration is not affected.
+1. **Schema v3** (current) — the full format shown above. Restores both measurements and pool configuration using the new digital meter fields.
+2. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
+3. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
 
 #### Import behavior
 
@@ -116,8 +134,10 @@ Click **Import JSON** and select a `.json` file. The app accepts two formats:
 
 ### Migration notes
 
-- **Schema v1 → v2**: Exports created before this feature only contain a JSON array of measurements. These remain fully importable — measurements are restored and the current pool configuration is left unchanged.
+- **Schema v1 → v2 → v3**: Exports from any previous schema version are fully importable.
 - **Date-only records**: Old measurements that use `date` (YYYY-MM-DD) instead of `measuredAt` are automatically converted during import, using local noon as the default time.
+- **Old field mapping**: `freeChlorine` → `fac`. Fields `alkalinity`, `cyanuricAcid`, and `date` are removed after migration.
+- **Missing values**: Old records that cannot provide all digital meter fields (e.g. migrated v2 records that lacked `ec`, `tds`, `orp`) may have incomplete data. The app requires all fields for new measurements but accepts incomplete migrated records.
 
 ## Project Structure
 

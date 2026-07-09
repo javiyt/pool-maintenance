@@ -76,27 +76,31 @@
           <span class="field-hint">Target: 7.2–7.6</span>
         </div>
         <div class="field">
-          <label for="mFreeChlorine">Free chlorine (ppm)</label>
-          <input type="number" id="mFreeChlorine" min="0" max="20" step="0.1" required />
+          <label for="mEc">EC (µS/cm)</label>
+          <input type="number" id="mEc" min="0" step="1" required />
+        </div>
+        <div class="field">
+          <label for="mTds">TDS (ppm)</label>
+          <input type="number" id="mTds" min="0" step="1" required />
+        </div>
+        <div class="field">
+          <label for="mSalt">Salt (ppm)</label>
+          <input type="number" id="mSalt" min="0" step="1" required />
+          <span class="field-hint">Target: 2,700–3,400 ppm</span>
+        </div>
+        <div class="field">
+          <label for="mOrp">ORP (mV)</label>
+          <input type="number" id="mOrp" min="0" step="1" required />
+          <span class="field-hint">Target: 650–800 mV</span>
+        </div>
+        <div class="field">
+          <label for="mFac">FAC (ppm)</label>
+          <input type="number" id="mFac" min="0" step="0.1" required />
           <span class="field-hint">Target: 1–3 ppm</span>
         </div>
         <div class="field">
-          <label for="mAlkalinity">Total alkalinity (ppm)</label>
-          <input type="number" id="mAlkalinity" min="0" max="500" step="1" required />
-          <span class="field-hint">Target: 80–120 ppm</span>
-        </div>
-        <div class="field">
-          <label for="mCyanuricAcid">Cyanuric acid / stabilizer (ppm)</label>
-          <input type="number" id="mCyanuricAcid" min="0" max="300" step="1" required />
-          <span class="field-hint">Target: 30–50 ppm</span>
-        </div>
-        <div class="field">
-          <label for="mSalt">Salt (ppm) <span class="optional">optional</span></label>
-          <input type="number" id="mSalt" min="0" max="10000" step="1" />
-        </div>
-        <div class="field">
-          <label for="mTemperature">Water temperature (°C) <span class="optional">optional</span></label>
-          <input type="number" id="mTemperature" min="-10" max="60" step="0.5" />
+          <label for="mTemperature">Temperature (°C)</label>
+          <input type="number" id="mTemperature" min="-10" max="60" step="0.1" required />
         </div>
         <div class="field">
           <label for="mNotes">Notes <span class="optional">optional</span></label>
