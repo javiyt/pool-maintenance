@@ -1,16 +1,20 @@
 {
   "name": "pool-maintenance",
-  "version": "1.0.0",
-  "description": "Pool maintenance backend server",
-  "main": "server.js",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Water chemistry tracker for pool owners — save measurements, check water quality, get chemical recommendations.",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
   },
-  "keywords": ["express", "api", "pool-maintenance"],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "express": "^4.19.0"
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
   }
 }
