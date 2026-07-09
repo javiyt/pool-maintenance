@@ -11,6 +11,7 @@ function makeMeasurement(overrides: Partial<Measurement> = {}): Measurement {
   return {
     id: 'test-1',
     date: '2026-07-09',
+    measuredAt: '2026-07-09T10:35:00.000Z',
     ph: 7.4,
     freeChlorine: 2.0,
     alkalinity: 100,

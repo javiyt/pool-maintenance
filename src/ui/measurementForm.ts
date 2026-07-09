@@ -1,14 +1,37 @@
 import type { Measurement } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
 
+/**
+ * Convert a datetime-local value (YYYY-MM-DDTHH:MM) to an ISO 8601
+ * UTC string by treating the input as local time.
+ */
+function localDatetimeToISO(localValue: string): string {
+  return new Date(localValue).toISOString();
+}
+
+/**
+ * Format a Date to a datetime-local-compatible string (YYYY-MM-DDTHH:MM)
+ * in the local timezone.
+ */
+function dateToLocalDatetime(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 export class MeasurementForm {
   private form: HTMLFormElement;
   private errorsEl: HTMLElement;
+  private dateTimeInput: HTMLInputElement;
   private onSubmitCb: ((m: Measurement) => void) | null = null;
 
   constructor() {
     this.form = document.getElementById('measurementForm') as HTMLFormElement;
     this.errorsEl = document.getElementById('formErrors') as HTMLElement;
+    this.dateTimeInput = document.getElementById('mDateTime') as HTMLInputElement;
 
     this.form.addEventListener('submit', (e) => this.handleSubmit(e));
   }
@@ -20,7 +43,7 @@ export class MeasurementForm {
   private handleSubmit(e: Event): void {
     e.preventDefault();
 
-    const date = (document.getElementById('mDate') as HTMLInputElement).value;
+    const dateTimeLocal = this.dateTimeInput.value;
     const ph = parseFloat((document.getElementById('mPh') as HTMLInputElement).value);
     const freeChlorine = parseFloat((document.getElementById('mFreeChlorine') as HTMLInputElement).value);
     const alkalinity = parseFloat((document.getElementById('mAlkalinity') as HTMLInputElement).value);
@@ -29,8 +52,11 @@ export class MeasurementForm {
     const tempRaw = (document.getElementById('mTemperature') as HTMLInputElement).value;
     const notes = (document.getElementById('mNotes') as HTMLTextAreaElement).value;
 
+    const measuredAt = dateTimeLocal ? localDatetimeToISO(dateTimeLocal) : '';
+
     const partial: Partial<Measurement> = {
-      date,
+      measuredAt,
+      date: measuredAt ? measuredAt.slice(0, 10) : '',
       ph: isNaN(ph) ? undefined : ph,
       freeChlorine: isNaN(freeChlorine) ? undefined : freeChlorine,
       alkalinity: isNaN(alkalinity) ? undefined : alkalinity,
@@ -50,7 +76,8 @@ export class MeasurementForm {
 
     const measurement: Measurement = {
       id: generateId(),
-      date: date,
+      date: measuredAt ? measuredAt.slice(0, 10) : '',
+      measuredAt,
       ph: ph,
       freeChlorine: freeChlorine,
       alkalinity: alkalinity,
@@ -61,8 +88,8 @@ export class MeasurementForm {
     };
 
     this.form.reset();
-    // Set today's date as default
-    (document.getElementById('mDate') as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
+    // Reset to current date-time
+    this.dateTimeInput.value = dateToLocalDatetime(new Date());
     this.onSubmitCb?.(measurement);
   }
 
