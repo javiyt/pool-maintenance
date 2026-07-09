@@ -61,6 +61,64 @@ High cyanuric acid and high salt cannot be chemically reduced — partial drain 
 
 These rates are rough guidelines. Actual results depend on water temperature, bather load, rainfall, and other factors. **Always measure twice and add chemicals gradually.**
 
+## JSON Export / Import Format
+
+The app supports exporting and importing data as JSON files. This makes it possible to back up your data or transfer it between browsers/devices.
+
+### Export
+
+Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 2):
+
+```json
+{
+  "schemaVersion": 2,
+  "exportedAt": "2026-07-09T10:35:00.000Z",
+  "poolConfig": {
+    "volume": 50000,
+    "volumeUnit": "liters",
+    "poolType": "chlorine",
+    "unitSystem": "metric"
+  },
+  "measurements": [
+    {
+      "id": "1700000000-a1b2c3",
+      "date": "2026-07-09",
+      "measuredAt": "2026-07-09T10:35:00.000Z",
+      "ph": 7.4,
+      "freeChlorine": 2.0,
+      "alkalinity": 100,
+      "cyanuricAcid": 40
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `schemaVersion` | number | Format version (`2`). Used for forward compatibility. |
+| `exportedAt` | string (ISO 8601) | When the file was exported. |
+| `poolConfig` | object | The pool settings (volume, type, units) at time of export. |
+| `measurements` | array | Array of measurement records, each with `id`, `measuredAt`, and chemical values. |
+
+### Import
+
+Click **Import JSON** and select a `.json` file. The app accepts two formats:
+
+1. **Schema v2** (recommended) — the full format shown above. Restores both measurements and pool configuration.
+2. **Legacy format** — a plain array of measurement objects (schema v1). Only imports measurements; pool configuration is not affected.
+
+#### Import behavior
+
+- **Measurements are merged** with existing data. New measurements are appended. If an imported measurement has the same `id` as an existing one, the duplicate is silently skipped.
+- **Pool configuration is restored** when the imported file contains a `poolConfig` field (schema v2+). The current pool settings are overwritten with the imported values.
+- **Backward compatible** — old export files that contain only measurements still work. The app detects the format automatically.
+- **Invalid files** — if the file is not valid JSON, or the structure is unrecognized, the import is canceled and an error message is shown. The app never crashes from a bad import.
+
+### Migration notes
+
+- **Schema v1 → v2**: Exports created before this feature only contain a JSON array of measurements. These remain fully importable — measurements are restored and the current pool configuration is left unchanged.
+- **Date-only records**: Old measurements that use `date` (YYYY-MM-DD) instead of `measuredAt` are automatically converted during import, using local noon as the default time.
+
 ## Project Structure
 
 ```

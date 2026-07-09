@@ -1,7 +1,11 @@
 import {
   loadMeasurements,
   deleteMeasurement,
+  exportData,
+  parseImportData,
+  mergeMeasurements,
   saveMeasurements,
+  saveSettings,
 } from '../domain/storage';
 
 export class HistoryPanel {
@@ -77,17 +81,18 @@ export class HistoryPanel {
   }
 
   private handleExport(): void {
-    const list = loadMeasurements();
-    if (list.length === 0) {
+    const measurements = loadMeasurements();
+    if (measurements.length === 0) {
       alert('No measurements to export.');
       return;
     }
 
-    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+    const data = exportData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `pool-measurements-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `pool-export-${data.exportedAt.slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -99,23 +104,29 @@ export class HistoryPanel {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const data = JSON.parse(reader.result as string);
-        if (!Array.isArray(data)) throw new Error('Not an array');
-
-        // Basic validation — each item must have at least id and measuredAt
-        // (also accept date for backward compat with old export files)
-        for (const item of data) {
-          if (!item.id || (!item.measuredAt && !item.date)) {
-            throw new Error('Each measurement must have an id and a date/measuredAt.');
-          }
-        }
+        const result = parseImportData(reader.result as string);
 
         const existing = loadMeasurements();
-        const merged = [...existing, ...data];
+        const merged = mergeMeasurements(existing, result.measurements);
         saveMeasurements(merged);
+
+        const messages: string[] = [];
+        messages.push(`Imported ${result.count} measurement(s).`);
+
+        if (result.poolConfig) {
+          saveSettings(result.poolConfig);
+          messages.push('Pool configuration restored from file.');
+        }
+
+        // Notify the user if duplicate measurements were skipped
+        const skipped = result.count - (merged.length - existing.length);
+        if (skipped > 0) {
+          messages.push(`${skipped} duplicate(s) skipped.`);
+        }
+
         this.render();
         this.onChangeCb?.();
-        alert(`Imported ${data.length} measurement(s) successfully.`);
+        alert(messages.join('\n'));
       } catch (err) {
         alert(`Import failed: ${(err as Error).message}`);
       }
