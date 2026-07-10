@@ -2,11 +2,21 @@ export type PoolType = 'chlorine' | 'saltwater';
 export type VolumeUnit = 'liters' | 'cubicMeters';
 export type UnitSystem = 'metric' | 'imperial';
 
+export interface SaltChlorinatorConfig {
+  enabled: boolean;
+  productionGramsPerHour: number;
+  currentOutputPercent: number;
+  filtrationHoursPerDay: number;
+  maxRecommendedOutputPercent: number;
+  maxRecommendedHoursPerDay: number;
+}
+
 export interface PoolSettings {
   volume: number;
   volumeUnit: VolumeUnit;
   poolType: PoolType;
   unitSystem: UnitSystem;
+  saltChlorinator?: SaltChlorinatorConfig;
 }
 
 export const DEFAULT_SETTINGS: PoolSettings = {
@@ -14,6 +24,15 @@ export const DEFAULT_SETTINGS: PoolSettings = {
   volumeUnit: 'liters',
   poolType: 'chlorine',
   unitSystem: 'metric',
+};
+
+export const DEFAULT_SALT_CHLORINATOR: SaltChlorinatorConfig = {
+  enabled: false,
+  productionGramsPerHour: 20,
+  currentOutputPercent: 60,
+  filtrationHoursPerDay: 6,
+  maxRecommendedOutputPercent: 100,
+  maxRecommendedHoursPerDay: 12,
 };
 
 export function volumeInLiters(settings: PoolSettings): number {

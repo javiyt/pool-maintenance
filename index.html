@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Pool Maintenance — track water chemistry and get chemical recommendations." />
-  <title>Pool Maintenance</title>
+  <meta name="description" content="Pool Maintenance Assistant — track water chemistry, analyze trends, and get smart recommendations for saltwater and chlorine pools." />
+  <title>Pool Maintenance Assistant</title>
   <link rel="stylesheet" href="/src/styles/main.css" />
 </head>
 <body>
   <!-- ═══ Header ═══════════════════════════════════════════════════ -->
   <header class="app-header">
     <div class="header-inner">
-      <h1 class="app-title">Pool Maintenance</h1>
+      <h1 class="app-title">Pool Maintenance Assistant</h1>
       <button id="settingsToggleBtn" class="btn-icon" aria-label="Open pool settings" title="Pool Settings">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1.08 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1.08z"/>
@@ -52,6 +52,34 @@
             <option value="metric">Metric</option>
             <option value="imperial">Imperial</option>
           </select>
+        </div>
+        <hr class="settings-divider" />
+        <h3 class="settings-subtitle">Salt chlorinator</h3>
+        <div class="field">
+          <label for="scEnabled">
+            <input type="checkbox" id="scEnabled" />
+            Salt chlorinator installed
+          </label>
+        </div>
+        <div class="field sc-field">
+          <label for="scProduction">Production (g/h)</label>
+          <input type="number" id="scProduction" min="0" step="1" />
+        </div>
+        <div class="field sc-field">
+          <label for="scOutput">Current output (%)</label>
+          <input type="number" id="scOutput" min="0" max="100" step="1" />
+        </div>
+        <div class="field sc-field">
+          <label for="scHours">Filtration hours per day</label>
+          <input type="number" id="scHours" min="0" step="1" />
+        </div>
+        <div class="field sc-field">
+          <label for="scMaxOutput">Max recommended output (%)</label>
+          <input type="number" id="scMaxOutput" min="0" max="100" step="1" />
+        </div>
+        <div class="field sc-field">
+          <label for="scMaxHours">Max hours per day</label>
+          <input type="number" id="scMaxHours" min="0" step="1" />
         </div>
         <button id="settingsSaveBtn" class="btn-primary">Save Settings</button>
         <p id="settingsStatus" class="status-msg" aria-live="polite"></p>
