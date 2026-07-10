@@ -2,6 +2,8 @@ import { SettingsPanel } from './ui/settingsPanel';
 import { MeasurementForm } from './ui/measurementForm';
 import { RecommendationsPanel } from './ui/recommendationsPanel';
 import { HistoryPanel } from './ui/historyPanel';
+import { ActionForm } from './ui/actionForm';
+import { ActionHistory } from './ui/actionHistory';
 import { addMeasurement } from './domain/storage';
 import { loadSettings, loadMeasurements } from './domain/storage';
 import { runAssistant } from './domain/maintenanceAssistant';
@@ -15,6 +17,15 @@ function toLocalDatetime(d: Date): string {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
+function runAndShowRecommendations(
+  recommendationsPanel: RecommendationsPanel,
+): void {
+  const settings = loadSettings();
+  const measurements = loadMeasurements();
+  const result = runAssistant(measurements, settings);
+  recommendationsPanel.show(result);
+}
+
 function init(): void {
   // Set default date-time to right now on the datetime-local input
   const dateTimeInput = document.getElementById('mDateTime') as HTMLInputElement;
@@ -24,6 +35,8 @@ function init(): void {
   const measurementForm = new MeasurementForm();
   const recommendationsPanel = new RecommendationsPanel();
   const historyPanel = new HistoryPanel();
+  const actionForm = new ActionForm();
+  const actionHistory = new ActionHistory();
 
   // Re-render history whenever measurements change
   historyPanel.onChange(() => {
@@ -41,10 +54,7 @@ function init(): void {
     historyPanel.render();
 
     // Run the maintenance assistant with full history
-    const settings = loadSettings();
-    const measurements = loadMeasurements();
-    const result = runAssistant(measurements, settings);
-    recommendationsPanel.show(result);
+    runAndShowRecommendations(recommendationsPanel);
 
     // Scroll to recommendations
     setTimeout(() => {
@@ -52,8 +62,21 @@ function init(): void {
     }, 100);
   });
 
+  // "Mark as performed" from recommendations → open action form with prefill
+  recommendationsPanel.onMarkAsPerformed((prefill) => {
+    actionForm.open(prefill);
+  });
+
+  // Action form save → update history
+  actionForm.onSave(() => {
+    actionHistory.render();
+    // Re-run recommendations to reflect the recorded action
+    runAndShowRecommendations(recommendationsPanel);
+  });
+
   // Initial render
   historyPanel.render();
+  actionHistory.render();
 }
 
 document.addEventListener('DOMContentLoaded', init);

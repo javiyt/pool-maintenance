@@ -18,6 +18,8 @@ Track water chemistry measurements, understand whether your pool water is okay, 
 - **Measurement form** — record pH, EC (µS/cm), TDS (ppm), salt (ppm), ORP (mV), FAC (ppm), and temperature (°C) from a digital pool meter.
 - **Validation** — prevents impossible values and shows clear error messages.
 - **Chemistry recommendations** — get approximate dosage amounts with target ranges and warnings when values are dangerous.
+- **Mark recommendations as performed** — convert a recommendation into a recorded maintenance action with pre-filled values you can edit before saving.
+- **Maintenance action history** — record chemical additions, chlorinator adjustments, filtration changes, water replacements, cleaning, manual tests, and other actions. View in reverse chronological order, delete entries. Actions can be linked to a specific measurement.
 - **Measurement history** — view in reverse chronological order, delete entries, export to JSON, and import from JSON.
 - **Mobile-first** — responsive layout that works on phones and tablets.
 - **Local storage** — all data stays in your browser. No server, no cloud sync.
@@ -91,11 +93,11 @@ The app supports exporting and importing data as JSON files. This makes it possi
 
 ### Export
 
-Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 3):
+Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 4):
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "exportedAt": "2026-07-09T10:35:00.000Z",
   "poolConfig": {
     "volume": 50000,
@@ -115,16 +117,33 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
       "fac": 0.8,
       "temperature": 31.0
     }
+  ],
+  "actions": [
+    {
+      "id": "act-1741592100-1-abc12",
+      "performedAt": "2026-07-09T11:00:00.000Z",
+      "kind": "chemical",
+      "description": "Added pH reducer",
+      "notes": "Applied around the perimeter",
+      "relatedMeasurementId": "1700000000-a1b2c3",
+      "chemical": {
+        "productType": "ph-reducer",
+        "mainComponent": "Ácido reductor de pH",
+        "amount": 750,
+        "unit": "ml"
+      }
+    }
   ]
 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `schemaVersion` | number | Format version (`3`). Used for forward compatibility. |
+| `schemaVersion` | number | Format version (`4`). Used for forward compatibility. |
 | `exportedAt` | string (ISO 8601) | When the file was exported. |
 | `poolConfig` | object | The pool settings (volume, type, units) at time of export. |
 | `measurements` | array | Array of measurement records with digital meter fields. |
+| `actions` | array | Array of maintenance action records (v4+). Empty array if no actions recorded. |
 
 ### Measurement fields
 
@@ -142,22 +161,24 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
 
 ### Import
 
-Click **Import JSON** and select a `.json` file. The app accepts three formats:
+Click **Import JSON** and select a `.json` file. The app accepts four formats:
 
-1. **Schema v3** (current) — the full format shown above. Restores both measurements and pool configuration using the new digital meter fields.
-2. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
-3. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
+1. **Schema v4** (current) — the full format shown above. Restores measurements, actions, and pool configuration.
+2. **Schema v3** (legacy) — format without `actions`. Restores measurements and pool configuration; actions field is silently treated as empty.
+3. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
+4. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
 
 #### Import behavior
 
 - **Measurements are merged** with existing data. New measurements are appended. If an imported measurement has the same `id` as an existing one, the duplicate is silently skipped.
+- **Actions are merged** with existing data using the same id-based dedup logic.
 - **Pool configuration is restored** when the imported file contains a `poolConfig` field (schema v2+). The current pool settings are overwritten with the imported values.
-- **Backward compatible** — old export files that contain only measurements still work. The app detects the format automatically.
+- **Backward compatible** — old export files that contain only measurements still work. The app detects the format automatically. Schema v3 exports are fully compatible and imported without data loss.
 - **Invalid files** — if the file is not valid JSON, or the structure is unrecognized, the import is canceled and an error message is shown. The app never crashes from a bad import.
 
 ### Migration notes
 
-- **Schema v1 → v2 → v3**: Exports from any previous schema version are fully importable.
+- **Schema v1 → v2 → v3 → v4**: Exports from any previous schema version are fully importable.
 - **Date-only records**: Old measurements that use `date` (YYYY-MM-DD) instead of `measuredAt` are automatically converted during import, using local noon as the default time.
 - **Old field mapping**: `freeChlorine` → `fac`. Fields `alkalinity`, `cyanuricAcid`, and `date` are removed after migration.
 - **Missing values**: Old records that cannot provide all digital meter fields (e.g. migrated v2 records that lacked `ec`, `tds`, `orp`) may have incomplete data. The app requires all fields for new measurements but accepts incomplete migrated records.
@@ -170,20 +191,28 @@ src/
 ├── domain/
 │   ├── settings.ts            # PoolSettings type, defaults
 │   ├── measurement.ts         # Measurement type, validation
+│   ├── actions.ts             # MaintenanceAction type, action ID generation
 │   ├── chemicalCatalog.ts     # Generic chemical product catalog (no brand names)
 │   ├── chemistry.ts           # Chemical calculation logic, target ranges, recommendation engine
-│   └── storage.ts             # localStorage persistence
+│   ├── trendAnalysis.ts       # Measurement trend detection (rising/falling/stable)
+│   ├── saltChlorinator.ts     # Salt chlorinator adjustment calculator
+│   ├── maintenanceAssistant.ts# Full assistant — trends + recommendations + status
+│   └── storage.ts             # localStorage persistence (measurements + actions)
 ├── ui/
 │   ├── settingsPanel.ts       # Pool settings drawer
 │   ├── measurementForm.ts     # Measurement input form
+│   ├── actionForm.ts          # Maintenance action creation form (drawer)
 │   ├── historyPanel.ts        # Measurement history list + export/import
-│   └── recommendationsPanel.ts # Recommendation results display
-└── styles/
-    └── main.css               # All styles (mobile-first, no framework)
+│   ├── actionHistory.ts       # Action history list
+│   └── recommendationsPanel.ts # Recommendation results display + "Mark as performed"
+├── styles/
+│   └── main.css               # All styles (mobile-first, no framework)
 tests/
 ├── chemistry.test.ts          # Catalog + recommendation engine tests
 ├── measurement.test.ts        # Validation + ID generation tests
-└── storage.test.ts            # Persistence + export/import tests
+├── actions.test.ts            # Action persistence, export/import, merge, sorting tests
+├── storage.test.ts            # Settings + measurement persistence + export/import tests
+└── maintenanceAssistant.test.ts # Full assistant integration tests
 ```
 
 Domain logic is fully separated from UI code, making the calculation engine testable and reusable.

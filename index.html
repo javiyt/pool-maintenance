@@ -149,7 +149,137 @@
       <div id="recContent"></div>
     </section>
 
-    <!-- ── History ──────────────────────────────────────────────── -->
+    <!-- ── Action Form Modal ─────────────────────────────────────── -->
+    <aside id="actionFormPanel" class="action-panel" role="dialog" aria-label="Record action" hidden>
+      <div class="action-overlay" id="actionFormOverlay"></div>
+      <div class="action-drawer">
+        <div class="action-header">
+          <h2 id="actionFormTitle">Record Maintenance Action</h2>
+          <button id="actionFormCloseBtn" class="btn-icon" aria-label="Close">&times;</button>
+        </div>
+        <div class="action-body">
+          <form id="actionForm" novalidate>
+            <div class="field">
+              <label for="actionDateTime">Date &amp; time</label>
+              <input type="datetime-local" id="actionDateTime" required />
+            </div>
+            <div class="field">
+              <label for="actionKind">Action type</label>
+              <select id="actionKind" required>
+                <option value="chemical">Chemical addition</option>
+                <option value="chlorinator">Salt chlorinator adjustment</option>
+                <option value="filtration">Filtration adjustment</option>
+                <option value="water-replacement">Partial water replacement</option>
+                <option value="cleaning">Cleaning</option>
+                <option value="manual-test">Manual test</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="actionDescription">Description</label>
+              <input type="text" id="actionDescription" required placeholder="e.g. Added pH reducer" />
+            </div>
+
+            <!-- Chemical fields -->
+            <div id="actionChemicalFields" class="action-kind-fields" hidden>
+              <div class="field">
+                <label for="actionChemicalProduct">Product type</label>
+                <select id="actionChemicalProduct">
+                  <option value="ph-reducer">pH reducer</option>
+                  <option value="ph-increaser">pH increaser</option>
+                  <option value="chlorine-granules">Chlorine granules</option>
+                  <option value="chlorine-stabilizer">Chlorine stabilizer</option>
+                  <option value="alkalinity-reducer">Alkalinity reducer</option>
+                  <option value="pool-salt">Pool salt</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="actionChemicalComponent">Main component</label>
+                <input type="text" id="actionChemicalComponent" placeholder="e.g. Ácido reductor de pH" />
+              </div>
+              <div class="field-row">
+                <div class="field" style="flex:1">
+                  <label for="actionChemicalAmount">Amount</label>
+                  <input type="number" id="actionChemicalAmount" min="0" step="0.1" />
+                </div>
+                <div class="field" style="flex:0 0 auto; min-width:80px">
+                  <label for="actionChemicalUnit">Unit</label>
+                  <select id="actionChemicalUnit">
+                    <option value="ml">ml</option>
+                    <option value="l">L</option>
+                    <option value="g">g</option>
+                    <option value="kg">kg</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chlorinator fields -->
+            <div id="actionChlorinatorFields" class="action-kind-fields" hidden>
+              <div class="field">
+                <label for="actionChlorinatorPrevOutput">Previous output (%)</label>
+                <input type="number" id="actionChlorinatorPrevOutput" min="0" max="100" step="1" />
+              </div>
+              <div class="field">
+                <label for="actionChlorinatorNewOutput">New output (%)</label>
+                <input type="number" id="actionChlorinatorNewOutput" min="0" max="100" step="1" />
+              </div>
+              <div class="field">
+                <label for="actionChlorinatorAddHours">Additional hours</label>
+                <input type="number" id="actionChlorinatorAddHours" min="0" step="1" />
+              </div>
+              <div class="field">
+                <label for="actionChlorinatorTotalHours">Total hours per day</label>
+                <input type="number" id="actionChlorinatorTotalHours" min="0" step="1" />
+              </div>
+            </div>
+
+            <!-- Filtration fields -->
+            <div id="actionFiltrationFields" class="action-kind-fields" hidden>
+              <div class="field">
+                <label for="actionFiltrationPrevHours">Previous hours per day</label>
+                <input type="number" id="actionFiltrationPrevHours" min="0" step="1" />
+              </div>
+              <div class="field">
+                <label for="actionFiltrationNewHours">New hours per day</label>
+                <input type="number" id="actionFiltrationNewHours" min="0" step="1" />
+              </div>
+            </div>
+
+            <!-- Water replacement fields -->
+            <div id="actionWaterFields" class="action-kind-fields" hidden>
+              <div class="field">
+                <label for="actionWaterLiters">Estimated liters</label>
+                <input type="number" id="actionWaterLiters" min="0" step="100" />
+              </div>
+              <div class="field">
+                <label for="actionWaterPercent">Estimated percent</label>
+                <input type="number" id="actionWaterPercent" min="0" max="100" step="1" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="actionNotes">Notes <span class="optional">optional</span></label>
+              <textarea id="actionNotes" rows="2"></textarea>
+            </div>
+            <div class="field">
+              <label for="actionRelatedMeasurement">Linked measurement <span class="optional">optional</span></label>
+              <select id="actionRelatedMeasurement">
+                <option value="">— None —</option>
+              </select>
+            </div>
+
+            <div id="actionFormErrors" class="form-errors" aria-live="polite" role="alert"></div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Save Action</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Measurement History ──────────────────────────────────────── -->
     <section class="card" aria-labelledby="history-heading">
       <h2 id="history-heading" class="card-title">Measurement History</h2>
 
@@ -161,6 +291,14 @@
 
       <div id="historyContent">
         <p class="empty-state">No measurements recorded yet. Fill in the form above and save your first measurement.</p>
+      </div>
+    </section>
+
+    <!-- ── Action History ───────────────────────────────────────── -->
+    <section class="card" aria-labelledby="action-history-heading">
+      <h2 id="action-history-heading" class="card-title">Maintenance Action History</h2>
+      <div id="actionHistoryContent">
+        <p class="empty-state">No maintenance actions recorded yet.</p>
       </div>
     </section>
   </main>

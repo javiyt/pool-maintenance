@@ -1,12 +1,19 @@
 import type { MaintenanceAssistantResult, MaintenanceRecommendation } from '../domain/maintenanceAssistant';
+import type { ActionFormPrefill } from './actionForm';
+import type { MaintenanceActionKind } from '../domain/actions';
 
 export class RecommendationsPanel {
   private section: HTMLElement;
   private content: HTMLElement;
+  private onPerformCb: ((prefill: ActionFormPrefill) => void) | null = null;
 
   constructor() {
     this.section = document.getElementById('recommendationsSection') as HTMLElement;
     this.content = document.getElementById('recContent') as HTMLElement;
+  }
+
+  onMarkAsPerformed(cb: (prefill: ActionFormPrefill) => void): void {
+    this.onPerformCb = cb;
   }
 
   show(result: MaintenanceAssistantResult): void {
@@ -42,6 +49,9 @@ export class RecommendationsPanel {
     `);
 
     this.content.innerHTML = parts.join('');
+
+    // Bind "Mark as performed" buttons
+    this.bindPerformButtons();
   }
 
   hide(): void {
@@ -228,8 +238,11 @@ export class RecommendationsPanel {
       : item.severity === 'low' ? 'Baja'
       : 'Informativo';
 
+    // "Mark as performed" button for actionable recommendations
+    const performBtnHtml = this.renderPerformButton(item);
+
     return `
-      <div class="rec-item ${severityClass}">
+      <div class="rec-item ${severityClass}" data-rec-id="${escapeHtml(item.id)}">
         ${nameHtml}
         ${amountHtml}
         ${summaryHtml}
@@ -240,8 +253,76 @@ export class RecommendationsPanel {
         ${calcHtml}
         ${followHtml}
         <span class="rec-status rec-severity-${item.severity}">${escapeHtml(severityLabel)}</span>
+        ${performBtnHtml}
       </div>
     `;
+  }
+
+  /**
+   * Render a "Mark as performed" button if the recommendation is actionable.
+   * Returns the button HTML string, or empty string if not actionable.
+   */
+  private renderPerformButton(item: MaintenanceRecommendation): string {
+    const actionKind = recommendationToActionKind(item);
+    if (!actionKind) return '';
+
+    // Build a JSON data attribute with the prefill values so the click handler
+    // can reconstruct the ActionFormPrefill
+    const prefill: ActionFormPrefill = { kind: actionKind, description: item.title };
+
+    if (item.relatedFields.length > 0 && item.relatedFields[0]) {
+      // We'll set relatedMeasurementId when the user clicks — we use the latest measurement
+    }
+
+    if (item.chemicalProductId) {
+      prefill.chemicalProductType = item.chemicalProductId as ActionFormPrefill['chemicalProductType'];
+    }
+    if (item.mainComponent) {
+      prefill.chemicalComponent = item.mainComponent;
+    }
+    if (item.estimatedAmount !== undefined) {
+      prefill.chemicalAmount = item.estimatedAmount;
+    }
+    if (item.unit) {
+      prefill.chemicalUnit = item.unit as 'ml' | 'l' | 'g' | 'kg';
+    }
+
+    if (item.suggestedOutputPercent !== undefined) {
+      prefill.chlorinatorNewOutput = item.suggestedOutputPercent;
+    }
+    if (item.suggestedAdditionalHours !== undefined) {
+      prefill.chlorinatorAddHours = item.suggestedAdditionalHours;
+    }
+    if (item.suggestedFiltrationHours !== undefined) {
+      prefill.filtrationNewHours = item.suggestedFiltrationHours;
+    }
+
+    return `<button class="rec-perform-btn" data-prefill='${escapeHtmlAttr(JSON.stringify(prefill))}'>Mark as performed</button>`;
+  }
+
+  /**
+   * Bind "Mark as performed" buttons after rendering.
+   */
+  private bindPerformButtons(): void {
+    this.content.querySelectorAll('.rec-perform-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        try {
+          const raw = (btn as HTMLElement).dataset.prefill;
+          if (!raw) return;
+          const prefill: ActionFormPrefill = JSON.parse(raw);
+
+          // If the recommendation has related fields, link to the latest measurement
+          const recEl = (btn as HTMLElement).closest('[data-rec-id]');
+          if (recEl) {
+            // Find related measurement select population is done in ActionForm.open()
+          }
+
+          this.onPerformCb?.(prefill);
+        } catch {
+          // Silently fail if prefill data is malformed
+        }
+      });
+    });
   }
 }
 
@@ -283,4 +364,33 @@ function escapeHtml(s: string): string {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * Map a recommendation kind to the corresponding MaintenanceActionKind,
+ * or return undefined if the recommendation is not directly actionable.
+ */
+function recommendationToActionKind(
+  rec: MaintenanceRecommendation,
+): MaintenanceActionKind | undefined {
+  switch (rec.kind) {
+    case 'chemical':
+      return 'chemical';
+    case 'equipment':
+      // Equipment recommendations for salt chlorinator → 'chlorinator'
+      if (rec.equipmentName?.toLowerCase().includes('clorador')) {
+        return 'chlorinator';
+      }
+      return 'other';
+    case 'filtration':
+      return 'filtration';
+    case 'manual-test':
+      return 'manual-test';
+    default:
+      return undefined;
+  }
 }
