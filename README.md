@@ -195,6 +195,39 @@ Domain logic is fully separated from UI code, making the calculation engine test
 - [Vitest](https://vitest.dev/) — unit testing
 - Vanilla DOM APIs — no framework, no heavy dependencies
 
+## Deployment
+
+The app can be deployed to a Raspberry Pi (or any Linux host) using Podman Quadlets
+and systemd user services. See [deploy/README.md](deploy/README.md) for full instructions.
+
+### Quick overview
+
+| Step | Details |
+|---|---|
+| **Image** | `ghcr.io/javiyt/pool-maintenance:latest` |
+| **Architecture** | `linux/amd64` + `linux/arm64` (Raspberry Pi compatible) |
+| **Build** | Automatic on every push to `main` via GitHub Actions |
+| **Container runtime** | Podman (rootless) |
+| **Service manager** | systemd user services |
+| **Container definition** | Quadlet (native Podman systemd integration) |
+
+### Deploy in one command
+
+```bash
+./deploy/deploy.sh --host <raspberry-pi-ip> --user pi
+```
+
+### Check status on the Pi
+
+```bash
+systemctl --user status pool-maintenance.service
+journalctl --user -u pool-maintenance.service -f
+podman ps
+```
+
+See [deploy/README.md](deploy/README.md) for details on installation, rollback,
+auto-update, and uninstallation.
+
 ## License
 
 MIT
