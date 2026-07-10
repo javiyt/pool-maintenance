@@ -4,6 +4,7 @@ import { RecommendationsPanel } from './ui/recommendationsPanel';
 import { HistoryPanel } from './ui/historyPanel';
 import { ActionForm } from './ui/actionForm';
 import { ActionHistory } from './ui/actionHistory';
+import { HistoricalInsightsPanel } from './ui/historicalInsights';
 import { addMeasurement } from './domain/storage';
 import { loadSettings, loadMeasurements } from './domain/storage';
 import { runAssistant } from './domain/maintenanceAssistant';
@@ -37,21 +38,25 @@ function init(): void {
   const historyPanel = new HistoryPanel();
   const actionForm = new ActionForm();
   const actionHistory = new ActionHistory();
+  const historicalInsights = new HistoricalInsightsPanel();
 
   // Re-render history whenever measurements change
   historyPanel.onChange(() => {
     historyPanel.render();
+    historicalInsights.render();
   });
 
   // Re-render history when settings change (e.g. pool type affects display)
   settingsPanel.onChange(() => {
     historyPanel.render();
+    historicalInsights.render();
   });
 
   // Handle measurement submission
   measurementForm.onSubmit((measurement) => {
     addMeasurement(measurement);
     historyPanel.render();
+    historicalInsights.render();
 
     // Run the maintenance assistant with full history
     runAndShowRecommendations(recommendationsPanel);
@@ -70,6 +75,7 @@ function init(): void {
   // Action form save → update history
   actionForm.onSave(() => {
     actionHistory.render();
+    historicalInsights.render();
     // Re-run recommendations to reflect the recorded action
     runAndShowRecommendations(recommendationsPanel);
   });
@@ -77,6 +83,7 @@ function init(): void {
   // Initial render
   historyPanel.render();
   actionHistory.render();
+  historicalInsights.render();
 }
 
 document.addEventListener('DOMContentLoaded', init);

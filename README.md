@@ -21,6 +21,8 @@ Track water chemistry measurements, understand whether your pool water is okay, 
 - **Mark recommendations as performed** — convert a recommendation into a recorded maintenance action with pre-filled values you can edit before saving.
 - **Maintenance action history** — record chemical additions, chlorinator adjustments, filtration changes, water replacements, cleaning, manual tests, and other actions. View in reverse chronological order, delete entries. Actions can be linked to a specific measurement.
 - **Outcome evaluation** — each recorded action is automatically evaluated against before/after measurements. The evaluator detects field changes, accounts for intervening actions, and reports effectiveness (effective, partial, ineffective, unexpected, or unknown) with a confidence level — without claiming causality.
+- **Historical learning** — a deterministic module that aggregates action outcomes to reveal observed patterns: typical FAC increase per chlorinator adjustment, pH response to reducer/increaser, FAC response to chlorine granules, and salt level response. Uses robust statistics (median, median absolute deviation) with sample-size-based confidence levels. All calculations are explainable — no machine learning.
+- **Historical insights UI** — shows learned patterns with confidence badges and sample counts, plus a clear disclaimer that correlation does not imply causation.
 - **Measurement history** — view in reverse chronological order, delete entries, export to JSON, and import from JSON.
 - **Mobile-first** — responsive layout that works on phones and tablets.
 - **Local storage** — all data stays in your browser. No server, no cloud sync.
@@ -87,6 +89,58 @@ Water temperature above 30 °C increases chlorine demand. A warning is shown w
 - EC and TDS are used as informational/supporting values only.
 
 These rates are rough guidelines. Actual results depend on water temperature, bather load, rainfall, and other factors. **Always measure twice and add chemicals gradually.**
+
+## Historical Learning
+
+The app includes a **deterministic historical learning module** that aggregates action outcomes to reveal observed patterns in your data. All calculations are explainable and use robust statistics — no machine learning.
+
+### How it works
+
+1. **Outcome evaluation**: Each recorded maintenance action is evaluated against before/after measurements by `actionOutcomeEvaluator.ts`, producing an `ActionOutcome` with field changes, effectiveness, and confidence.
+2. **Eligibility filtering**: Outcomes are filtered to exclude:
+   - Unknown effectiveness
+   - Very low confidence (< 0.3)
+   - Non-evaluable action kinds (manual-test, cleaning, other)
+   - Chemical actions without a measurable product type (alkalinity-reducer, chlorine-stabilizer)
+3. **Grouping**: Eligible outcomes are grouped by:
+   - Action kind + product type (e.g., `chemical:ph-reducer`, `chlorinator`)
+   - Pool type (chlorine / saltwater)
+   - Metric affected (pH, FAC, salt)
+   - Temperature band (cold < 15°C, normal 15–25°C, warm 25–30°C, hot ≥ 30°C)
+   - Chlorinator output percent band (0–20, 21–40, 41–60, 61–80, 81–100%)
+4. **Robust statistics**: For each group, the module computes:
+   - **Median** — the primary learned effect (resistant to outliers)
+   - **Mean** — for display only
+   - **Median absolute deviation (MAD)** — a robust measure of dispersion
+5. **Confidence levels**:
+   - Fewer than 3 samples: `none` (no usable learning)
+   - 3–4 samples: `low`
+   - 5–9 samples: `medium`
+   - 10+ samples: `high`
+   - Confidence is reduced if dispersion (MAD/median ratio) is high
+6. **Correction factor**: Where a theoretical effect can be estimated (pool volume is configured), a correction factor is calculated as `observed effect / theoretical effect`, clamped to 0.5–1.5. These factors are **not applied to recommendations** — they are informational only.
+
+### What the insights show
+
+| Insight | Description |
+|---|---|
+| FAC increase per chlorinator adjustment | Observed median FAC change after chlorinator output adjustments, grouped by output band and temperature band |
+| FAC response to chlorine granules | Observed median FAC change after chlorine granules application |
+| pH response to reducer/increaser | Observed median pH change after pH reducer or pH increaser application |
+| Salt level response to salt addition | Observed median salt increase after pool salt application |
+
+Each insight includes:
+- The observed median value with sign
+- Sample count
+- Confidence badge (High / Medium / Low)
+- A disclaimer that correlation does not imply causation
+
+### Key design decisions
+
+- **Not persisted**: Learned statistics are recalculated from raw measurement and action records on every render.
+- **No recommendation changes**: The module computes statistics only — no recommendation dosages are altered.
+- **Deterministic**: All calculations are pure functions of the input data, producing identical results on repeated calls.
+- **Temperature and output bands**: Observations are grouped by temperature and chlorinator output bands when this data is available, keeping incompatible conditions separate.
 
 ## JSON Export / Import Format
 
@@ -199,6 +253,7 @@ src/
 │   ├── saltChlorinator.ts     # Salt chlorinator adjustment calculator
 │   ├── maintenanceAssistant.ts# Full assistant — trends + recommendations + status
 │   ├── actionOutcomeEvaluator.ts # Evaluates action effectiveness from before/after measurements
+│   ├── historicalLearning.ts  # Deterministic historical learning from action outcomes
 │   └── storage.ts             # localStorage persistence (measurements + actions)
 ├── ui/
 │   ├── settingsPanel.ts       # Pool settings drawer
@@ -206,7 +261,8 @@ src/
 │   ├── actionForm.ts          # Maintenance action creation form (drawer)
 │   ├── historyPanel.ts        # Measurement history list + export/import
 │   ├── actionHistory.ts       # Action history list
-│   └── recommendationsPanel.ts # Recommendation results display + "Mark as performed"
+│   ├── recommendationsPanel.ts # Recommendation results display + "Mark as performed"
+│   └── historicalInsights.ts  # Historical insights panel
 ├── styles/
 │   └── main.css               # All styles (mobile-first, no framework)
 tests/
@@ -214,6 +270,7 @@ tests/
 ├── measurement.test.ts        # Validation + ID generation tests
 ├── actions.test.ts            # Action persistence, export/import, merge, sorting tests
 ├── actionOutcomeEvaluator.test.ts # Action outcome evaluation tests
+├── historicalLearning.test.ts # Historical learning tests (48 tests)
 ├── storage.test.ts            # Settings + measurement persistence + export/import tests
 └── maintenanceAssistant.test.ts # Full assistant integration tests
 ```

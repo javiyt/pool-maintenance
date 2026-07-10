@@ -895,6 +895,118 @@ body {
   background: var(--color-primary-hover);
 }
 
+/* ═══ Historical Insights ════════════════════════════════════════ */
+.insights-disclaimer {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+  color: #92400e;
+}
+
+.insights-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.insight-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+
+.insight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.insight-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.insight-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.insight-badge.badge-high {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.insight-badge.badge-medium {
+  background: #eff6ff;
+  color: var(--color-primary);
+}
+
+.insight-badge.badge-low {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.insight-badge.badge-none {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.insight-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 0.3rem;
+}
+
+.insight-description {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.insight-footer {
+  margin-top: 0.4rem;
+}
+
+.insight-sample-count {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.insights-details {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+}
+
+.insights-details summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.insights-raw {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
 /* ═══ Responsive ═════════════════════════════════════════════════ */
 @media (max-width: 480px) {
   .app-main {
