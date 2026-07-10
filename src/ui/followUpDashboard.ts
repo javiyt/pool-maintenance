@@ -1,5 +1,6 @@
 import {
   loadActions,
+  saveActions,
   loadFollowUps,
   saveFollowUps,
   loadMeasurements,
@@ -299,16 +300,31 @@ export class FollowUpDashboard {
         const fu = loadFollowUps().find((f) => f.id === fuId);
         if (!fu) return;
 
+        const atypical = (item.querySelector('.fu-atypical') as HTMLInputElement)?.checked ?? false;
+        const incorrectlyRecorded = (item.querySelector('.fu-incorrect') as HTMLInputElement)?.checked ?? false;
+        const excludedFromLearning = (item.querySelector('.fu-exclude') as HTMLInputElement)?.checked ?? false;
+
         const updated = setFollowUpExclusionFlags(fu, {
-          atypical: (item.querySelector('.fu-atypical') as HTMLInputElement)?.checked,
-          incorrectlyRecorded: (item.querySelector('.fu-incorrect') as HTMLInputElement)?.checked,
-          excludedFromLearning: (item.querySelector('.fu-exclude') as HTMLInputElement)?.checked,
+          atypical,
+          incorrectlyRecorded,
+          excludedFromLearning,
         });
         updateFollowUp(fuId, {
           atypical: updated.atypical,
           incorrectlyRecorded: updated.incorrectlyRecorded,
           excludedFromLearning: updated.excludedFromLearning,
         });
+
+        // Sync exclusion flags to the associated Action so computeLearning respects them
+        const actions = loadActions();
+        const actionIdx = actions.findIndex((a) => a.id === fu.actionId);
+        if (actionIdx !== -1) {
+          actions[actionIdx] = {
+            ...actions[actionIdx],
+            exclusionFlags: { atypical, incorrectlyRecorded, excludedFromLearning },
+          };
+          saveActions(actions);
+        }
       });
     });
 

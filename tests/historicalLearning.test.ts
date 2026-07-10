@@ -765,6 +765,82 @@ describe('excluded actions are ignored', () => {
     const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     expect(adjustments.length).toBe(0);
   });
+
+  it('ignores actions with exclusionFlags.excludedFromLearning', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    // 3 valid actions — should produce learning
+    for (let i = 1; i <= 3; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.8 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.5 }, `ma-${i}`),
+      );
+      actions.push(
+        makePhReducerAction({ performedAt: `${prefix}T11:00:00.000Z` }, `act-ok-${i}`),
+      );
+    }
+
+    // 2 more actions that are excluded from learning
+    for (let i = 1; i <= 2; i++) {
+      const prefix = `2026-07-${String(i + 12).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.8 }, `mb-ex-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.5 }, `ma-ex-${i}`),
+      );
+      actions.push(
+        makePhReducerAction({
+          performedAt: `${prefix}T11:00:00.000Z`,
+          exclusionFlags: { excludedFromLearning: true },
+        }, `act-ex-${i}`),
+      );
+    }
+
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
+    const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
+    expect(phAdj).toBeDefined();
+    // Should only use the 3 non-excluded actions, not the 2 excluded ones
+    expect(phAdj!.sampleSize).toBe(3);
+  });
+
+  it('excluded action does not affect median even with extreme values', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    // 5 regular actions with consistent pH reduction of -0.3
+    for (let i = 1; i <= 5; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.7 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.4 }, `ma-${i}`),
+      );
+      actions.push(
+        makePhReducerAction({ performedAt: `${prefix}T11:00:00.000Z` }, `act-reg-${i}`),
+      );
+    }
+
+    // 1 extreme anomalous action excluded from learning
+    measurements.push(
+      makeMeasurement({ measuredAt: '2026-07-20T10:00:00.000Z', ph: 6.5 }, 'mb-anom'),
+      makeMeasurement({ measuredAt: '2026-07-20T16:00:00.000Z', ph: 8.5 }, 'ma-anom'),
+    );
+    actions.push(
+      makePhReducerAction({
+        performedAt: '2026-07-20T11:00:00.000Z',
+        exclusionFlags: { excludedFromLearning: true, atypical: true },
+        notes: 'Extreme anomalous action',
+      }, 'act-anom'),
+    );
+
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
+    const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
+    expect(phAdj).toBeDefined();
+    // Median should be -0.3, not pulled by the extreme +2.0 outlier
+    expect(phAdj!.observedMedianEffect).toBeCloseTo(-0.3, 1);
+    // Sample size should be 5, not 6
+    expect(phAdj!.sampleSize).toBe(5);
+  });
 });
 
 // ── Multiple temperature bands remain separate ────────────────────

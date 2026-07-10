@@ -342,3 +342,53 @@ export function mergeActions(
   const deduped = incoming.filter((a) => !existingIds.has(a.id));
   return [...existing, ...deduped];
 }
+
+/**
+ * Normalize action exclusion flags from follow-up records.
+ *
+ * For any follow-up with `excludedFromLearning: true`, propagates
+ * this flag to the linked action's `exclusionFlags.excludedFromLearning`.
+ *
+ * This ensures that imported exclusion state takes effect immediately
+ * without requiring UI interaction. The learning system checks the
+ * action flag, so the two sources must agree.
+ *
+ * Rules:
+ * - Preserves existing action exclusion flags (atypical, incorrectlyRecorded)
+ * - Never changes `true` back to `false` (monotonic union)
+ * - If either linked record excludes, exclusion wins
+ * - Missing linked action is silently skipped
+ * - Multiple follow-ups for one action: any `true` → exclusion
+ * - Idempotent: second call does not change already-normalized data
+ */
+export function normalizeActionExclusionFlags(
+  actions: MaintenanceAction[],
+  followUps: FollowUp[],
+): MaintenanceAction[] {
+  // Build set of action IDs that ANY follow-up marks as excluded
+  const excludedActionIds = new Set<string>();
+  for (const fu of followUps) {
+    if (fu.excludedFromLearning && fu.actionId) {
+      excludedActionIds.add(fu.actionId);
+    }
+  }
+
+  if (excludedActionIds.size === 0) return actions;
+
+  let changed = false;
+  const result = actions.map((action) => {
+    if (!excludedActionIds.has(action.id)) return action;
+    if (action.exclusionFlags?.excludedFromLearning) return action; // already excluded
+    changed = true;
+    return {
+      ...action,
+      exclusionFlags: {
+        atypical: action.exclusionFlags?.atypical ?? false,
+        incorrectlyRecorded: action.exclusionFlags?.incorrectlyRecorded ?? false,
+        excludedFromLearning: true,
+      },
+    };
+  });
+
+  return changed ? result : actions;
+}

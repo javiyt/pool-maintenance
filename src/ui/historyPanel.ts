@@ -12,6 +12,7 @@ import {
   loadFollowUps,
   saveFollowUps,
   mergeFollowUps,
+  normalizeActionExclusionFlags,
 } from '../domain/storage';
 
 export class HistoryPanel {
@@ -139,6 +140,16 @@ export class HistoryPanel {
           const mergedFus = mergeFollowUps(existingFus, result.followUps);
           saveFollowUps(mergedFus);
           messages.push(`Imported ${result.followUps.length} follow-up(s).`);
+
+          // Normalize exclusion flags: sync follow-up exclusions to actions
+          // so imported exclusion state takes effect without UI interaction.
+          const currentActions = loadActions();
+          const allFollowUps = loadFollowUps();
+          const normalizedActions = normalizeActionExclusionFlags(currentActions, allFollowUps);
+          if (normalizedActions !== currentActions) {
+            saveActions(normalizedActions);
+            messages.push('Applied exclusion flags from follow-up records.');
+          }
         }
 
         // Notify the user if duplicate measurements were skipped
