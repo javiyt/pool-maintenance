@@ -400,6 +400,66 @@ body {
   padding-left: 0.6rem;
 }
 
+/* ── Recommendation personalization ─────────────────────────────── */
+.rec-personalization {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--color-bg);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.rec-personalization-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.rec-personalization-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.rec-personalization-badge {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.rec-personalization-values {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.rec-personalization-theoretical {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.rec-personalization-arrow {
+  color: var(--color-text-muted);
+}
+
+.rec-personalization-personalized {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.rec-personalization-meta {
+  color: var(--color-text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.rec-personalization-explanation {
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
 /* ═══ History ════════════════════════════════════════════════════ */
 .history-toolbar {
   display: flex;

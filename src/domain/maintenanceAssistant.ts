@@ -1,11 +1,14 @@
 import type { Measurement } from './measurement';
-import type { PoolSettings } from './settings';
-import { volumeInLiters } from './settings';
+import type { PoolSettings, HistoricalLearningConfig } from './settings';
+import { volumeInLiters, DEFAULT_HISTORICAL_LEARNING } from './settings';
 import { getTargetRange, classifyLevel, TARGET_RANGES } from './chemistry';
 import { analyzeTrends } from './trendAnalysis';
 import type { MeasurementTrend } from './trendAnalysis';
 import { calculateChlorinatorAdjustment } from './saltChlorinator';
 import type { SaltChlorinatorConfig } from './saltChlorinator';
+import type { MaintenanceAction } from './actions';
+import { computeLearning, getTemperatureBand, getOutputPercentBand } from './historicalLearning';
+import type { LearnedAdjustment, LearningConfidence } from './historicalLearning';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -54,6 +57,17 @@ export interface MaintenanceRecommendation {
   safetyNotes: string[];
   followUpActions: string[];
   retestAfterHours?: number;
+  personalization?: RecommendationPersonalization;
+}
+
+export interface RecommendationPersonalization {
+  applied: boolean;
+  theoreticalValue?: number;
+  personalizedValue?: number;
+  correctionFactor?: number;
+  sampleSize?: number;
+  confidence?: LearningConfidence;
+  explanation: string;
 }
 
 export interface MaintenanceAssistantResult {
@@ -1015,5 +1029,279 @@ function determineNextCheck(
   return {
     hoursFromNow: 48,
     reason: 'Todos los valores están en equilibrio. Realizar una nueva medición en 24–48 horas como parte del mantenimiento regular.',
+  };
+}
+
+// ── Personalization helpers ──────────────────────────────────────
+
+/**
+ * Check whether a learned adjustment has sufficient confidence
+ * to be applied as a personalization.
+ */
+function isConfidenceSufficient(
+  adj: LearnedAdjustment,
+  config: HistoricalLearningConfig,
+): boolean {
+  if (adj.confidence === 'none') return false;
+  if (adj.confidence === 'low' && !config.applyLowConfidence) return false;
+  if (adj.confidence === 'low' && config.applyLowConfidence) return true;
+  // medium or high — always sufficient
+  return true;
+}
+
+/**
+ * Find the best matching learned adjustment for a given action type
+ * and metric. Tries to match by temperature band first, then falls
+ * back to any band, then any adjustment with the same action type and metric.
+ */
+function findMatchingAdjustment(
+  adjustments: LearnedAdjustment[],
+  actionType: string,
+  metric: string,
+  poolType: string,
+  temperatureBand?: string,
+  outputPercentBand?: string,
+): LearnedAdjustment | undefined {
+  const candidates = adjustments.filter(
+    (a) =>
+      a.actionType === actionType &&
+      a.metric === metric &&
+      a.filters.poolType === poolType,
+  );
+
+  if (candidates.length === 0) return undefined;
+
+  // Try exact temperature + output match
+  if (temperatureBand && outputPercentBand) {
+    const exact = candidates.find(
+      (a) =>
+        a.filters.temperatureBand === temperatureBand &&
+        a.filters.outputPercentBand === outputPercentBand,
+    );
+    if (exact) return exact;
+  }
+
+  // Try temperature match (any output)
+  if (temperatureBand) {
+    const byTemp = candidates.find(
+      (a) => a.filters.temperatureBand === temperatureBand,
+    );
+    if (byTemp) return byTemp;
+  }
+
+  // Try output band match (any temperature)
+  if (outputPercentBand) {
+    const byOutput = candidates.find(
+      (a) => a.filters.outputPercentBand === outputPercentBand,
+    );
+    if (byOutput) return byOutput;
+  }
+
+  // Fall back to any adjustment with no band filter
+  return candidates.find(
+    (a) => !a.filters.temperatureBand && !a.filters.outputPercentBand,
+  );
+}
+
+/**
+ * Find the best matching adjustment for equipment (chlorinator)
+ * recommendations.
+ */
+function findChlorinatorAdjustment(
+  adjustments: LearnedAdjustment[],
+  settings: PoolSettings,
+  latestMeasurement: Measurement | null,
+): LearnedAdjustment | undefined {
+  const tempBand = latestMeasurement
+    ? getTemperatureBand(latestMeasurement.temperature)
+    : undefined;
+  const outBand = settings.saltChlorinator
+    ? getOutputPercentBand(settings.saltChlorinator.currentOutputPercent)
+    : undefined;
+
+  return findMatchingAdjustment(
+    adjustments,
+    'chlorinator',
+    'fac',
+    settings.poolType,
+    tempBand,
+    outBand,
+  );
+}
+
+/**
+ * Find the best matching adjustment for chemical (e.g. chlorine granules)
+ * recommendations.
+ */
+function findChemicalAdjustment(
+  adjustments: LearnedAdjustment[],
+  productActionType: string,
+  settings: PoolSettings,
+  latestMeasurement: Measurement | null,
+): LearnedAdjustment | undefined {
+  const tempBand = latestMeasurement
+    ? getTemperatureBand(latestMeasurement.temperature)
+    : undefined;
+
+  return findMatchingAdjustment(
+    adjustments,
+    productActionType,
+    'fac',
+    settings.poolType,
+    tempBand,
+  );
+}
+
+/**
+ * Apply personalization to a single recommendation based on
+ * historical learned adjustments.
+ *
+ * Returns the personalization info or undefined if personalization
+ * should not be applied.
+ */
+export function applyPersonalization(
+  rec: MaintenanceRecommendation,
+  adjustments: LearnedAdjustment[],
+  latestMeasurement: Measurement | null,
+  settings: PoolSettings,
+  config: HistoricalLearningConfig,
+): RecommendationPersonalization | undefined {
+  if (!config.enabled) return undefined;
+
+  // ── Chlorinator equipment adjustments ──────────────────────────
+  if (
+    rec.kind === 'equipment' &&
+    rec.equipmentName?.toLowerCase().includes('clorador') &&
+    rec.suggestedAdditionalHours !== undefined
+  ) {
+    const adj = findChlorinatorAdjustment(adjustments, settings, latestMeasurement);
+    if (!adj) return undefined;
+    if (!isConfidenceSufficient(adj, config)) {
+      return {
+        applied: false,
+        sampleSize: adj.sampleSize,
+        confidence: adj.confidence,
+        explanation: `Insufficient historical data (${adj.sampleSize} sample${adj.sampleSize !== 1 ? 's' : ''}, ${adj.confidence} confidence) to personalize. Continue recording chlorinator adjustments.`,
+      };
+    }
+
+    const theoreticalValue = rec.suggestedAdditionalHours;
+    const cf = adj.correctionFactor ?? 1;
+    const rawPersonalized = theoreticalValue / cf;
+    const maxHours = settings.saltChlorinator?.maxRecommendedHoursPerDay ?? 12;
+    const personalizedValue = Math.round(Math.min(rawPersonalized, maxHours) * 10) / 10;
+    const adjusted = personalizedValue !== theoreticalValue;
+
+    const direction = cf < 1 ? 'less' : 'more';
+    const pct = Math.round(Math.abs((1 - cf) * 100));
+
+    return {
+      applied: adjusted,
+      theoreticalValue,
+      personalizedValue,
+      correctionFactor: cf,
+      sampleSize: adj.sampleSize,
+      confidence: adj.confidence,
+      explanation: adjusted
+        ? `The theoretical estimate is ${theoreticalValue} additional hours. Based on ${adj.sampleSize} similar historical actions, your pool has produced approximately ${pct}% ${direction} FAC than expected. The personalized estimate is ${personalizedValue} hours.`
+        : `The theoretical estimate of ${theoreticalValue} hours aligns with historical observations from ${adj.sampleSize} similar actions. No adjustment needed.`,
+    };
+  }
+
+  // ── Chemical (chlorine granules) ───────────────────────────────
+  if (
+    rec.kind === 'chemical' &&
+    rec.chemicalProductId === 'chlorine-granules' &&
+    rec.estimatedAmount !== undefined
+  ) {
+    const adj = findChemicalAdjustment(
+      adjustments,
+      'chemical:chlorine-granules',
+      settings,
+      latestMeasurement,
+    );
+    if (!adj) return undefined;
+    if (!isConfidenceSufficient(adj, config)) {
+      return {
+        applied: false,
+        sampleSize: adj.sampleSize,
+        confidence: adj.confidence,
+        explanation: `Insufficient historical data (${adj.sampleSize} sample${adj.sampleSize !== 1 ? 's' : ''}, ${adj.confidence} confidence) to personalize chlorine dosage. Continue recording chlorine applications.`,
+      };
+    }
+
+    const theoreticalValue = rec.estimatedAmount;
+    const cf = adj.correctionFactor ?? 1;
+    const rawPersonalized = theoreticalValue / cf;
+    // Preserve per-treatment cap: never exceed shock level (25 g/m³)
+    const volM3 = volumeInLiters(settings) / 1000;
+    const maxG = volM3 > 0 ? Math.round(25 * volM3) : theoreticalValue * 2;
+    const personalizedValue = Math.round(Math.min(rawPersonalized, maxG));
+    const adjusted = personalizedValue !== theoreticalValue;
+
+    const direction = cf < 1 ? 'less' : 'more';
+    const pct = Math.round(Math.abs((1 - cf) * 100));
+
+    return {
+      applied: adjusted,
+      theoreticalValue,
+      personalizedValue,
+      correctionFactor: cf,
+      sampleSize: adj.sampleSize,
+      confidence: adj.confidence,
+      explanation: adjusted
+        ? `The theoretical estimate is ${theoreticalValue}g of chlorine granules. Based on ${adj.sampleSize} similar historical actions, your pool has responded approximately ${pct}% ${direction} effectively than expected. The personalized estimate is ${personalizedValue}g.`
+        : `The theoretical estimate of ${theoreticalValue}g aligns with historical observations from ${adj.sampleSize} similar actions. No adjustment needed.`,
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Run the full maintenance assistant with personalized recommendations.
+ *
+ * First generates theoretical recommendations via `runAssistant`, then
+ * enriches applicable recommendations with historical learning adjustments.
+ */
+export function runPersonalizedAssistant(
+  measurements: Measurement[],
+  actions: MaintenanceAction[],
+  settings: PoolSettings,
+): MaintenanceAssistantResult {
+  const result = runAssistant(measurements, settings);
+
+  const config: HistoricalLearningConfig = {
+    ...DEFAULT_HISTORICAL_LEARNING,
+    ...settings.historicalLearning,
+  };
+
+  if (!config.enabled) return result;
+
+  const adjustments = computeLearning(measurements, actions, settings, config);
+  if (adjustments.length === 0) return result;
+
+  const sorted = [...measurements].sort((a, b) =>
+    b.measuredAt.localeCompare(a.measuredAt),
+  );
+  const latest = sorted[0] ?? null;
+
+  const enrichedRecommendations = result.recommendations.map((rec) => {
+    const personalization = applyPersonalization(
+      rec,
+      adjustments,
+      latest,
+      settings,
+      config,
+    );
+    if (personalization) {
+      return { ...rec, personalization };
+    }
+    return rec;
+  });
+
+  return {
+    ...result,
+    recommendations: enrichedRecommendations,
   };
 }

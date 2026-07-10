@@ -10,7 +10,8 @@ import {
 } from '../src/domain/historicalLearning';
 import type { Measurement } from '../src/domain/measurement';
 import type { MaintenanceAction } from '../src/domain/actions';
-import type { PoolSettings } from '../src/domain/settings';
+import type { PoolSettings, HistoricalLearningConfig } from '../src/domain/settings';
+import { DEFAULT_HISTORICAL_LEARNING } from '../src/domain/settings';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -137,6 +138,17 @@ function findAdjustment(
   return adjustments.find(
     (a) => a.actionType === actionType && a.metric === metric,
   );
+}
+
+/** Create a learning config that allows 3-sample minimum for testing. */
+function makeLearningConfig(
+  overrides: Partial<HistoricalLearningConfig> = {},
+): HistoricalLearningConfig {
+  return {
+    ...DEFAULT_HISTORICAL_LEARNING,
+    minimumSamples: 3,
+    ...overrides,
+  };
 }
 
 // ── Median calculation ────────────────────────────────────────────
@@ -271,7 +283,7 @@ describe('confidence from sample size', () => {
       makeMeasurement({ measuredAt: '2026-07-10T16:00:00.000Z', ph: 7.4 }, 'm4'),
     ];
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     // n=2 should be excluded (n<3)
     expect(phAdj).toBeUndefined();
@@ -292,7 +304,7 @@ describe('confidence from sample size', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.confidence).toBe('low');
@@ -315,7 +327,7 @@ describe('confidence from sample size', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.sampleSize).toBe(n);
@@ -338,7 +350,7 @@ describe('confidence from sample size', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.sampleSize).toBe(n);
@@ -374,7 +386,7 @@ describe('high dispersion reduces confidence', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     // n=7 base = 'medium', relative dispersion 0.75 > 0.5 → drops to 'low'
@@ -403,7 +415,7 @@ describe('high dispersion reduces confidence', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     // n=10 would be 'high', but with very high dispersion should drop
@@ -431,7 +443,7 @@ describe('comparable observations are grouped', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.sampleSize).toBe(5);
@@ -511,7 +523,7 @@ describe('incompatible observations are separated', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     const facAdj = findAdjustment(adjustments, 'chemical:chlorine-granules', 'fac');
 
@@ -551,7 +563,7 @@ describe('incompatible observations are separated', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     // Should have two separate groups for ph-reducer/ph
     const phAdjNormal = adjustments.find(
       (a) => a.actionType === 'chemical:ph-reducer' && a.metric === 'ph' && a.filters.temperatureBand === 'normal',
@@ -599,7 +611,7 @@ describe('correction factor clamping', () => {
     // observed: 7.5-7.8 = -0.3 → correction = -0.3/-0.1 = 3.0 → clamped to 1.5
     const { measurements, actions, settings } = makePhReducerMeasurementsAndActions(3, 7.8, 7.5, '2026-07');
 
-    const adjustments = computeLearning(measurements, actions, settings);
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.theoreticalEffect).toBeCloseTo(-0.1, 2);
@@ -613,7 +625,7 @@ describe('correction factor clamping', () => {
       3, 7.4, 7.35, '2026-07', { volume: 10000 },
     );
 
-    const adjustments = computeLearning(measurements, actions, settings);
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.correctionFactor).toBe(0.5);
@@ -636,7 +648,7 @@ describe('correction factor clamping', () => {
     ];
     const settings = makeSettings({ volume: 0 }); // No volume → no theoretical effect
 
-    const adjustments = computeLearning(measurements, actions, settings);
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     expect(phAdj!.theoreticalEffect).toBeUndefined();
@@ -663,7 +675,7 @@ describe('fewer than 3 samples', () => {
       makeMeasurement({ measuredAt: '2026-07-10T16:00:00.000Z', ph: 7.4 }, 'm4'),
     );
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     expect(adjustments.length).toBe(0);
   });
 });
@@ -684,7 +696,7 @@ describe('excluded actions are ignored', () => {
       }, 'act-1'),
     ];
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     expect(adjustments.length).toBe(0);
   });
 
@@ -717,7 +729,7 @@ describe('excluded actions are ignored', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     // The low-confidence act-main should not affect the result for ph-reducer/ph
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
@@ -734,7 +746,7 @@ describe('excluded actions are ignored', () => {
       makePhReducerAction({ kind: 'manual-test' }, 'act-1'),
     ];
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     expect(adjustments.length).toBe(0);
   });
 
@@ -750,7 +762,7 @@ describe('excluded actions are ignored', () => {
       }, 'act-1'),
     ];
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     expect(adjustments.length).toBe(0);
   });
 });
@@ -792,7 +804,7 @@ describe('multiple temperature bands remain separate', () => {
       }
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
 
     for (const b of bands) {
       const adj = adjustments.find(
@@ -853,7 +865,7 @@ describe('computeLearning', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const chlAdj = findAdjustment(adjustments, 'chlorinator', 'fac');
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
 
@@ -881,7 +893,7 @@ describe('computeLearning', () => {
       );
     }
 
-    const adjustments = computeLearning(measurements, actions, makeSettings());
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
     const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
     expect(phAdj).toBeDefined();
     // Median of [-1.5, -0.3, -0.3, -0.3, -0.3] = -0.3

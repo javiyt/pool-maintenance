@@ -81,6 +81,33 @@
           <label for="scMaxHours">Max hours per day</label>
           <input type="number" id="scMaxHours" min="0" step="1" />
         </div>
+        <hr class="settings-divider" />
+        <h3 class="settings-subtitle">Historical learning</h3>
+        <div class="field">
+          <label for="hlEnabled">
+            <input type="checkbox" id="hlEnabled" />
+            Enable historical personalization
+          </label>
+        </div>
+        <div class="field hl-field">
+          <label for="hlMinSamples">Minimum samples</label>
+          <input type="number" id="hlMinSamples" min="3" max="100" step="1" />
+        </div>
+        <div class="field hl-field">
+          <label for="hlApplyLow">Apply low-confidence adjustments</label>
+          <div class="field-row">
+            <input type="checkbox" id="hlApplyLow" />
+            <span class="field-hint">Not recommended — low confidence means fewer than 5 comparable samples</span>
+          </div>
+        </div>
+        <div class="field hl-field">
+          <label for="hlMinFactor">Min correction factor</label>
+          <input type="number" id="hlMinFactor" min="0.1" max="0.9" step="0.1" />
+        </div>
+        <div class="field hl-field">
+          <label for="hlMaxFactor">Max correction factor</label>
+          <input type="number" id="hlMaxFactor" min="1.1" max="3.0" step="0.1" />
+        </div>
         <button id="settingsSaveBtn" class="btn-primary">Save Settings</button>
         <p id="settingsStatus" class="status-msg" aria-live="polite"></p>
       </div>

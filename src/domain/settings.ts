@@ -11,12 +11,21 @@ export interface SaltChlorinatorConfig {
   maxRecommendedHoursPerDay: number;
 }
 
+export interface HistoricalLearningConfig {
+  enabled: boolean;
+  minimumSamples: number;
+  applyLowConfidence: boolean;
+  maxCorrectionFactor: number;
+  minCorrectionFactor: number;
+}
+
 export interface PoolSettings {
   volume: number;
   volumeUnit: VolumeUnit;
   poolType: PoolType;
   unitSystem: UnitSystem;
   saltChlorinator?: SaltChlorinatorConfig;
+  historicalLearning?: HistoricalLearningConfig;
 }
 
 export const DEFAULT_SETTINGS: PoolSettings = {
@@ -24,6 +33,14 @@ export const DEFAULT_SETTINGS: PoolSettings = {
   volumeUnit: 'liters',
   poolType: 'chlorine',
   unitSystem: 'metric',
+};
+
+export const DEFAULT_HISTORICAL_LEARNING: HistoricalLearningConfig = {
+  enabled: true,
+  minimumSamples: 5,
+  applyLowConfidence: false,
+  minCorrectionFactor: 0.5,
+  maxCorrectionFactor: 1.5,
 };
 
 export const DEFAULT_SALT_CHLORINATOR: SaltChlorinatorConfig = {

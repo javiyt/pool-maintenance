@@ -122,7 +122,7 @@ export function deleteAction(id: string): MaintenanceAction[] {
 
 // ── Export / Import ────────────────────────────────────────────────
 
-export const EXPORT_SCHEMA_VERSION = 4;
+export const EXPORT_SCHEMA_VERSION = 5;
 
 export interface ExportData {
   schemaVersion: number;
@@ -159,7 +159,9 @@ export function exportData(now?: Date): ExportData {
  * Parse and validate an import JSON string.
  *
  * Supports:
- * - v3: `{ schemaVersion: 3, poolConfig, measurements }` — current format
+ * - v5: `{ schemaVersion: 5, poolConfig, measurements, actions }` — adds historicalLearning config to poolConfig
+ * - v4: `{ schemaVersion: 4, poolConfig, measurements, actions }` — current format before v5
+ * - v3: `{ schemaVersion: 3, poolConfig, measurements }` — no actions array
  * - v2: `{ schemaVersion: 2, poolConfig, measurements }` — old measurement shape
  * - v1 (legacy): a plain `Measurement[]` array
  *
