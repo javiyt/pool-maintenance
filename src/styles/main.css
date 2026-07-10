@@ -788,6 +788,94 @@ body {
   margin-top: 0.15rem;
 }
 
+/* ═══ Action Outcome Display ══════════════════════════════════════ */
+.action-outcome {
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+
+.action-outcome-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.35rem;
+  text-transform: uppercase;
+}
+
+.action-outcome-confidence {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.action-outcome-details {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.action-outcome-reasons {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+}
+
+/* Outcome color variants */
+.outcome-effective {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+}
+
+.outcome-effective .action-outcome-badge {
+  background: var(--color-success);
+  color: #fff;
+}
+
+.outcome-partial {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning);
+}
+
+.outcome-partial .action-outcome-badge {
+  background: var(--color-warning);
+  color: #fff;
+}
+
+.outcome-ineffective {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+}
+
+.outcome-ineffective .action-outcome-badge {
+  background: var(--color-danger);
+  color: #fff;
+}
+
+.outcome-unexpected {
+  background: #f3e8ff;
+  border-color: #9333ea;
+}
+
+.outcome-unexpected .action-outcome-badge {
+  background: #9333ea;
+  color: #fff;
+}
+
+.outcome-unknown {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.outcome-unknown .action-outcome-badge {
+  background: var(--color-text-muted);
+  color: #fff;
+}
+
 /* ═══ Mark as Performed Button ════════════════════════════════════ */
 .rec-perform-btn {
   display: inline-block;

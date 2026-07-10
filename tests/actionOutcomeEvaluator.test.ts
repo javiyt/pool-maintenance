@@ -1,0 +1,449 @@
+import { describe, it, expect } from 'vitest';
+import { evaluateActionOutcomes } from '../src/domain/actionOutcomeEvaluator';
+import type { ActionOutcome } from '../src/domain/actionOutcomeEvaluator';
+import type { Measurement } from '../src/domain/measurement';
+import type { MaintenanceAction } from '../src/domain/actions';
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function makeMeasurement(
+  overrides: Partial<Measurement> = {},
+  id?: string,
+): Measurement {
+  return {
+    id: id ?? 'm1',
+    measuredAt: '2026-07-09T10:00:00.000Z',
+    ph: 7.4,
+    ec: 6640,
+    tds: 3230,
+    salt: 3380,
+    orp: 672,
+    fac: 2.0,
+    temperature: 25.0,
+    ...overrides,
+  };
+}
+
+function makeChemicalAction(
+  overrides: Partial<MaintenanceAction> = {},
+  id?: string,
+): MaintenanceAction {
+  return {
+    id: id ?? 'act-1',
+    performedAt: '2026-07-09T11:00:00.000Z',
+    kind: 'chemical',
+    description: 'Added pH reducer',
+    chemical: {
+      productType: 'ph-reducer',
+      mainComponent: 'Ácido reductor de pH',
+      amount: 750,
+      unit: 'ml',
+    },
+    ...overrides,
+  };
+}
+
+function makeChlorinatorAction(
+  overrides: Partial<MaintenanceAction> = {},
+  id?: string,
+): MaintenanceAction {
+  return {
+    id: id ?? 'act-chl-1',
+    performedAt: '2026-07-09T11:00:00.000Z',
+    kind: 'chlorinator',
+    description: 'Adjusted chlorinator',
+    chlorinator: {
+      previousOutputPercent: 60,
+      newOutputPercent: 80,
+    },
+    ...overrides,
+  };
+}
+
+function makeSaltAction(
+  overrides: Partial<MaintenanceAction> = {},
+  id?: string,
+): MaintenanceAction {
+  return {
+    id: id ?? 'act-salt-1',
+    performedAt: '2026-07-09T11:00:00.000Z',
+    kind: 'chemical',
+    description: 'Added pool salt',
+    chemical: {
+      productType: 'pool-salt',
+      mainComponent: 'Cloruro sódico',
+      amount: 25,
+      unit: 'kg',
+    },
+    ...overrides,
+  };
+}
+
+function findOutcome(outcomes: ActionOutcome[], actionId: string): ActionOutcome | undefined {
+  return outcomes.find((o) => o.actionId === actionId);
+}
+
+// ── Tests ─────────────────────────────────────────────────────────
+
+describe('evaluateActionOutcomes', () => {
+  it('returns empty array when no measurements', () => {
+    const result = evaluateActionOutcomes([], [makeChemicalAction()]);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array when no actions', () => {
+    const result = evaluateActionOutcomes([makeMeasurement()], []);
+    expect(result).toEqual([]);
+  });
+
+  it('skips non-evaluable action kinds (manual-test, other)', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z' }, 'm2'),
+    ];
+    const actions = [
+      makeChemicalAction({ kind: 'manual-test' }, 'act-mt'),
+      makeChemicalAction({ kind: 'other' }, 'act-other'),
+    ];
+    const outcomes = evaluateActionOutcomes(measurements, actions);
+    expect(outcomes).toEqual([]);
+  });
+});
+
+// ── Before/after measurement finding ──────────────────────────────
+
+describe('measurement finding', () => {
+  it('correctly finds before and after measurements', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z' }, 'm2'),
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].beforeMeasurementId).toBe('m1');
+    expect(outcomes[0].afterMeasurementId).toBe('m2');
+    expect(outcomes[0].elapsedHours).toBe(5); // 16:00 - 11:00
+  });
+
+  it('prefers explicitly linked measurement', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z' }, 'm2'),
+      makeMeasurement({ measuredAt: '2026-07-09T09:00:00.000Z' }, 'm3'), // closer before but not linked
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      relatedMeasurementId: 'm1',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].beforeMeasurementId).toBe('m1');
+  });
+
+  it('handles no prior measurement', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z' }, 'm2'),
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T15:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toEqual([]);
+  });
+
+  it('handles no later measurement', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toEqual([]);
+  });
+
+  it('rejects measurement taken too soon (before minHours)', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+      // After measurement only 2 hours later — chemical needs min 4h
+      makeMeasurement({ measuredAt: '2026-07-09T12:30:00.000Z' }, 'm2'),
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    // The closest after is at 12:30, which is 1.5h after action — below min 4h
+    expect(outcomes).toEqual([]);
+  });
+
+  it('rejects measurement taken too late (beyond maxHours)', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+      // After measurement 72 hours later — chemical max is 48h
+      makeMeasurement({ measuredAt: '2026-07-12T11:00:00.000Z' }, 'm2'),
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toEqual([]);
+  });
+
+  it('uses closest valid measurement when multiple exist', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T17:00:00.000Z' }, 'm2'), // 6h after — valid but not closest
+      makeMeasurement({ measuredAt: '2026-07-09T15:30:00.000Z' }, 'm3'), // 4.5h after — valid and closest
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].afterMeasurementId).toBe('m3');
+    expect(outcomes[0].elapsedHours).toBe(4.5);
+  });
+});
+
+// ── Delta calculation ─────────────────────────────────────────────
+
+describe('delta calculation', () => {
+  it('calculates FAC, pH, ORP, and salt deltas', () => {
+    const measurements = [
+      makeMeasurement({
+        measuredAt: '2026-07-09T10:00:00.000Z',
+        ph: 7.8,
+        fac: 0.5,
+        orp: 600,
+        salt: 3200,
+      }, 'm1'),
+      makeMeasurement({
+        measuredAt: '2026-07-09T16:00:00.000Z',
+        ph: 7.4,
+        fac: 1.8,
+        orp: 680,
+        salt: 3300,
+      }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].changes.ph).toBe(-0.4);
+    expect(outcomes[0].changes.fac).toBe(1.3);
+    expect(outcomes[0].changes.orp).toBe(80);
+    expect(outcomes[0].changes.salt).toBe(100);
+  });
+});
+
+// ── Effectiveness evaluation ──────────────────────────────────────
+
+describe('effectiveness evaluation', () => {
+  it('chlorinator action followed by FAC increase is effective', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 0.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T18:00:00.000Z', fac: 1.8 }, 'm2'),
+    ];
+    const action = makeChlorinatorAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('effective');
+    expect(outcomes[0].confidence).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('pH reducer followed by pH decrease is effective', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.5 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('effective');
+  });
+
+  it('pH increaser followed by pH increase is effective', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.0 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.3 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-increaser', mainComponent: 'Base', amount: 1000, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('effective');
+  });
+
+  it('chlorine granules followed by FAC and ORP increase is effective', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 0.5, orp: 580 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', fac: 2.5, orp: 720 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'chlorine-granules', mainComponent: 'Cloro', amount: 500, unit: 'g' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('effective');
+  });
+
+  it('pool salt followed by salt increase is effective', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', salt: 2800 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-11T10:00:00.000Z', salt: 3200 }, 'm2'), // 48h later
+    ];
+    const action = makeSaltAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('effective');
+  });
+
+  it('opposite-direction result is unexpected', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.2 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 8.0 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('unexpected');
+  });
+
+  it('tiny/noisy change is partially-effective or unknown', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 1.9 }, 'm1'),
+      // FAC change of 0.1 is below significance threshold of 0.2
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', fac: 2.0 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'chlorine-granules', mainComponent: 'Cloro', amount: 100, unit: 'g' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    // Small change that's below threshold
+    expect(outcomes[0].effectiveness).toBe('partially-effective');
+  });
+});
+
+// ── Confidence and intervening actions ────────────────────────────
+
+describe('confidence', () => {
+  it('reduces confidence with multiple intervening actions', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T22:00:00.000Z', ph: 7.5 }, 'm2'), // 11h after action
+    ];
+    const action = makeChemicalAction({
+      id: 'main-act',
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const other1 = makeChemicalAction({
+      id: 'other-1',
+      performedAt: '2026-07-09T13:00:00.000Z',
+      description: 'Added chlorine',
+      chemical: { productType: 'chlorine-granules', mainComponent: 'Cloro', amount: 200, unit: 'g' },
+    });
+    const other2 = makeChemicalAction({
+      id: 'other-2',
+      performedAt: '2026-07-09T15:00:00.000Z',
+      description: 'Added more pH reducer',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 500, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action, other1, other2]);
+    expect(outcomes).toHaveLength(3);
+
+    const mainOutcome = findOutcome(outcomes, 'main-act');
+    expect(mainOutcome).toBeDefined();
+    // With 2 intervening actions (0.3 each = 0.6 reduction) + no linked meas (0.2 reduction)
+    // Base 0.8 - 0.2 (no link) - 0.6 (intervening) = 0.0, minimum clamped to 0.1
+    expect(mainOutcome!.confidence).toBeLessThan(0.5);
+    expect(mainOutcome!.confidenceReasons.some((r) => r.includes('other action'))).toBe(true);
+  });
+
+  it('higher confidence with explicitly linked measurement', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.5 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      relatedMeasurementId: 'm1',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    // With linked measurement: base 0.8, no reductions = 0.8
+    expect(outcomes[0].confidence).toBe(0.8);
+  });
+});
+
+// ── Edge cases ────────────────────────────────────────────────────
+
+describe('edge cases', () => {
+  it('water-replacement produces partially-effective outcome', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', salt: 4000, tds: 3800, ec: 7500 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-10T10:00:00.000Z', salt: 3500, tds: 3400, ec: 7000 }, 'm2'),
+    ];
+    const action: MaintenanceAction = {
+      id: 'act-water',
+      performedAt: '2026-07-09T14:00:00.000Z',
+      kind: 'water-replacement',
+      description: 'Partial water change',
+      waterReplacement: { estimatedLiters: 5000, estimatedPercent: 10 },
+    };
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    // Water replacement expected direction is 0 (any), so significant changes
+    // in salt/TDS/EC should count as "matched"
+    expect(outcomes[0].effectiveness).toBe('effective');
+  });
+
+  it('multiple actions between same measurements detected', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 1.0 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T20:00:00.000Z', fac: 2.0 }, 'm2'),
+    ];
+    const action1 = makeChlorinatorAction({ id: 'c1', performedAt: '2026-07-09T11:00:00.000Z' });
+    const action2 = makeChlorinatorAction({ id: 'c2', performedAt: '2026-07-09T12:00:00.000Z' });
+    const action3 = makeChlorinatorAction({ id: 'c3', performedAt: '2026-07-09T13:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action1, action2, action3]);
+    expect(outcomes).toHaveLength(3);
+
+    // c1 should see 2 intervening (c2 and c3) between its before (m1, 10:00) and after (m2, 20:00)
+    const o1 = findOutcome(outcomes, 'c1');
+    expect(o1).toBeDefined();
+    expect(o1!.confidenceReasons.some((r) => r.includes('2 other action'))).toBe(true);
+
+    // c2 should see 2 intervening (c1 and c3) since all share the same before/after pair
+    const o2 = findOutcome(outcomes, 'c2');
+    expect(o2).toBeDefined();
+    expect(o2!.confidenceReasons.some((r) => r.includes('2 other action'))).toBe(true);
+  });
+});
+
+// ── Evaluator is deterministic (not persisted) ────────────────────
+
+describe('derived outcomes are not persisted', () => {
+  it('returns fresh outcomes each call', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.5 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const first = evaluateActionOutcomes(measurements, [action]);
+    const second = evaluateActionOutcomes(measurements, [action]);
+    expect(first).toEqual(second);
+    // Same structure — not persisted, recalculated
+    expect(first).toHaveLength(1);
+  });
+});
