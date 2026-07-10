@@ -22,7 +22,9 @@ Track water chemistry measurements, understand whether your pool water is okay, 
 - **Maintenance action history** — record chemical additions, chlorinator adjustments, filtration changes, water replacements, cleaning, manual tests, and other actions. View in reverse chronological order, delete entries. Actions can be linked to a specific measurement.
 - **Outcome evaluation** — each recorded action is automatically evaluated against before/after measurements. The evaluator detects field changes, accounts for intervening actions, and reports effectiveness (effective, partial, ineffective, unexpected, or unknown) with a confidence level — without claiming causality.
 - **Historical learning** — a deterministic module that aggregates action outcomes to reveal observed patterns: typical FAC increase per chlorinator adjustment, pH response to reducer/increaser, FAC response to chlorine granules, and salt level response. Uses robust statistics (median, median absolute deviation) with sample-size-based confidence levels. All calculations are explainable — no machine learning.
+- **Personalized recommendations** — where sufficient historical data exists, the assistant adjusts theoretical estimates using observed correction factors. Chlorinator additional hours and chemical dosages are personalized based on how your specific pool has responded to similar actions in the past, while preserving all safety limits.
 - **Historical insights UI** — shows learned patterns with confidence badges and sample counts, plus a clear disclaimer that correlation does not imply causation.
+- **Personalization controls** — enable/disable personalization, configure minimum sample requirements, and adjust correction factor bounds in Settings.
 - **Measurement history** — view in reverse chronological order, delete entries, export to JSON, and import from JSON.
 - **Mobile-first** — responsive layout that works on phones and tablets.
 - **Local storage** — all data stays in your browser. No server, no cloud sync.
@@ -138,9 +140,48 @@ Each insight includes:
 ### Key design decisions
 
 - **Not persisted**: Learned statistics are recalculated from raw measurement and action records on every render.
-- **No recommendation changes**: The module computes statistics only — no recommendation dosages are altered.
+- **Recommendation personalization**: Where sufficient historical data exists, the assistant adjusts theoretical estimates using observed correction factors. This is a separate step after the theoretical calculation — the baseline recommendation remains visible.
 - **Deterministic**: All calculations are pure functions of the input data, producing identical results on repeated calls.
 - **Temperature and output bands**: Observations are grouped by temperature and chlorinator output bands when this data is available, keeping incompatible conditions separate.
+
+### Personalization rules
+
+The assistant personalizes recommendations only when:
+
+1. **Historical learning is enabled** in Settings.
+2. **Enough comparable samples exist** — at least 5 (configurable) outcomes for the same action type, metric, and pool type.
+3. **Confidence is medium or high** — low confidence is informational only (unless "apply low confidence" is explicitly enabled).
+4. **Dispersion is acceptable** — observations that are too scattered reduce confidence.
+
+For **chlorinator recommendations**, the estimated additional hours are adjusted by the observed FAC production correction factor. The personalized value never exceeds the configured maximum daily hours.
+
+For **chemical recommendations** (chlorine granules), the estimated amount is adjusted by the observed FAC response correction factor. The personalized value never exceeds the per-treatment shock cap (25 g/m³).
+
+The following are **never personalized**:
+- Danger thresholds and safety warnings
+- Bathing safety advice
+- Maximum chemical treatment caps
+- pH/chlorine ordering (pH correction always comes first)
+- Missing-measurement warnings
+
+### Personalization UI
+
+When a recommendation is personalized, the UI shows:
+- The **theoretical estimate** (struck through)
+- The **personalized estimate** (highlighted)
+- The **historical sample size**
+- **Confidence badge** (High / Medium)
+- An **explanation** describing what was observed and how the estimate was adjusted
+
+### Historical learning configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| Enabled | true | Master switch for recommendation personalization |
+| Minimum samples | 5 | Minimum comparable outcomes required before personalization is attempted |
+| Apply low confidence | false | When enabled, also applies corrections from low-confidence (3–4 sample) adjustments |
+| Min correction factor | 0.5 | Lower bound for the correction factor (prevents excessive downward adjustment) |
+| Max correction factor | 1.5 | Upper bound for the correction factor (prevents excessive upward adjustment) |
 
 ## JSON Export / Import Format
 
@@ -148,17 +189,24 @@ The app supports exporting and importing data as JSON files. This makes it possi
 
 ### Export
 
-Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 4):
+Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 5):
 
 ```json
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "exportedAt": "2026-07-09T10:35:00.000Z",
   "poolConfig": {
     "volume": 50000,
     "volumeUnit": "liters",
     "poolType": "chlorine",
-    "unitSystem": "metric"
+    "unitSystem": "metric",
+    "historicalLearning": {
+      "enabled": true,
+      "minimumSamples": 5,
+      "applyLowConfidence": false,
+      "minCorrectionFactor": 0.5,
+      "maxCorrectionFactor": 1.5
+    }
   },
   "measurements": [
     {
@@ -194,7 +242,7 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
 
 | Field | Type | Description |
 |---|---|---|
-| `schemaVersion` | number | Format version (`4`). Used for forward compatibility. |
+| `schemaVersion` | number | Format version (`5`). Used for forward compatibility. |
 | `exportedAt` | string (ISO 8601) | When the file was exported. |
 | `poolConfig` | object | The pool settings (volume, type, units) at time of export. |
 | `measurements` | array | Array of measurement records with digital meter fields. |
@@ -216,12 +264,13 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
 
 ### Import
 
-Click **Import JSON** and select a `.json` file. The app accepts four formats:
+Click **Import JSON** and select a `.json` file. The app accepts five formats:
 
-1. **Schema v4** (current) — the full format shown above. Restores measurements, actions, and pool configuration.
-2. **Schema v3** (legacy) — format without `actions`. Restores measurements and pool configuration; actions field is silently treated as empty.
-3. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
-4. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
+1. **Schema v5** (current) — the full format shown above. Restores measurements, actions, pool configuration, and historical learning settings.
+2. **Schema v4** (legacy) — full format without historical learning config. Restores measurements, actions, and pool configuration; learning defaults are used.
+3. **Schema v3** (legacy) — format without `actions`. Restores measurements and pool configuration; actions field is silently treated as empty.
+4. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
+5. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
 
 #### Import behavior
 
@@ -233,7 +282,8 @@ Click **Import JSON** and select a `.json` file. The app accepts four formats:
 
 ### Migration notes
 
-- **Schema v1 → v2 → v3 → v4**: Exports from any previous schema version are fully importable.
+- **Schema v1 → v2 → v3 → v4 → v5**: Exports from any previous schema version are fully importable.
+- **Historical learning config**: v5 exports include `historicalLearning` in `poolConfig`. v4 exports without this field use default settings on import.
 - **Date-only records**: Old measurements that use `date` (YYYY-MM-DD) instead of `measuredAt` are automatically converted during import, using local noon as the default time.
 - **Old field mapping**: `freeChlorine` → `fac`. Fields `alkalinity`, `cyanuricAcid`, and `date` are removed after migration.
 - **Missing values**: Old records that cannot provide all digital meter fields (e.g. migrated v2 records that lacked `ec`, `tds`, `orp`) may have incomplete data. The app requires all fields for new measurements but accepts incomplete migrated records.
@@ -244,16 +294,16 @@ Click **Import JSON** and select a `.json` file. The app accepts four formats:
 src/
 ├── main.ts                    # Entry point — wires UI panels together
 ├── domain/
-│   ├── settings.ts            # PoolSettings type, defaults
+│   ├── settings.ts            # PoolSettings type, defaults, HistoricalLearningConfig
 │   ├── measurement.ts         # Measurement type, validation
 │   ├── actions.ts             # MaintenanceAction type, action ID generation
 │   ├── chemicalCatalog.ts     # Generic chemical product catalog (no brand names)
 │   ├── chemistry.ts           # Chemical calculation logic, target ranges, recommendation engine
 │   ├── trendAnalysis.ts       # Measurement trend detection (rising/falling/stable)
 │   ├── saltChlorinator.ts     # Salt chlorinator adjustment calculator
-│   ├── maintenanceAssistant.ts# Full assistant — trends + recommendations + status
+│   ├── maintenanceAssistant.ts# Full assistant — trends + recommendations + personalization
 │   ├── actionOutcomeEvaluator.ts # Evaluates action effectiveness from before/after measurements
-│   ├── historicalLearning.ts  # Deterministic historical learning from action outcomes
+│   ├── historicalLearning.ts  # Deterministic historical learning + correction factors
 │   └── storage.ts             # localStorage persistence (measurements + actions)
 ├── ui/
 │   ├── settingsPanel.ts       # Pool settings drawer

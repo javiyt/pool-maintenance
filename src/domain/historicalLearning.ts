@@ -1,7 +1,7 @@
 import type { Measurement } from './measurement';
 import type { MaintenanceAction } from './actions';
-import type { PoolSettings } from './settings';
-import { volumeInLiters } from './settings';
+import type { PoolSettings, HistoricalLearningConfig } from './settings';
+import { DEFAULT_HISTORICAL_LEARNING, volumeInLiters } from './settings';
 import {
   evaluateActionOutcomes,
   type ActionOutcome,
@@ -305,11 +305,8 @@ function adjustConfidenceForDispersion(
 
 // ── Clamp correction factor ─────────────────────────────────────
 
-const CORRECTION_MIN = 0.5;
-const CORRECTION_MAX = 1.5;
-
-function clampCorrection(factor: number): number {
-  return Math.min(CORRECTION_MAX, Math.max(CORRECTION_MIN, factor));
+function clampCorrection(factor: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, factor));
 }
 
 // ── Grouping helper ──────────────────────────────────────────────
@@ -354,13 +351,22 @@ function parseGroupKey(key: string): GroupKey {
  *
  * All calculations are deterministic and explainable — no machine learning.
  * Outcomes are recalculated from raw records each time (not persisted).
+ *
+ * @param config Optional configuration overrides. Uses defaults when omitted.
  */
 export function computeLearning(
   measurements: Measurement[],
   actions: MaintenanceAction[],
   settings: PoolSettings,
+  config?: HistoricalLearningConfig,
 ): LearnedAdjustment[] {
   if (measurements.length < 2 || actions.length === 0) return [];
+
+  const {
+    minimumSamples,
+    minCorrectionFactor,
+    maxCorrectionFactor,
+  } = { ...DEFAULT_HISTORICAL_LEARNING, ...config };
 
   const outcomes = evaluateActionOutcomes(measurements, actions);
   if (outcomes.length === 0) return [];
@@ -414,7 +420,7 @@ export function computeLearning(
     const { actionType, poolType, metric, temperatureBand, outputPercentBand } = parseGroupKey(key);
     const n = group.effects.length;
 
-    if (n < 3) continue; // No usable learning below 3 samples
+    if (n < minimumSamples) continue; // No usable learning below minimum samples
 
     const med = Math.round(median(group.effects) * 100) / 100;
     const avg = Math.round(mean(group.effects) * 100) / 100;
@@ -434,7 +440,7 @@ export function computeLearning(
     // Correction factor = observed median / theoretical mean
     let correctionFactor: number | undefined;
     if (avgTheoreticalRounded !== undefined && avgTheoreticalRounded !== 0) {
-      correctionFactor = clampCorrection(med / avgTheoreticalRounded);
+      correctionFactor = clampCorrection(med / avgTheoreticalRounded, minCorrectionFactor, maxCorrectionFactor);
       correctionFactor = Math.round(correctionFactor * 100) / 100;
     }
 

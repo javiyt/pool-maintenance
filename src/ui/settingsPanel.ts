@@ -1,6 +1,6 @@
 import type { PoolSettings } from '../domain/settings';
-import { DEFAULT_SALT_CHLORINATOR } from '../domain/settings';
-import type { SaltChlorinatorConfig } from '../domain/settings';
+import { DEFAULT_SALT_CHLORINATOR, DEFAULT_HISTORICAL_LEARNING } from '../domain/settings';
+import type { SaltChlorinatorConfig, HistoricalLearningConfig } from '../domain/settings';
 import { loadSettings, saveSettings } from '../domain/storage';
 
 export class SettingsPanel {
@@ -18,6 +18,12 @@ export class SettingsPanel {
   private scMaxHours: HTMLInputElement;
   private statusEl: HTMLElement;
   private scFields: NodeListOf<HTMLElement>;
+  private hlEnabled: HTMLInputElement;
+  private hlMinSamples: HTMLInputElement;
+  private hlApplyLow: HTMLInputElement;
+  private hlMinFactor: HTMLInputElement;
+  private hlMaxFactor: HTMLInputElement;
+  private hlFields: NodeListOf<HTMLElement>;
   private onSave: ((s: PoolSettings) => void) | null = null;
 
   constructor() {
@@ -35,6 +41,12 @@ export class SettingsPanel {
     this.scMaxHours = document.getElementById('scMaxHours') as HTMLInputElement;
     this.statusEl = document.getElementById('settingsStatus') as HTMLElement;
     this.scFields = document.querySelectorAll('.sc-field') as NodeListOf<HTMLElement>;
+    this.hlEnabled = document.getElementById('hlEnabled') as HTMLInputElement;
+    this.hlMinSamples = document.getElementById('hlMinSamples') as HTMLInputElement;
+    this.hlApplyLow = document.getElementById('hlApplyLow') as HTMLInputElement;
+    this.hlMinFactor = document.getElementById('hlMinFactor') as HTMLInputElement;
+    this.hlMaxFactor = document.getElementById('hlMaxFactor') as HTMLInputElement;
+    this.hlFields = document.querySelectorAll('.hl-field') as NodeListOf<HTMLElement>;
 
     const toggleBtn = document.getElementById('settingsToggleBtn') as HTMLButtonElement;
     const closeBtn = document.getElementById('settingsCloseBtn') as HTMLButtonElement;
@@ -51,6 +63,8 @@ export class SettingsPanel {
 
     // Toggle salt chlorinator fields visibility
     this.scEnabled.addEventListener('change', () => this.toggleScFields());
+    // Toggle historical learning fields visibility
+    this.hlEnabled.addEventListener('change', () => this.toggleHlFields());
   }
 
   onChange(cb: (s: PoolSettings) => void): void {
@@ -76,6 +90,16 @@ export class SettingsPanel {
 
     this.statusEl.textContent = '';
     this.statusEl.className = 'status-msg';
+
+    // Historical learning fields
+    const hl = { ...DEFAULT_HISTORICAL_LEARNING, ...s.historicalLearning };
+    this.hlEnabled.checked = hl.enabled;
+    this.hlMinSamples.value = String(hl.minimumSamples);
+    this.hlApplyLow.checked = hl.applyLowConfidence;
+    this.hlMinFactor.value = String(hl.minCorrectionFactor);
+    this.hlMaxFactor.value = String(hl.maxCorrectionFactor);
+    this.toggleHlFields();
+
     this.panel.hidden = false;
   }
 
@@ -86,6 +110,13 @@ export class SettingsPanel {
   private toggleScFields(): void {
     const visible = this.scEnabled.checked;
     for (const el of this.scFields) {
+      (el as HTMLElement).style.display = visible ? '' : 'none';
+    }
+  }
+
+  private toggleHlFields(): void {
+    const visible = this.hlEnabled.checked;
+    for (const el of this.hlFields) {
       (el as HTMLElement).style.display = visible ? '' : 'none';
     }
   }
@@ -122,6 +153,16 @@ export class SettingsPanel {
       };
       settings.saltChlorinator = sc;
     }
+
+    // Historical learning config
+    const hl: HistoricalLearningConfig = {
+      enabled: this.hlEnabled.checked,
+      minimumSamples: parseInt(this.hlMinSamples.value, 10) || DEFAULT_HISTORICAL_LEARNING.minimumSamples,
+      applyLowConfidence: this.hlApplyLow.checked,
+      minCorrectionFactor: parseFloat(this.hlMinFactor.value) || DEFAULT_HISTORICAL_LEARNING.minCorrectionFactor,
+      maxCorrectionFactor: parseFloat(this.hlMaxFactor.value) || DEFAULT_HISTORICAL_LEARNING.maxCorrectionFactor,
+    };
+    settings.historicalLearning = hl;
 
     saveSettings(settings);
     this.showStatus('Settings saved.', 'success');

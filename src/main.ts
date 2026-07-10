@@ -6,8 +6,8 @@ import { ActionForm } from './ui/actionForm';
 import { ActionHistory } from './ui/actionHistory';
 import { HistoricalInsightsPanel } from './ui/historicalInsights';
 import { addMeasurement } from './domain/storage';
-import { loadSettings, loadMeasurements } from './domain/storage';
-import { runAssistant } from './domain/maintenanceAssistant';
+import { loadSettings, loadMeasurements, loadActions } from './domain/storage';
+import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
 
 function toLocalDatetime(d: Date): string {
   const y = d.getFullYear();
@@ -23,7 +23,8 @@ function runAndShowRecommendations(
 ): void {
   const settings = loadSettings();
   const measurements = loadMeasurements();
-  const result = runAssistant(measurements, settings);
+  const actions = loadActions();
+  const result = runPersonalizedAssistant(measurements, actions, settings);
   recommendationsPanel.show(result);
 }
 

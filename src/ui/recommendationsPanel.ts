@@ -238,6 +238,9 @@ export class RecommendationsPanel {
       : item.severity === 'low' ? 'Baja'
       : 'Informativo';
 
+    // Personalization (historical learning)
+    const personalizationHtml = this.renderPersonalization(item);
+
     // "Mark as performed" button for actionable recommendations
     const performBtnHtml = this.renderPerformButton(item);
 
@@ -245,6 +248,7 @@ export class RecommendationsPanel {
       <div class="rec-item ${severityClass}" data-rec-id="${escapeHtml(item.id)}">
         ${nameHtml}
         ${amountHtml}
+        ${personalizationHtml}
         ${summaryHtml}
         ${reasonHtml}
         ${equipHtml}
@@ -254,6 +258,47 @@ export class RecommendationsPanel {
         ${followHtml}
         <span class="rec-status rec-severity-${item.severity}">${escapeHtml(severityLabel)}</span>
         ${performBtnHtml}
+      </div>
+    `;
+  }
+
+  /**
+   * Render personalization info from historical learning, if available.
+   */
+  private renderPersonalization(item: MaintenanceRecommendation): string {
+    const p = item.personalization;
+    if (!p) return '';
+
+    const confidenceLabel = p.confidence === 'high' ? 'Alta'
+      : p.confidence === 'medium' ? 'Media'
+      : p.confidence === 'low' ? 'Baja'
+      : 'Ninguna';
+    const confidenceClass = p.confidence === 'high' ? 'badge-high'
+      : p.confidence === 'medium' ? 'badge-medium'
+      : 'badge-low';
+
+    let valueHtml = '';
+    if (p.applied && p.theoreticalValue !== undefined && p.personalizedValue !== undefined) {
+      valueHtml = `
+        <div class="rec-personalization-values">
+          <span class="rec-personalization-theoretical">Teórico: ${formatAmount(p.theoreticalValue, getUnit(item))}</span>
+          <span class="rec-personalization-arrow">→</span>
+          <span class="rec-personalization-personalized">Personalizado: ${formatAmount(p.personalizedValue, getUnit(item))}</span>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="rec-personalization">
+        <div class="rec-personalization-header">
+          <span class="rec-personalization-label">Aprendizaje histórico</span>
+          <span class="rec-personalization-badge ${confidenceClass}">${escapeHtml(confidenceLabel)}</span>
+        </div>
+        ${valueHtml}
+        <div class="rec-personalization-meta">
+          <span class="rec-personalization-samples">${p.sampleSize ?? 0} muestra(s)</span>
+        </div>
+        <div class="rec-personalization-explanation">${escapeHtml(p.explanation)}</div>
       </div>
     `;
   }
@@ -274,14 +319,22 @@ export class RecommendationsPanel {
       // We'll set relatedMeasurementId when the user clicks — we use the latest measurement
     }
 
+    // Use personalized values when available
+    const chemicalAmount = item.personalization?.applied
+      ? item.personalization.personalizedValue
+      : item.estimatedAmount;
+    const addHours = item.personalization?.applied
+      ? item.personalization.personalizedValue
+      : item.suggestedAdditionalHours;
+
     if (item.chemicalProductId) {
       prefill.chemicalProductType = item.chemicalProductId as ActionFormPrefill['chemicalProductType'];
     }
     if (item.mainComponent) {
       prefill.chemicalComponent = item.mainComponent;
     }
-    if (item.estimatedAmount !== undefined) {
-      prefill.chemicalAmount = item.estimatedAmount;
+    if (chemicalAmount !== undefined) {
+      prefill.chemicalAmount = chemicalAmount;
     }
     if (item.unit) {
       prefill.chemicalUnit = item.unit as 'ml' | 'l' | 'g' | 'kg';
@@ -290,8 +343,8 @@ export class RecommendationsPanel {
     if (item.suggestedOutputPercent !== undefined) {
       prefill.chlorinatorNewOutput = item.suggestedOutputPercent;
     }
-    if (item.suggestedAdditionalHours !== undefined) {
-      prefill.chlorinatorAddHours = item.suggestedAdditionalHours;
+    if (addHours !== undefined) {
+      prefill.chlorinatorAddHours = addHours;
     }
     if (item.suggestedFiltrationHours !== undefined) {
       prefill.filtrationNewHours = item.suggestedFiltrationHours;
@@ -335,6 +388,16 @@ function formatAmount(amount: number, unit: string): string {
     return `${l} l`;
   }
   return `${amount} ${unit}`;
+}
+
+/**
+ * Get the display unit for a recommendation, used for personalization rendering.
+ */
+function getUnit(item: MaintenanceRecommendation): string {
+  if (item.unit) return item.unit;
+  if (item.suggestedAdditionalHours !== undefined) return 'h';
+  if (item.suggestedFiltrationHours !== undefined) return 'h';
+  return '';
 }
 
 function fieldLabel(field: string): string {
