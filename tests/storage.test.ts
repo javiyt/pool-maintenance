@@ -9,10 +9,16 @@ import {
   exportData,
   parseImportData,
   mergeMeasurements,
+  loadFollowUps,
+  saveFollowUps,
+  addFollowUp,
+  updateFollowUp,
+  mergeFollowUps,
   EXPORT_SCHEMA_VERSION,
 } from '../src/domain/storage';
 import type { PoolSettings } from '../src/domain/settings';
 import type { Measurement } from '../src/domain/measurement';
+import type { FollowUp } from '../src/domain/followUp';
 
 // Minimal localStorage mock for testing
 const store = new Map<string, string>();
@@ -446,5 +452,131 @@ describe('mergeMeasurements', () => {
     expect(merged).toHaveLength(2);
     expect(merged[0].id).toBe('a');
     expect(merged[1].id).toBe('b');
+  });
+});
+
+// ── Follow-Up Persistence ──────────────────────────────────────────
+
+const SAMPLE_FOLLOW_UP: FollowUp = {
+  id: 'fu-1',
+  actionId: 'act-1',
+  recommendationId: 'rec-1',
+  sourceMeasurementId: 'meas-1',
+  suggestedRetestDelay: 6,
+  status: 'awaiting-retest',
+  createdAt: '2026-07-09T10:00:00.000Z',
+  dueAt: '2026-07-09T16:00:00.000Z',
+  excludedFromLearning: false,
+  atypical: false,
+  incorrectlyRecorded: false,
+  unusualEventNotes: [],
+};
+
+describe('follow-up persistence', () => {
+  it('returns empty array when nothing is stored', () => {
+    expect(loadFollowUps()).toEqual([]);
+  });
+
+  it('round-trips follow-ups', () => {
+    saveFollowUps([SAMPLE_FOLLOW_UP]);
+    const loaded = loadFollowUps();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe('fu-1');
+    expect(loaded[0].status).toBe('awaiting-retest');
+    expect(loaded[0].suggestedRetestDelay).toBe(6);
+  });
+
+  it('adds a follow-up', () => {
+    const list = addFollowUp(SAMPLE_FOLLOW_UP);
+    expect(list).toHaveLength(1);
+    expect(loadFollowUps()).toHaveLength(1);
+  });
+
+  it('updates a follow-up by id', () => {
+    saveFollowUps([SAMPLE_FOLLOW_UP]);
+    const list = updateFollowUp('fu-1', { status: 'retest-due' });
+    expect(list).toHaveLength(1);
+    expect(list[0].status).toBe('retest-due');
+    // Verify persisted
+    const loaded = loadFollowUps();
+    expect(loaded[0].status).toBe('retest-due');
+  });
+
+  it('does not modify list when updating non-existent id', () => {
+    saveFollowUps([SAMPLE_FOLLOW_UP]);
+    updateFollowUp('non-existent', { status: 'completed' });
+    const loaded = loadFollowUps();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].status).toBe('awaiting-retest');
+  });
+
+  it('handles corrupted storage gracefully', () => {
+    store.set('pool-maintenance:followUps', 'not-json');
+    expect(loadFollowUps()).toEqual([]);
+  });
+
+  it('handles non-array stored data gracefully', () => {
+    store.set('pool-maintenance:followUps', '{"id":"fu-1"}');
+    expect(loadFollowUps()).toEqual([]);
+  });
+
+  it('merges follow-ups without duplicates', () => {
+    const existing: FollowUp[] = [SAMPLE_FOLLOW_UP];
+    const incoming: FollowUp[] = [
+      SAMPLE_FOLLOW_UP, // duplicate
+      { ...SAMPLE_FOLLOW_UP, id: 'fu-2' },
+    ];
+    const merged = mergeFollowUps(existing, incoming);
+    expect(merged).toHaveLength(2);
+    expect(merged.map((f) => f.id)).toEqual(['fu-1', 'fu-2']);
+  });
+});
+
+describe('export includes follow-ups (v6)', () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it('includes followUps array in export data', () => {
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveMeasurements([SAMPLE_MEASUREMENT]);
+    saveFollowUps([SAMPLE_FOLLOW_UP]);
+    const data = exportData(FIXED_NOW);
+    expect(data.followUps).toHaveLength(1);
+    expect(data.followUps[0].id).toBe('fu-1');
+  });
+
+  it('sets schemaVersion to 6', () => {
+    saveSettings(SAMPLE_POOL_CONFIG);
+    const data = exportData(FIXED_NOW);
+    expect(data.schemaVersion).toBe(6);
+  });
+
+  it('imports v6 data with followUps', () => {
+    const json = JSON.stringify({
+      schemaVersion: 6,
+      exportedAt: '2026-07-09T10:35:00.000Z',
+      poolConfig: SAMPLE_POOL_CONFIG,
+      measurements: [SAMPLE_MEASUREMENT],
+      followUps: [SAMPLE_FOLLOW_UP],
+    });
+    const result = parseImportData(json);
+    expect(result.followUps).toHaveLength(1);
+    expect(result.followUps[0].id).toBe('fu-1');
+    expect(result.measurements).toHaveLength(1);
+    expect(result.poolConfig).toBeDefined();
+  });
+
+  it('v5 export without followUps still imports cleanly', () => {
+    const json = JSON.stringify({
+      schemaVersion: 5,
+      exportedAt: '2026-07-09T10:35:00.000Z',
+      poolConfig: SAMPLE_POOL_CONFIG,
+      measurements: [SAMPLE_MEASUREMENT],
+      actions: [],
+    });
+    const result = parseImportData(json);
+    expect(result.followUps).toEqual([]);
+    expect(result.measurements).toHaveLength(1);
   });
 });

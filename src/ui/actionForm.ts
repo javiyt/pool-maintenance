@@ -40,6 +40,8 @@ function setVal(id: string, val: string | number | undefined): void {
 export interface ActionFormPrefill {
   kind: MaintenanceActionKind;
   description: string;
+  recommendationId?: string;
+  retestAfterHours?: number;
   chemicalProductType?: ChemicalProductType;
   chemicalComponent?: string;
   chemicalAmount?: number;
@@ -63,7 +65,8 @@ export class ActionForm {
   private errorsEl: HTMLElement;
   private relatedSelect: HTMLSelectElement;
   private descriptionInput: HTMLInputElement;
-  private onSaveCb: ((action: MaintenanceAction) => void) | null = null;
+  private currentPrefill: ActionFormPrefill | null = null;
+  private onSaveCb: ((action: MaintenanceAction, followUpInfo?: { recommendationId?: string; retestAfterHours?: number }) => void) | null = null;
 
   private readonly kindFieldMap: Record<string, string> = {
     chemical: 'actionChemicalFields',
@@ -89,11 +92,12 @@ export class ActionForm {
     this.form.addEventListener('submit', (e) => this.handleSubmit(e));
   }
 
-  onSave(cb: (action: MaintenanceAction) => void): void {
+  onSave(cb: (action: MaintenanceAction, followUpInfo?: { recommendationId?: string; retestAfterHours?: number }) => void): void {
     this.onSaveCb = cb;
   }
 
   open(prefill?: ActionFormPrefill): void {
+    this.currentPrefill = prefill ?? null;
     const now = dateToLocalDatetime(new Date());
     this.dateTimeInput.value = now;
 
@@ -241,6 +245,7 @@ export class ActionForm {
       description,
       notes,
       relatedMeasurementId,
+      relatedRecommendationId: this.currentPrefill?.recommendationId,
       chemical,
       chlorinator,
       filtration,
@@ -249,7 +254,11 @@ export class ActionForm {
 
     addAction(action);
     this.close();
-    this.onSaveCb?.(action);
+    const followUpInfo = this.currentPrefill?.recommendationId || this.currentPrefill?.retestAfterHours
+      ? { recommendationId: this.currentPrefill?.recommendationId, retestAfterHours: this.currentPrefill?.retestAfterHours }
+      : undefined;
+    this.onSaveCb?.(action, followUpInfo);
+    this.currentPrefill = null;
   }
 
   private showError(msg: string): void {

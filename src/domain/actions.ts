@@ -7,6 +7,10 @@ export type MaintenanceActionKind =
   | 'manual-test'
   | 'other';
 
+import type { ActionExclusionFlags, ActionNote } from './followUp';
+export type { ActionExclusionFlags, ActionNote, UnusualEventType } from './followUp';
+export { UNUSUAL_EVENT_LABELS } from './followUp';
+
 export type ChemicalProductType =
   | 'ph-reducer'
   | 'ph-increaser'
@@ -46,10 +50,13 @@ export interface MaintenanceAction {
   description: string;
   notes?: string;
   relatedMeasurementId?: string;
+  relatedRecommendationId?: string;
   chemical?: MaintenanceActionChemical;
   chlorinator?: MaintenanceActionChlorinator;
   filtration?: MaintenanceActionFiltration;
   waterReplacement?: MaintenanceActionWaterReplacement;
+  exclusionFlags?: ActionExclusionFlags;
+  unusualEventNotes?: ActionNote[];
 }
 
 let _actionCounter = 0;

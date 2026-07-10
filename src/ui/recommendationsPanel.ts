@@ -313,7 +313,12 @@ export class RecommendationsPanel {
 
     // Build a JSON data attribute with the prefill values so the click handler
     // can reconstruct the ActionFormPrefill
-    const prefill: ActionFormPrefill = { kind: actionKind, description: item.title };
+    const prefill: ActionFormPrefill = {
+      kind: actionKind,
+      description: item.title,
+      recommendationId: item.id,
+      retestAfterHours: item.retestAfterHours,
+    };
 
     if (item.relatedFields.length > 0 && item.relatedFields[0]) {
       // We'll set relatedMeasurementId when the user clicks — we use the latest measurement

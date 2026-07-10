@@ -5,9 +5,11 @@ import { HistoryPanel } from './ui/historyPanel';
 import { ActionForm } from './ui/actionForm';
 import { ActionHistory } from './ui/actionHistory';
 import { HistoricalInsightsPanel } from './ui/historicalInsights';
-import { addMeasurement } from './domain/storage';
+import { FollowUpDashboard } from './ui/followUpDashboard';
+import { addMeasurement, addFollowUp } from './domain/storage';
 import { loadSettings, loadMeasurements, loadActions } from './domain/storage';
 import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
+import { createFollowUp } from './domain/followUp';
 
 function toLocalDatetime(d: Date): string {
   const y = d.getFullYear();
@@ -40,6 +42,7 @@ function init(): void {
   const actionForm = new ActionForm();
   const actionHistory = new ActionHistory();
   const historicalInsights = new HistoricalInsightsPanel();
+  const followUpDashboard = new FollowUpDashboard();
 
   // Re-render history whenever measurements change
   historyPanel.onChange(() => {
@@ -59,6 +62,10 @@ function init(): void {
     historyPanel.render();
     historicalInsights.render();
 
+    // Evaluate pending follow-ups against new measurement
+    followUpDashboard.evaluatePending();
+    followUpDashboard.render();
+
     // Run the maintenance assistant with full history
     runAndShowRecommendations(recommendationsPanel);
 
@@ -73,10 +80,23 @@ function init(): void {
     actionForm.open(prefill);
   });
 
-  // Action form save → update history
-  actionForm.onSave(() => {
+  // Action form save → update history and create follow-up
+  actionForm.onSave((action, followUpInfo) => {
     actionHistory.render();
     historicalInsights.render();
+
+    // Create a follow-up record for this action
+    const followUp = createFollowUp(
+      action,
+      followUpInfo?.recommendationId,
+      action.relatedMeasurementId,
+      followUpInfo?.retestAfterHours,
+    );
+    if (followUp) {
+      addFollowUp(followUp);
+    }
+    followUpDashboard.render();
+
     // Re-run recommendations to reflect the recorded action
     runAndShowRecommendations(recommendationsPanel);
   });
@@ -85,6 +105,7 @@ function init(): void {
   historyPanel.render();
   actionHistory.render();
   historicalInsights.render();
+  followUpDashboard.render();
 }
 
 document.addEventListener('DOMContentLoaded', init);

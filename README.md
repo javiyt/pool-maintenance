@@ -23,6 +23,9 @@ Track water chemistry measurements, understand whether your pool water is okay, 
 - **Outcome evaluation** — each recorded action is automatically evaluated against before/after measurements. The evaluator detects field changes, accounts for intervening actions, and reports effectiveness (effective, partial, ineffective, unexpected, or unknown) with a confidence level — without claiming causality.
 - **Historical learning** — a deterministic module that aggregates action outcomes to reveal observed patterns: typical FAC increase per chlorinator adjustment, pH response to reducer/increaser, FAC response to chlorine granules, and salt level response. Uses robust statistics (median, median absolute deviation) with sample-size-based confidence levels. All calculations are explainable — no machine learning.
 - **Personalized recommendations** — where sufficient historical data exists, the assistant adjusts theoretical estimates using observed correction factors. Chlorinator additional hours and chemical dosages are personalized based on how your specific pool has responded to similar actions in the past, while preserving all safety limits.
+- **Action follow-up tracking** — when you mark a recommendation as performed, a follow-up record is created to track when to retest. After adding a new measurement, pending follow-ups are automatically evaluated and outcomes are displayed in the dashboard.
+- **Exclusion flags** — mark actions as atypical, incorrectly recorded, or excluded from learning. Excluded actions remain visible in history but do not affect historical learning.
+- **Unusual event notes** — annotate actions with structured notes for rain, many bathers, refill, cleaning, cover removed, or equipment issues.
 - **Historical insights UI** — shows learned patterns with confidence badges and sample counts, plus a clear disclaimer that correlation does not imply causation.
 - **Personalization controls** — enable/disable personalization, configure minimum sample requirements, and adjust correction factor bounds in Settings.
 - **Measurement history** — view in reverse chronological order, delete entries, export to JSON, and import from JSON.
@@ -189,11 +192,11 @@ The app supports exporting and importing data as JSON files. This makes it possi
 
 ### Export
 
-Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 5):
+Click **Export JSON** in the Measurement History section to download a `.json` file. The exported file uses the following format (schema version 6):
 
 ```json
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "exportedAt": "2026-07-09T10:35:00.000Z",
   "poolConfig": {
     "volume": 50000,
@@ -236,17 +239,34 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
         "unit": "ml"
       }
     }
+  ],
+  "followUps": [
+    {
+      "id": "fu-1741592100-1-a1b2",
+      "actionId": "act-1741592100-1-abc12",
+      "recommendationId": "ma-1741592100-1",
+      "sourceMeasurementId": "1700000000-a1b2c3",
+      "suggestedRetestDelay": 6,
+      "status": "awaiting-retest",
+      "createdAt": "2026-07-09T11:00:00.000Z",
+      "dueAt": "2026-07-09T17:00:00.000Z",
+      "excludedFromLearning": false,
+      "atypical": false,
+      "incorrectlyRecorded": false,
+      "unusualEventNotes": []
+    }
   ]
 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `schemaVersion` | number | Format version (`5`). Used for forward compatibility. |
+| `schemaVersion` | number | Format version (`6`). Used for forward compatibility. |
 | `exportedAt` | string (ISO 8601) | When the file was exported. |
 | `poolConfig` | object | The pool settings (volume, type, units) at time of export. |
 | `measurements` | array | Array of measurement records with digital meter fields. |
 | `actions` | array | Array of maintenance action records (v4+). Empty array if no actions recorded. |
+| `followUps` | array | Array of action follow-up records (v6+). Empty array if none. |
 
 ### Measurement fields
 
@@ -264,25 +284,28 @@ Click **Export JSON** in the Measurement History section to download a `.json` f
 
 ### Import
 
-Click **Import JSON** and select a `.json` file. The app accepts five formats:
+Click **Import JSON** and select a `.json` file. The app accepts six formats:
 
-1. **Schema v5** (current) — the full format shown above. Restores measurements, actions, pool configuration, and historical learning settings.
-2. **Schema v4** (legacy) — full format without historical learning config. Restores measurements, actions, and pool configuration; learning defaults are used.
-3. **Schema v3** (legacy) — format without `actions`. Restores measurements and pool configuration; actions field is silently treated as empty.
-4. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
-5. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
+1. **Schema v6** (current) — the full format shown above. Restores measurements, actions, follow-ups, pool configuration, and historical learning settings.
+2. **Schema v5** (legacy) — full format with historical learning config but without follow-ups. Restores measurements, actions, and pool configuration.
+3. **Schema v4** (legacy) — full format without historical learning config. Restores measurements, actions, and pool configuration; learning defaults are used.
+4. **Schema v3** (legacy) — format without `actions`. Restores measurements and pool configuration; actions field is silently treated as empty.
+5. **Schema v2** (legacy) — old format with `freeChlorine`, `alkalinity`, `cyanuricAcid` fields. These are automatically migrated: `freeChlorine` → `fac`, while `alkalinity` and `cyanuricAcid` are dropped (no longer part of the model).
+6. **Schema v1** (legacy) — a plain array of measurement objects. Only imports measurements; pool configuration is not affected.
 
 #### Import behavior
 
 - **Measurements are merged** with existing data. New measurements are appended. If an imported measurement has the same `id` as an existing one, the duplicate is silently skipped.
 - **Actions are merged** with existing data using the same id-based dedup logic.
+- **Follow-ups are merged** with existing data using the same id-based dedup logic (v6+).
 - **Pool configuration is restored** when the imported file contains a `poolConfig` field (schema v2+). The current pool settings are overwritten with the imported values.
 - **Backward compatible** — old export files that contain only measurements still work. The app detects the format automatically. Schema v3 exports are fully compatible and imported without data loss.
 - **Invalid files** — if the file is not valid JSON, or the structure is unrecognized, the import is canceled and an error message is shown. The app never crashes from a bad import.
 
 ### Migration notes
 
-- **Schema v1 → v2 → v3 → v4 → v5**: Exports from any previous schema version are fully importable.
+- **Schema v1 → v2 → v3 → v4 → v5 → v6**: Exports from any previous schema version are fully importable.
+- **Follow-ups**: v6 additions include follow-up tracking records. v5 and older exports won't have this field; it defaults to an empty array on import.
 - **Historical learning config**: v5 exports include `historicalLearning` in `poolConfig`. v4 exports without this field use default settings on import.
 - **Date-only records**: Old measurements that use `date` (YYYY-MM-DD) instead of `measuredAt` are automatically converted during import, using local noon as the default time.
 - **Old field mapping**: `freeChlorine` → `fac`. Fields `alkalinity`, `cyanuricAcid`, and `date` are removed after migration.
@@ -297,6 +320,7 @@ src/
 │   ├── settings.ts            # PoolSettings type, defaults, HistoricalLearningConfig
 │   ├── measurement.ts         # Measurement type, validation
 │   ├── actions.ts             # MaintenanceAction type, action ID generation
+│   ├── followUp.ts            # FollowUp type, state machine, dashboard queries
 │   ├── chemicalCatalog.ts     # Generic chemical product catalog (no brand names)
 │   ├── chemistry.ts           # Chemical calculation logic, target ranges, recommendation engine
 │   ├── trendAnalysis.ts       # Measurement trend detection (rising/falling/stable)
@@ -304,13 +328,14 @@ src/
 │   ├── maintenanceAssistant.ts# Full assistant — trends + recommendations + personalization
 │   ├── actionOutcomeEvaluator.ts # Evaluates action effectiveness from before/after measurements
 │   ├── historicalLearning.ts  # Deterministic historical learning + correction factors
-│   └── storage.ts             # localStorage persistence (measurements + actions)
+│   └── storage.ts             # localStorage persistence (measurements + actions + follow-ups)
 ├── ui/
 │   ├── settingsPanel.ts       # Pool settings drawer
 │   ├── measurementForm.ts     # Measurement input form
 │   ├── actionForm.ts          # Maintenance action creation form (drawer)
 │   ├── historyPanel.ts        # Measurement history list + export/import
 │   ├── actionHistory.ts       # Action history list
+│   ├── followUpDashboard.ts   # Action follow-up dashboard with flags and notes
 │   ├── recommendationsPanel.ts # Recommendation results display + "Mark as performed"
 │   └── historicalInsights.ts  # Historical insights panel
 ├── styles/
@@ -319,6 +344,7 @@ tests/
 ├── chemistry.test.ts          # Catalog + recommendation engine tests
 ├── measurement.test.ts        # Validation + ID generation tests
 ├── actions.test.ts            # Action persistence, export/import, merge, sorting tests
+├── followUp.test.ts           # Follow-up state machine, dashboard, exclusion, lifecycle tests
 ├── actionOutcomeEvaluator.test.ts # Action outcome evaluation tests
 ├── historicalLearning.test.ts # Historical learning tests (48 tests)
 ├── storage.test.ts            # Settings + measurement persistence + export/import tests
