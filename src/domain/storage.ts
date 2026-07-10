@@ -2,6 +2,7 @@ import type { Measurement } from './measurement';
 import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import type { MaintenanceAction } from './actions';
+import type { FollowUp } from './followUp';
 
 const KEY_PREFIX = 'pool-maintenance:';
 
@@ -120,9 +121,56 @@ export function deleteAction(id: string): MaintenanceAction[] {
   return list;
 }
 
+// ── Follow-Up Records ──────────────────────────────────────────────
+
+export function loadFollowUps(): FollowUp[] {
+  try {
+    const raw = localStorage.getItem(key('followUps'));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as FollowUp[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveFollowUps(followUps: FollowUp[]): void {
+  localStorage.setItem(key('followUps'), JSON.stringify(followUps));
+}
+
+export function addFollowUp(fu: FollowUp): FollowUp[] {
+  const list = loadFollowUps();
+  list.push(fu);
+  saveFollowUps(list);
+  return list;
+}
+
+export function updateFollowUp(id: string, updates: Partial<FollowUp>): FollowUp[] {
+  const list = loadFollowUps();
+  const idx = list.findIndex((fu) => fu.id === id);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], ...updates };
+    saveFollowUps(list);
+  }
+  return list;
+}
+
+/**
+ * Merge imported follow-ups into an existing list, avoiding duplicates by id.
+ */
+export function mergeFollowUps(
+  existing: FollowUp[],
+  incoming: FollowUp[],
+): FollowUp[] {
+  const existingIds = new Set(existing.map((fu) => fu.id));
+  const deduped = incoming.filter((fu) => !existingIds.has(fu.id));
+  return [...existing, ...deduped];
+}
+
 // ── Export / Import ────────────────────────────────────────────────
 
-export const EXPORT_SCHEMA_VERSION = 5;
+export const EXPORT_SCHEMA_VERSION = 6;
 
 export interface ExportData {
   schemaVersion: number;
@@ -130,11 +178,13 @@ export interface ExportData {
   poolConfig: PoolSettings;
   measurements: Measurement[];
   actions: MaintenanceAction[];
+  followUps: FollowUp[];
 }
 
 export interface ImportResult {
   measurements: Measurement[];
   actions: MaintenanceAction[];
+  followUps: FollowUp[];
   poolConfig: PoolSettings | null;
   count: number;
 }
@@ -152,6 +202,7 @@ export function exportData(now?: Date): ExportData {
     poolConfig: loadSettings(),
     measurements: loadMeasurements(),
     actions: loadActions(),
+    followUps: loadFollowUps(),
   };
 }
 
@@ -159,6 +210,7 @@ export function exportData(now?: Date): ExportData {
  * Parse and validate an import JSON string.
  *
  * Supports:
+ * - v6: `{ schemaVersion: 6, poolConfig, measurements, actions, followUps }` — adds follow-ups
  * - v5: `{ schemaVersion: 5, poolConfig, measurements, actions }` — adds historicalLearning config to poolConfig
  * - v4: `{ schemaVersion: 4, poolConfig, measurements, actions }` — current format before v5
  * - v3: `{ schemaVersion: 3, poolConfig, measurements }` — no actions array
@@ -183,7 +235,7 @@ export function parseImportData(jsonString: string): ImportResult {
   // ── Legacy format: plain array of measurements ────────────────
   if (Array.isArray(data)) {
     if (data.length === 0) {
-      return { measurements: [], actions: [], poolConfig: null, count: 0 };
+      return { measurements: [], actions: [], followUps: [], poolConfig: null, count: 0 };
     }
 
     for (const item of data) {
@@ -200,7 +252,7 @@ export function parseImportData(jsonString: string): ImportResult {
     }
 
     const measurements = data.map(migrateMeasurement);
-    return { measurements, actions: [], poolConfig: null, count: measurements.length };
+    return { measurements, actions: [], followUps: [], poolConfig: null, count: measurements.length };
   }
 
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
@@ -240,12 +292,25 @@ export function parseImportData(jsonString: string): ImportResult {
       actions = obj.actions as MaintenanceAction[];
     }
 
+    // Parse follow-ups (v6+); v5 and older exports won't have this field
+    let followUps: FollowUp[] = [];
+    if (Array.isArray(obj.followUps)) {
+      for (const item of obj.followUps) {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error(
+            'Invalid JSON format: followUps must be an array of objects.',
+          );
+        }
+      }
+      followUps = obj.followUps as FollowUp[];
+    }
+
     let poolConfig: PoolSettings | null = null;
     if (obj.poolConfig && typeof obj.poolConfig === 'object') {
       poolConfig = { ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings;
     }
 
-    return { measurements, actions, poolConfig, count: measurements.length };
+    return { measurements, actions, followUps, poolConfig, count: measurements.length };
   }
 
   throw new Error(

@@ -6,6 +6,12 @@ import {
   mergeMeasurements,
   saveMeasurements,
   saveSettings,
+  loadActions,
+  saveActions,
+  mergeActions,
+  loadFollowUps,
+  saveFollowUps,
+  mergeFollowUps,
 } from '../domain/storage';
 
 export class HistoryPanel {
@@ -117,6 +123,22 @@ export class HistoryPanel {
         if (result.poolConfig) {
           saveSettings(result.poolConfig);
           messages.push('Pool configuration restored from file.');
+        }
+
+        // Merge imported actions if present (v4+)
+        if (result.actions && result.actions.length > 0) {
+          const existingActions = loadActions();
+          const mergedActions = mergeActions(existingActions, result.actions);
+          saveActions(mergedActions);
+          messages.push(`Imported ${result.actions.length} action(s).`);
+        }
+
+        // Merge imported follow-ups if present (v6+)
+        if (result.followUps && result.followUps.length > 0) {
+          const existingFus = loadFollowUps();
+          const mergedFus = mergeFollowUps(existingFus, result.followUps);
+          saveFollowUps(mergedFus);
+          messages.push(`Imported ${result.followUps.length} follow-up(s).`);
         }
 
         // Notify the user if duplicate measurements were skipped

@@ -1067,6 +1067,178 @@ body {
   overflow-y: auto;
 }
 
+/* ═══ Follow-Up Dashboard ════════════════════════════════════════ */
+.followup-section {
+  margin-bottom: 1rem;
+}
+
+.followup-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--color-bg);
+}
+
+.followup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.followup-item {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.followup-pending {
+  background: #fff8e6;
+  border-color: #fbbf24;
+}
+
+.followup-evaluated {
+  background: var(--color-surface);
+}
+
+.followup-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+
+.followup-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+}
+
+.badge-waiting {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-due {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.followup-time {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.followup-date {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.followup-description {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.followup-message {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  margin-bottom: 0.3rem;
+  line-height: 1.4;
+}
+
+.followup-outcome {
+  margin-top: 0.3rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-bg);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.followup-effectiveness {
+  font-weight: 700;
+  margin-right: 0.5rem;
+}
+
+.followup-confidence {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.followup-changes {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.followup-actions {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.followup-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.followup-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.followup-flag input[type="checkbox"] {
+  width: auto;
+}
+
+.followup-event-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.followup-event-notes select {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  max-width: 200px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+}
+
+.followup-event-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.followup-event-tag {
+  font-size: 0.7rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.followup-more {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  margin-top: 0.3rem;
+}
+
 /* ═══ Responsive ═════════════════════════════════════════════════ */
 @media (max-width: 480px) {
   .app-main {
