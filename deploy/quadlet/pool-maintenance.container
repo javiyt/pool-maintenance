@@ -1,0 +1,20 @@
+[Unit]
+Description=Pool Maintenance Web App
+Documentation=https://github.com/javiyt/pool-maintenance
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/javiyt/pool-maintenance:latest
+ContainerName=pool-maintenance
+PublishPort=8090:80
+Pull=newer
+AutoUpdate=registry
+EnvironmentFile=%h/pool-maintenance/.env
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
