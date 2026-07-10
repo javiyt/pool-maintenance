@@ -108,6 +108,7 @@ export function mad(values: number[]): number {
  * Excludes:
  * - unknown effectiveness
  * - very low confidence (below 0.3)
+ * - user-excluded actions (exclusionFlags.excludedFromLearning)
  * - outcomes with no significant field changes relevant to the action
  */
 function isEligibleOutcome(
@@ -116,6 +117,7 @@ function isEligibleOutcome(
 ): boolean {
   if (outcome.effectiveness === 'unknown') return false;
   if (outcome.confidence < 0.3) return false;
+  if (action.exclusionFlags?.excludedFromLearning) return false;
   if (action.kind !== 'chemical' && action.kind !== 'chlorinator') return false;
 
   // For chemical actions, require a specific product type that affects a known metric

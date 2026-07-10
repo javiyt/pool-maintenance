@@ -14,11 +14,14 @@ import {
   addFollowUp,
   updateFollowUp,
   mergeFollowUps,
+  normalizeActionExclusionFlags,
+  mergeActions,
   EXPORT_SCHEMA_VERSION,
 } from '../src/domain/storage';
 import type { PoolSettings } from '../src/domain/settings';
 import type { Measurement } from '../src/domain/measurement';
 import type { FollowUp } from '../src/domain/followUp';
+import type { MaintenanceAction } from '../src/domain/actions';
 
 // Minimal localStorage mock for testing
 const store = new Map<string, string>();
@@ -578,5 +581,185 @@ describe('export includes follow-ups (v6)', () => {
     const result = parseImportData(json);
     expect(result.followUps).toEqual([]);
     expect(result.measurements).toHaveLength(1);
+  });
+});
+
+// ── normalizeActionExclusionFlags ─────────────────────────────────
+
+const SAMPLE_ACTION: MaintenanceAction = {
+  id: 'act-1',
+  performedAt: '2026-07-09T10:35:00.000Z',
+  kind: 'chemical',
+  description: 'Added pH reducer',
+};
+
+const SAMPLE_ACTION_EXCLUDED: MaintenanceAction = {
+  id: 'act-2',
+  performedAt: '2026-07-09T11:00:00.000Z',
+  kind: 'chemical',
+  description: 'Added chlorine granules',
+  exclusionFlags: { excludedFromLearning: true },
+};
+
+const SAMPLE_FOLLOW_UP_EXCLUDED: FollowUp = {
+  ...SAMPLE_FOLLOW_UP,
+  id: 'fu-excluded',
+  actionId: SAMPLE_ACTION.id,
+  excludedFromLearning: true,
+};
+
+describe('normalizeActionExclusionFlags', () => {
+  it('sets excludedFromLearning on action when follow-up has it', () => {
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION],
+      [SAMPLE_FOLLOW_UP_EXCLUDED],
+    );
+    expect(result[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('preserves existing action exclusion flags when follow-up also excludes', () => {
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION_EXCLUDED],
+      [SAMPLE_FOLLOW_UP_EXCLUDED],
+    );
+    // Should remain unchanged — already excluded
+    expect(result[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('returns original array when action already has excludedFromLearning', () => {
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION_EXCLUDED],
+      [SAMPLE_FOLLOW_UP_EXCLUDED],
+    );
+    // Deep equal — no changes were made
+    expect(result).toStrictEqual([SAMPLE_ACTION_EXCLUDED]);
+    // First action should still have exclusion
+    expect(result[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('does not change action when follow-up does not exclude', () => {
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION],
+      [{ ...SAMPLE_FOLLOW_UP, excludedFromLearning: false }],
+    );
+    expect(result[0].exclusionFlags).toBeUndefined();
+  });
+
+  it('does not change action when follow-up is missing actionId', () => {
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION],
+      [{ ...SAMPLE_FOLLOW_UP_EXCLUDED, actionId: '' }],
+    );
+    expect(result[0].exclusionFlags).toBeUndefined();
+  });
+
+  it('does not crash on empty arrays', () => {
+    const result = normalizeActionExclusionFlags([], []);
+    expect(result).toEqual([]);
+  });
+
+  it('does not crash with empty followUps', () => {
+    const result = normalizeActionExclusionFlags([SAMPLE_ACTION], []);
+    expect(result).toHaveLength(1);
+    expect(result[0].exclusionFlags).toBeUndefined();
+  });
+
+  it('does not crash with empty actions', () => {
+    const result = normalizeActionExclusionFlags([], [SAMPLE_FOLLOW_UP_EXCLUDED]);
+    expect(result).toEqual([]);
+  });
+
+  it('handles missing linked action without crashing', () => {
+    const orphanFollowUp: FollowUp = {
+      ...SAMPLE_FOLLOW_UP_EXCLUDED,
+      actionId: 'nonexistent-action',
+    };
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION],
+      [orphanFollowUp],
+    );
+    expect(result[0].exclusionFlags).toBeUndefined();
+  });
+
+  it('multiple follow-ups: one excludes → exclusion wins', () => {
+    const result = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION],
+      [
+        { ...SAMPLE_FOLLOW_UP, id: 'fu-a', actionId: SAMPLE_ACTION.id, excludedFromLearning: false },
+        { ...SAMPLE_FOLLOW_UP_EXCLUDED, id: 'fu-b', actionId: SAMPLE_ACTION.id, excludedFromLearning: true },
+      ],
+    );
+    expect(result[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('follow-up with excludedFromLearning: false does not clear existing action exclusion', () => {
+    const result = normalizeActionExclusionFlags(
+      [{ ...SAMPLE_ACTION, exclusionFlags: { excludedFromLearning: true } }],
+      [{ ...SAMPLE_FOLLOW_UP, excludedFromLearning: false }],
+    );
+    // Normalize only adds, never removes — action exclusion is preserved
+    expect(result[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('is idempotent — second call does not change anything', () => {
+    const first = normalizeActionExclusionFlags(
+      [SAMPLE_ACTION],
+      [SAMPLE_FOLLOW_UP_EXCLUDED],
+    );
+    const second = normalizeActionExclusionFlags(first, [SAMPLE_FOLLOW_UP_EXCLUDED]);
+    // Second call returns same array reference (no change needed)
+    expect(second).toBe(first);
+    expect(second[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('preserves atypical and incorrectlyRecorded flags on actions', () => {
+    const actionWithFlags: MaintenanceAction = {
+      ...SAMPLE_ACTION,
+      exclusionFlags: { atypical: true, incorrectlyRecorded: false, excludedFromLearning: false },
+    };
+    const result = normalizeActionExclusionFlags(
+      [actionWithFlags],
+      [SAMPLE_FOLLOW_UP_EXCLUDED],
+    );
+    expect(result[0].exclusionFlags?.atypical).toBe(true);
+    expect(result[0].exclusionFlags?.incorrectlyRecorded).toBe(false);
+    expect(result[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('export followed by import preserves action exclusion via normalize', () => {
+    const action: MaintenanceAction = {
+      ...SAMPLE_ACTION,
+      id: 'act-export-1',
+    };
+    const followUp: FollowUp = {
+      ...SAMPLE_FOLLOW_UP_EXCLUDED,
+      actionId: 'act-export-1',
+    };
+
+    // Simulate export: save action and follow-up
+    store.set('pool-maintenance:actions', JSON.stringify([action]));
+    store.set('pool-maintenance:followUps', JSON.stringify([followUp]));
+    const exported = exportData(FIXED_NOW);
+    expect(exported.actions).toHaveLength(1);
+    expect(exported.actions[0].exclusionFlags).toBeUndefined();
+    expect(exported.followUps[0].excludedFromLearning).toBe(true);
+
+    // Simulate import into empty state: parse, load+savemerge
+    const jsonString = JSON.stringify(exported);
+    const parsed = parseImportData(jsonString);
+
+    // Save actions and follow-ups as import would
+    store.clear();
+    const mergedActions = mergeActions([], parsed.actions);
+    store.set('pool-maintenance:actions', JSON.stringify(mergedActions));
+    const mergedFus = mergeFollowUps([], parsed.followUps);
+    store.set('pool-maintenance:followUps', JSON.stringify(mergedFus));
+
+    // Run normalization as the import handler does
+    const loadedActions = JSON.parse(store.get('pool-maintenance:actions')!);
+    const loadedFus = JSON.parse(store.get('pool-maintenance:followUps')!);
+    const normalized = normalizeActionExclusionFlags(loadedActions, loadedFus);
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0].exclusionFlags?.excludedFromLearning).toBe(true);
   });
 });
