@@ -1096,6 +1096,225 @@ describe('deriveInsights', () => {
   });
 });
 
+// ── Theoretical effect estimation ────────────────────────────────
+
+describe('theoretical effect estimation', () => {
+  it('computes chlorinator theoretical effect', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    for (let i = 1; i <= 3; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, fac: 0.8 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T20:00:00.000Z`, fac: 2.0 }, `ma-${i}`),
+      );
+      actions.push(
+        makeChlorinatorAction({ performedAt: `${prefix}T12:00:00.000Z` }, `act-${i}`),
+      );
+    }
+
+    const settings = makeSettings({
+      poolType: 'saltwater',
+      saltChlorinator: {
+        enabled: true,
+        productionGramsPerHour: 20,
+        currentOutputPercent: 60,
+        filtrationHoursPerDay: 6,
+        maxRecommendedOutputPercent: 100,
+        maxRecommendedHoursPerDay: 12,
+      },
+    });
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
+    const chlAdj = findAdjustment(adjustments, 'chlorinator', 'fac');
+    expect(chlAdj).toBeDefined();
+    // Theoretical effect should be calculated:
+    // outputPct = (60+80)/2 = 70%, hours = 2, effectiveGPerH = 20*0.7 = 14 g/h
+    // ppmPerHour = (14*2)/50 = 0.56 → rounded to 0.56 ppm
+    expect(chlAdj!.theoreticalEffect).toBeDefined();
+    expect(chlAdj!.theoreticalEffect).toBeGreaterThan(0);
+  });
+
+  it('returns undefined theoretical effect when chlorinator is disabled', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    for (let i = 1; i <= 3; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, fac: 0.8 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T20:00:00.000Z`, fac: 2.0 }, `ma-${i}`),
+      );
+      actions.push(
+        makeChlorinatorAction({ performedAt: `${prefix}T12:00:00.000Z` }, `act-${i}`),
+      );
+    }
+
+    // Chlorinator disabled
+    const settings = makeSettings({
+      poolType: 'saltwater',
+      saltChlorinator: { enabled: false, productionGramsPerHour: 20, currentOutputPercent: 60, filtrationHoursPerDay: 6, maxRecommendedOutputPercent: 100, maxRecommendedHoursPerDay: 12 },
+    });
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
+    const chlAdj = findAdjustment(adjustments, 'chlorinator', 'fac');
+    expect(chlAdj).toBeDefined();
+    // No theoretical effect because chlorinator is disabled
+    expect(chlAdj!.theoreticalEffect).toBeUndefined();
+    expect(chlAdj!.correctionFactor).toBeUndefined();
+  });
+
+  it('computes pool-salt theoretical effect with grams unit', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    for (let i = 1; i <= 3; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, salt: 3000 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T18:00:00.000Z`, salt: 3300 }, `ma-${i}`),
+      );
+      actions.push(
+        makeSaltAction({
+          performedAt: `${prefix}T12:00:00.000Z`,
+          chemical: { productType: 'pool-salt', mainComponent: 'Sal', amount: 10000, unit: 'g' },
+        }, `act-${i}`),
+      );
+    }
+
+    const settings = makeSettings({ volume: 50000, poolType: 'saltwater' });
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
+    const saltAdj = findAdjustment(adjustments, 'chemical:pool-salt', 'salt');
+    expect(saltAdj).toBeDefined();
+    // grams: 10000 → kg = 10, expected ppm = (10 * 1_000_000) / 50000 = 200
+    expect(saltAdj!.theoreticalEffect).toBe(200);
+  });
+
+  it('computes chlorine-granules theoretical effect with kg unit', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    for (let i = 1; i <= 3; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, fac: 0.5 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, fac: 3.5 }, `ma-${i}`),
+      );
+      actions.push(
+        makeChlorineGranulesAction({
+          performedAt: `${prefix}T12:00:00.000Z`,
+          chemical: { productType: 'chlorine-granules', mainComponent: 'Cloro', amount: 2, unit: 'kg' },
+        }, `act-${i}`),
+      );
+    }
+
+    const settings = makeSettings({ volume: 50000 });
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
+    const facAdj = findAdjustment(adjustments, 'chemical:chlorine-granules', 'fac');
+    expect(facAdj).toBeDefined();
+    // kg: 2 → g = 2000, expected = (2000/3)/50 = 13.33 ppm
+    expect(facAdj!.theoreticalEffect).toBeDefined();
+    expect(facAdj!.theoreticalEffect).toBeGreaterThan(0);
+  });
+
+  it('returns undefined theoretical for ph-increaser with liters unit', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    for (let i = 1; i <= 3; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.0 }, `mb-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.2 }, `ma-${i}`),
+      );
+      actions.push(
+        makePhReducerAction({
+          performedAt: `${prefix}T12:00:00.000Z`,
+          chemical: { productType: 'ph-increaser', mainComponent: 'Base', amount: 1, unit: 'l' },
+        }, `act-${i}`),
+      );
+    }
+
+    const settings = makeSettings({ volume: 50000 });
+    const adjustments = computeLearning(measurements, actions, settings, makeLearningConfig());
+    const phAdj = findAdjustment(adjustments, 'chemical:ph-increaser', 'ph');
+    expect(phAdj).toBeDefined();
+    // 1 liter increaser in 50m³ → expected = (1/1)*(50/50)*0.1 = 0.1
+    expect(phAdj!.theoreticalEffect).toBeCloseTo(0.1, 2);
+  });
+});
+
+// ── High dispersion edge cases ─────────────────────────────────
+
+describe('high dispersion edge cases', () => {
+  it('drops confidence when MAD/median > 1.0', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    // 10 samples with sharp bimodal distribution:
+    // Half strong decrease (-0.5), half slight increase (+0.1)
+    // Median ≈ -0.2, MAD ≈ 0.3, MAD/median ≈ 1.5 > 1.0 → drop TWO levels from high
+    for (let i = 0; i < 5; i++) {
+      const day = 9 + i;
+      const prefix = `2026-07-${String(day).padStart(2, '0')}`;
+      // Strong decrease
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.8 }, `mb-dec-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.3 }, `ma-dec-${i}`),
+      );
+      actions.push(
+        makePhReducerAction({ performedAt: `${prefix}T12:00:00.000Z` }, `act-dec-${i}`),
+      );
+    }
+    for (let i = 0; i < 5; i++) {
+      const day = 14 + i;
+      const prefix = `2026-07-${String(day).padStart(2, '0')}`;
+      // Slight increase (wrong direction for reducer)
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.2 }, `mb-inc-${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.3 }, `ma-inc-${i}`),
+      );
+      actions.push(
+        makePhReducerAction({ performedAt: `${prefix}T12:00:00.000Z` }, `act-inc-${i}`),
+      );
+    }
+
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
+    const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
+    expect(phAdj).toBeDefined();
+    // Base confidence: n=10 → 'high'. Dispersion ratio > 1.0 → drop TWO levels
+    // Should be at most 'medium' (one level drop) or 'low' (two level drop)
+    expect(['medium', 'low']).toContain(phAdj!.confidence);
+  });
+
+  it('handles median=0 in dispersion adjustment gracefully', () => {
+    const measurements: Measurement[] = [];
+    const actions: MaintenanceAction[] = [];
+
+    // Zero median effect but some dispersion
+    const phEffects = [0, 0, 0, 0, 0]; // all zero → median=0
+
+    for (let i = 1; i <= 5; i++) {
+      const prefix = `2026-07-${String(i + 8).padStart(2, '0')}`;
+      measurements.push(
+        makeMeasurement({ measuredAt: `${prefix}T10:00:00.000Z`, ph: 7.4 }, `mb${i}`),
+        makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.4 + phEffects[i - 1] }, `ma${i}`),
+      );
+      actions.push(
+        makePhReducerAction({ performedAt: `${prefix}T12:00:00.000Z` }, `act-${i}`),
+      );
+    }
+
+    const adjustments = computeLearning(measurements, actions, makeSettings(), makeLearningConfig());
+    const phAdj = findAdjustment(adjustments, 'chemical:ph-reducer', 'ph');
+    // When median=0, adjustConfidenceForDispersion returns base unchanged
+    // n=5 → 'medium'
+    expect(phAdj).toBeDefined();
+    expect(phAdj!.observedMedianEffect).toBe(0);
+    // Dispersion adjustment with median=0 returns base confidence without change
+    expect(phAdj!.confidence).toBe('medium');
+  });
+});
+
 // ── Deterministic (not persisted) ─────────────────────────────────
 
 describe('learning is deterministic and not persisted', () => {

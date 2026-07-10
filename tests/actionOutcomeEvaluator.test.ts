@@ -383,6 +383,174 @@ describe('confidence', () => {
   });
 });
 
+// ── Expected fields by action type ──────────────────────────────
+
+describe('expectedFields for action types', () => {
+  it('chlorine-stabilizer has no measurable fields → unknown', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 1.0 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', fac: 2.0 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'chlorine-stabilizer', mainComponent: 'Stabilizer', amount: 500, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('unknown');
+    expect(outcomes[0].confidence).toBe(0.1);
+  });
+
+  it('alkalinity-reducer has no measurable fields → unknown', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.5 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'alkalinity-reducer', mainComponent: 'Reducer', amount: 500, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('unknown');
+  });
+
+  it('filtration action expects FAC increase', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 1.0 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-10T06:00:00.000Z', fac: 1.8 }, 'm2'), // 19h later — within 12-72h window
+    ];
+    const action: MaintenanceAction = {
+      id: 'act-filt',
+      performedAt: '2026-07-09T11:00:00.000Z',
+      kind: 'filtration',
+      description: 'Extended filtration',
+      filtration: { previousHours: 6, newHours: 10 },
+    };
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('effective');
+  });
+});
+
+// ── Fields already in range ─────────────────────────────────────
+
+describe('fields already in range before action', () => {
+  it('partially-effective when fields were already in range and stayed', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.4, fac: 1.5 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.4, fac: 1.5 }, 'm2'), // No change at all
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    // pH was already 7.4 (in range), changed 0 (below significance threshold of 0.1)
+    // → partially-effective with "maintained status" reason
+    expect(outcomes[0].effectiveness).toBe('partially-effective');
+    expect(outcomes[0].confidenceReasons.some((r) => r.includes('already in range'))).toBe(true);
+  });
+
+  it('partially-effective when chlorine applied but FAC already in range', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 2.0 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', fac: 2.1 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'chlorine-granules', mainComponent: 'Cloro', amount: 500, unit: 'g' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).toBe('partially-effective');
+  });
+});
+
+// ── Linked measurement after action ─────────────────────────────
+
+describe('linked after measurement', () => {
+  it('uses explicitly linked after measurement when within window', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T14:00:00.000Z', ph: 7.6 }, 'm2'), // 3h after — below min 4h
+      makeMeasurement({ measuredAt: '2026-07-09T17:00:00.000Z', ph: 7.5 }, 'm3'), // 6h after — valid
+    ];
+    // Link to m1 (before) and m3 (after, within window)
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      relatedMeasurementId: 'm3',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    // After measurement should be m3 (6h after action, linked)
+    expect(outcomes[0].afterMeasurementId).toBe('m3');
+  });
+
+  it('linked measurement after action but outside window is rejected', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-11T10:00:00.000Z', ph: 7.5 }, 'm2'), // 47h later — still within window
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      relatedMeasurementId: 'm2',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].afterMeasurementId).toBe('m2');
+    expect(outcomes[0].elapsedHours).toBe(47);
+  });
+
+  it('linked measurement after action reject when outside window', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-11T12:00:00.000Z', ph: 7.5 }, 'm2'), // 49h later — above max 48h
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      relatedMeasurementId: 'm2',
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toEqual([]);
+  });
+});
+
+// ── Before measurement edge cases ───────────────────────────────
+
+describe('before measurement edge cases', () => {
+  it('falls back to nearest before when linked measurement is after action', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.5 }, 'm2'),
+      makeMeasurement({ measuredAt: '2026-07-09T12:00:00.000Z', ph: 7.7 }, 'm3'), // after action!
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      relatedMeasurementId: 'm3', // m3 is after the action → should fall back to m1
+      chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
+    });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].beforeMeasurementId).toBe('m1');
+  });
+
+  it('returns no outcome when no before measurement within 7 days', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-06-01T10:00:00.000Z', ph: 7.8 }, 'm1'), // >7 days before
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.5 }, 'm2'),
+    ];
+    const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+    // m1 is ~38 days before → outside 7-day window → no before measurement
+    expect(outcomes).toEqual([]);
+  });
+});
+
 // ── Edge cases ────────────────────────────────────────────────────
 
 describe('edge cases', () => {

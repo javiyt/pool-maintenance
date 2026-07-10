@@ -843,3 +843,138 @@ describe('regression: behavioral invariants', () => {
     expect(alkRec!.estimatedAmount).toBeUndefined();
   });
 });
+
+// ── Missing pH/FAC in latest measurement ──────────────────────────
+
+describe('missing pH/FAC in latest measurement', () => {
+  it('returns insufficient-data when latest has no pH', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: undefined as any })],
+      makeSettings(),
+    );
+    expect(result.status).toBe('insufficient-data');
+    expect(result.recommendations).toEqual([]);
+  });
+
+  it('returns insufficient-data when latest has no FAC', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: undefined as any })],
+      makeSettings(),
+    );
+    expect(result.status).toBe('insufficient-data');
+    expect(result.recommendations).toEqual([]);
+  });
+
+  it('returns insufficient-data when latest pH is null', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: null as any })],
+      makeSettings(),
+    );
+    expect(result.status).toBe('insufficient-data');
+  });
+
+  it('returns insufficient-data when latest FAC is null', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: null as any })],
+      makeSettings(),
+    );
+    expect(result.status).toBe('insufficient-data');
+  });
+});
+
+// ── FAC critically low (danger) ───────────────────────────────────
+
+describe('FAC critically low', () => {
+  it('produces high-severity recommendation for very low FAC with ORP', () => {
+    // Saltwater pool: facRange.min = 0.8. FAC=0.5 is below range but >0.4 threshold for "very low"
+    // With ORP=580 (<600), isLowOrp=true → triggers chemical chlorine granules with high severity
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.5, orp: 580 })],
+      makeSettings({ poolType: 'saltwater' }),
+    );
+    const highRecs = result.recommendations.filter(
+      (r) => r.severity === 'high' || r.severity === 'danger',
+    );
+    expect(highRecs.length).toBeGreaterThan(0);
+    // Check for chlorine granules recommendation triggered by low FAC + low ORP
+    const chlRec = result.recommendations.find(
+      (r) => r.chemicalProductId === 'chlorine-granules',
+    );
+    expect(chlRec).toBeDefined();
+  });
+});
+
+// ── Salt above max range ──────────────────────────────────────────
+
+describe('salt above max range', () => {
+  it('recommends dilution when salt exceeds range for saltwater pool', () => {
+    const result = runAssistant(
+      [makeMeasurement({ salt: 4500 })],
+      makeSettings({ poolType: 'saltwater' }),
+    );
+    const saltWarnings = result.recommendations.filter(
+      (r) => r.relatedFields.includes('salt') && r.kind === 'warning',
+    );
+    expect(saltWarnings.length).toBeGreaterThan(0);
+    const dilutionRec = saltWarnings.find(
+      (r) => r.title.toLowerCase().includes('dilución'),
+    );
+    expect(dilutionRec).toBeDefined();
+    expect(dilutionRec!.priority).toBe(15);
+  });
+});
+
+// ── Proactive chlorinator adjustment ──────────────────────────────
+
+describe('proactive chlorinator adjustment', () => {
+  it('suggests equipment adjustment when FAC is in range but below ideal', () => {
+    // Note: SALTWATER_FAC_RANGE.ideal = 1.5, and need deltaPpm > 0.2, so FAC must be < 1.3
+    const result = runAssistant(
+      [{ id: 'pro-test', measuredAt: '2026-07-09T10:35:00.000Z', ph: 7.4, fac: 1.2, ec: 3000, tds: 1500, salt: 3000, orp: 680, temperature: 25 }],
+      makeSettings({
+        poolType: 'saltwater',
+        volume: 50000,
+        saltChlorinator: {
+          enabled: true,
+          productionGramsPerHour: 20,
+          currentOutputPercent: 60,
+          filtrationHoursPerDay: 6,
+          maxRecommendedOutputPercent: 100,
+          maxRecommendedHoursPerDay: 12,
+        },
+      }),
+    );
+    const kinds = result.recommendations.map(r => r.kind).join(',');
+    expect(kinds).toContain('equipment');
+    const optRec = result.recommendations.find(
+      (r) => r.kind === 'equipment',
+    );
+    expect(optRec).toBeDefined();
+    expect(optRec!.severity).toBe('low');
+    expect(optRec!.priority).toBe(12);
+    expect(optRec!.title).toContain('Optimizar');
+  });
+
+  it('does not suggest proactive adjustment when pH is not acceptable', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 1.5, ph: 8.2 })],
+      makeSettings({
+        poolType: 'saltwater',
+        volume: 50000,
+        saltChlorinator: {
+          enabled: true,
+          productionGramsPerHour: 20,
+          currentOutputPercent: 60,
+          filtrationHoursPerDay: 6,
+          maxRecommendedOutputPercent: 100,
+          maxRecommendedHoursPerDay: 12,
+        },
+      }),
+    );
+    // pH 8.2 is out of range → no proactive adjustment
+    const optRec = result.recommendations.find(
+      (r) => r.title.includes('Optimizar clorador'),
+    );
+    expect(optRec).toBeUndefined();
+  });
+});
