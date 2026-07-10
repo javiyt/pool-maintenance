@@ -1,6 +1,7 @@
 import type { Measurement } from './measurement';
 import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
+import type { MaintenanceAction } from './actions';
 
 const KEY_PREFIX = 'pool-maintenance:';
 
@@ -88,19 +89,52 @@ export function deleteMeasurement(id: string): Measurement[] {
   return list;
 }
 
+// ── Maintenance Actions ────────────────────────────────────────────
+
+export function loadActions(): MaintenanceAction[] {
+  try {
+    const raw = localStorage.getItem(key('actions'));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as MaintenanceAction[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveActions(actions: MaintenanceAction[]): void {
+  localStorage.setItem(key('actions'), JSON.stringify(actions));
+}
+
+export function addAction(a: MaintenanceAction): MaintenanceAction[] {
+  const list = loadActions();
+  list.push(a);
+  saveActions(list);
+  return list;
+}
+
+export function deleteAction(id: string): MaintenanceAction[] {
+  const list = loadActions().filter((a) => a.id !== id);
+  saveActions(list);
+  return list;
+}
+
 // ── Export / Import ────────────────────────────────────────────────
 
-export const EXPORT_SCHEMA_VERSION = 3;
+export const EXPORT_SCHEMA_VERSION = 4;
 
 export interface ExportData {
   schemaVersion: number;
   exportedAt: string;
   poolConfig: PoolSettings;
   measurements: Measurement[];
+  actions: MaintenanceAction[];
 }
 
 export interface ImportResult {
   measurements: Measurement[];
+  actions: MaintenanceAction[];
   poolConfig: PoolSettings | null;
   count: number;
 }
@@ -117,6 +151,7 @@ export function exportData(now?: Date): ExportData {
     exportedAt: (now ?? new Date()).toISOString(),
     poolConfig: loadSettings(),
     measurements: loadMeasurements(),
+    actions: loadActions(),
   };
 }
 
@@ -146,7 +181,7 @@ export function parseImportData(jsonString: string): ImportResult {
   // ── Legacy format: plain array of measurements ────────────────
   if (Array.isArray(data)) {
     if (data.length === 0) {
-      return { measurements: [], poolConfig: null, count: 0 };
+      return { measurements: [], actions: [], poolConfig: null, count: 0 };
     }
 
     for (const item of data) {
@@ -163,7 +198,7 @@ export function parseImportData(jsonString: string): ImportResult {
     }
 
     const measurements = data.map(migrateMeasurement);
-    return { measurements, poolConfig: null, count: measurements.length };
+    return { measurements, actions: [], poolConfig: null, count: measurements.length };
   }
 
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
@@ -190,12 +225,25 @@ export function parseImportData(jsonString: string): ImportResult {
 
     const measurements = rawMeasurements.map(migrateMeasurement);
 
+    // Parse actions (v4+); v3 and older exports won't have this field
+    let actions: MaintenanceAction[] = [];
+    if (Array.isArray(obj.actions)) {
+      for (const item of obj.actions) {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error(
+            'Invalid JSON format: actions must be an array of objects.',
+          );
+        }
+      }
+      actions = obj.actions as MaintenanceAction[];
+    }
+
     let poolConfig: PoolSettings | null = null;
     if (obj.poolConfig && typeof obj.poolConfig === 'object') {
       poolConfig = { ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings;
     }
 
-    return { measurements, poolConfig, count: measurements.length };
+    return { measurements, actions, poolConfig, count: measurements.length };
   }
 
   throw new Error(
@@ -213,5 +261,17 @@ export function mergeMeasurements(
 ): Measurement[] {
   const existingIds = new Set(existing.map((m) => m.id));
   const deduped = incoming.filter((m) => !existingIds.has(m.id));
+  return [...existing, ...deduped];
+}
+
+/**
+ * Merge imported actions into an existing list, avoiding duplicates by id.
+ */
+export function mergeActions(
+  existing: MaintenanceAction[],
+  incoming: MaintenanceAction[],
+): MaintenanceAction[] {
+  const existingIds = new Set(existing.map((a) => a.id));
+  const deduped = incoming.filter((a) => !existingIds.has(a.id));
   return [...existing, ...deduped];
 }
