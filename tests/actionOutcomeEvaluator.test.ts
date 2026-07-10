@@ -442,8 +442,10 @@ describe('derived outcomes are not persisted', () => {
     });
     const first = evaluateActionOutcomes(measurements, [action]);
     const second = evaluateActionOutcomes(measurements, [action]);
-    expect(first).toEqual(second);
-    // Same structure — not persisted, recalculated
+    // Strip evaluatedAt (clock-dependent) and compare the rest
+    const { evaluatedAt: _a, ...firstRest } = first[0];
+    const { evaluatedAt: _b, ...secondRest } = second[0];
+    expect(firstRest).toEqual(secondRest);
     expect(first).toHaveLength(1);
   });
 });
