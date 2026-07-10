@@ -47,18 +47,41 @@ After building, the output is in `dist/`. You can serve it with any static file 
 
 ## Calculator Assumptions
 
-All chemical dosage formulas are **approximate** and assume standard residential pool conditions.
+The app uses a **generic chemical product catalog** — no commercial brand names are shown. All products are identified by their generic name and active component. Dosage formulas are **approximate** and assume standard residential pool conditions.
 
-| Parameter | Target range | Adjustment | Approximate rate |
-|---|---|---|---|
-| pH | 7.2–7.6 | Sodium bisulfate (lower) / sodium carbonate (raise) | ~15 g / 1,000 L per 0.1 pH (lower); ~12 g / 1,000 L per 0.1 pH (raise) |
-| FAC (free available chlorine) | 1–3 ppm (chlorine) / 3–5 ppm (saltwater) | Calcium hypochlorite | ~2.5 g / 1,000 L per 1.0 ppm |
-| ORP | 650–800 mV | — (sanitation indicator) | N/A — monitored, not chemically adjusted directly |
-| Salt (saltwater pools) | 2,700–3,400 ppm | Pool salt | ~1 kg / 1,000 L per 100 ppm |
-| EC | Informational | — | N/A |
-| TDS | Informational | — | N/A |
+The app distinguishes between **chlorine pools** and **saltwater pools**, applying different target ranges and recommendation logic for each.
 
-High salt cannot be chemically reduced — partial drain and refill is the recommended approach.
+| Parameter | Chlorine pool | Saltwater pool | Adjustment | Approximate rate |
+|---|---|---|---|---|
+| pH | 7.2–7.6 | 7.2–7.6 | Reductor de pH líquido / Incrementador de pH líquido | ~750 ml / 50 m³ per 0.1 pH (lower); ~1 L / 50 m³ per 0.1 pH (raise) |
+| FAC (free available chlorine) | 1–3 ppm | 0.8–2.5 ppm | Cloro granulado | 3 g/m³ (maintenance); 25 g/m³ (shock) |
+| ORP | ≥650 mV | ≥650 mV | — (sanitation indicator) | N/A — monitored, not chemically adjusted directly |
+| Salt (saltwater pools) | — | 2,700–3,400 ppm | Sal para piscina (cloruro sódico) | Estimated from ppm: kg = deltaPpm × volumeL / 1,000,000 |
+| EC | Informational | Informational | — | N/A |
+| TDS | Informational | Informational | — | N/A |
+
+### Pool type behavior
+
+- **Chlorine pools**: Uses FAC as the main chlorine indicator. If FAC is low and pH is acceptable, recommends cloro granulado. If pH is out of range, recommends pH correction first.
+- **Saltwater pools**: Uses salt as an important measured value. If salt is low, recommends sal para piscina. If FAC is low, first suggests checking the salt chlorinator; cloro granulado is reserved for corrective/shock treatment when FAC and/or ORP are critically low.
+
+### Conservative dosing
+
+- pH corrections are capped at 0.2 units per treatment cycle to avoid overshooting.
+- Always retest before adding more chemicals.
+- pH increaser and pH reducer are never recommended together.
+- Chlorine is not recommended aggressively when pH is far outside range.
+
+### Temperature
+
+Water temperature above 30 °C increases chlorine demand. A warning is shown when applicable.
+
+### Limitations
+
+- The digital meter does not measure **cyanuric acid** (chlorine stabilizer). The app shows an informational note to measure it manually before adding stabilizer.
+- The digital meter does not measure **total alkalinity**. The app shows an informational note to measure it manually before adding alkalinity reducer.
+- High salt cannot be chemically reduced — partial drain and refill is the only option.
+- EC and TDS are used as informational/supporting values only.
 
 These rates are rough guidelines. Actual results depend on water temperature, bather load, rainfall, and other factors. **Always measure twice and add chemicals gradually.**
 
@@ -147,7 +170,8 @@ src/
 ├── domain/
 │   ├── settings.ts            # PoolSettings type, defaults
 │   ├── measurement.ts         # Measurement type, validation
-│   ├── chemistry.ts           # Chemical calculation logic, target ranges
+│   ├── chemicalCatalog.ts     # Generic chemical product catalog (no brand names)
+│   ├── chemistry.ts           # Chemical calculation logic, target ranges, recommendation engine
 │   └── storage.ts             # localStorage persistence
 ├── ui/
 │   ├── settingsPanel.ts       # Pool settings drawer
@@ -157,9 +181,9 @@ src/
 └── styles/
     └── main.css               # All styles (mobile-first, no framework)
 tests/
-├── chemistry.test.ts
-├── measurement.test.ts
-└── storage.test.ts
+├── chemistry.test.ts          # Catalog + recommendation engine tests
+├── measurement.test.ts        # Validation + ID generation tests
+└── storage.test.ts            # Persistence + export/import tests
 ```
 
 Domain logic is fully separated from UI code, making the calculation engine testable and reusable.
