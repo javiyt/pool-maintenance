@@ -1,5 +1,7 @@
-import { loadActions, deleteAction } from '../domain/storage';
+import { loadActions, deleteAction, loadMeasurements } from '../domain/storage';
 import type { MaintenanceAction, MaintenanceActionKind } from '../domain/actions';
+import { evaluateActionOutcomes } from '../domain/actionOutcomeEvaluator';
+import type { ActionOutcome, OutcomeEffectiveness } from '../domain/actionOutcomeEvaluator';
 
 const ACTION_KIND_LABELS: Record<MaintenanceActionKind, string> = {
   chemical: 'Chemical',
@@ -9,6 +11,14 @@ const ACTION_KIND_LABELS: Record<MaintenanceActionKind, string> = {
   cleaning: 'Cleaning',
   'manual-test': 'Test',
   other: 'Other',
+};
+
+const OUTCOME_LABELS: Record<OutcomeEffectiveness, { label: string; cssClass: string }> = {
+  effective: { label: 'Effective', cssClass: 'outcome-effective' },
+  'partially-effective': { label: 'Partial', cssClass: 'outcome-partial' },
+  ineffective: { label: 'Ineffective', cssClass: 'outcome-ineffective' },
+  unexpected: { label: 'Unexpected', cssClass: 'outcome-unexpected' },
+  unknown: { label: 'Unknown', cssClass: 'outcome-unknown' },
 };
 
 export class ActionHistory {
@@ -24,16 +34,24 @@ export class ActionHistory {
   }
 
   render(): void {
-    const list = loadActions();
+    const actions = loadActions();
+    const measurements = loadMeasurements();
 
-    if (list.length === 0) {
+    if (actions.length === 0) {
       this.content.innerHTML = '<p class="empty-state">No maintenance actions recorded yet.</p>';
       return;
     }
 
-    const sorted = [...list].sort((a, b) => b.performedAt.localeCompare(a.performedAt));
+    // Compute outcomes from raw history (not persisted)
+    const outcomes = evaluateActionOutcomes(measurements, actions);
+    const outcomeMap = new Map<string, ActionOutcome>();
+    for (const o of outcomes) {
+      outcomeMap.set(o.actionId, o);
+    }
 
-    const items = sorted.map((a) => this.renderActionItem(a)).join('');
+    const sorted = [...actions].sort((a, b) => b.performedAt.localeCompare(a.performedAt));
+
+    const items = sorted.map((a) => this.renderActionItem(a, outcomeMap.get(a.id))).join('');
     this.content.innerHTML = items;
 
     // Bind delete buttons
@@ -49,7 +67,7 @@ export class ActionHistory {
     });
   }
 
-  private renderActionItem(a: MaintenanceAction): string {
+  private renderActionItem(a: MaintenanceAction, outcome?: ActionOutcome): string {
     const kindLabel = ACTION_KIND_LABELS[a.kind] ?? a.kind;
     let detailsHtml = '';
 
@@ -91,6 +109,23 @@ export class ActionHistory {
       detailsHtml += `<div class="action-details">${escapeHtml(a.notes)}</div>`;
     }
 
+    // Outcome display
+    let outcomeHtml = '';
+    if (outcome) {
+      const o = OUTCOME_LABELS[outcome.effectiveness] ?? OUTCOME_LABELS.unknown;
+      const changesHtml = renderChanges(outcome.changes);
+      outcomeHtml = `
+        <div class="action-outcome ${o.cssClass}">
+          <span class="action-outcome-badge">${escapeHtml(o.label)}</span>
+          <span class="action-outcome-confidence">${Math.round(outcome.confidence * 100)}% confidence</span>
+          <div class="action-outcome-details">${changesHtml}</div>
+          ${outcome.confidenceReasons.length > 0
+            ? `<div class="action-outcome-reasons">${outcome.confidenceReasons.map((r) => escapeHtml(r)).join('<br>')}</div>`
+            : ''}
+        </div>
+      `;
+    }
+
     return `
       <div class="action-item" data-id="${escapeHtml(a.id)}">
         <div class="action-meta">
@@ -101,9 +136,29 @@ export class ActionHistory {
         <div class="action-description">${escapeHtml(a.description)}</div>
         ${detailsHtml}
         ${relatedHtml}
+        ${outcomeHtml}
       </div>
     `;
   }
+}
+
+function renderChanges(changes: { ph?: number; ec?: number; tds?: number; salt?: number; orp?: number; fac?: number; temperature?: number }): string {
+  const parts: string[] = [];
+  if (changes.ph !== undefined) parts.push(`pH ${formatDelta(changes.ph)}`);
+  if (changes.fac !== undefined) parts.push(`FAC ${formatDelta(changes.fac)}`);
+  if (changes.orp !== undefined) parts.push(`ORP ${formatDelta(changes.orp)}`);
+  if (changes.salt !== undefined) parts.push(`Salt ${formatDelta(changes.salt)}`);
+  if (changes.ec !== undefined) parts.push(`EC ${formatDelta(changes.ec)}`);
+  if (changes.tds !== undefined) parts.push(`TDS ${formatDelta(changes.tds)}`);
+  if (changes.temperature !== undefined) parts.push(`Temp ${formatDelta(changes.temperature)}`);
+
+  if (parts.length === 0) return 'No changes measured.';
+  return parts.join(' · ');
+}
+
+function formatDelta(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  return String(delta);
 }
 
 function formatAmount(amount: number, unit: string): string {

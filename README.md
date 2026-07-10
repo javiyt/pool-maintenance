@@ -20,6 +20,7 @@ Track water chemistry measurements, understand whether your pool water is okay, 
 - **Chemistry recommendations** — get approximate dosage amounts with target ranges and warnings when values are dangerous.
 - **Mark recommendations as performed** — convert a recommendation into a recorded maintenance action with pre-filled values you can edit before saving.
 - **Maintenance action history** — record chemical additions, chlorinator adjustments, filtration changes, water replacements, cleaning, manual tests, and other actions. View in reverse chronological order, delete entries. Actions can be linked to a specific measurement.
+- **Outcome evaluation** — each recorded action is automatically evaluated against before/after measurements. The evaluator detects field changes, accounts for intervening actions, and reports effectiveness (effective, partial, ineffective, unexpected, or unknown) with a confidence level — without claiming causality.
 - **Measurement history** — view in reverse chronological order, delete entries, export to JSON, and import from JSON.
 - **Mobile-first** — responsive layout that works on phones and tablets.
 - **Local storage** — all data stays in your browser. No server, no cloud sync.
@@ -197,6 +198,7 @@ src/
 │   ├── trendAnalysis.ts       # Measurement trend detection (rising/falling/stable)
 │   ├── saltChlorinator.ts     # Salt chlorinator adjustment calculator
 │   ├── maintenanceAssistant.ts# Full assistant — trends + recommendations + status
+│   ├── actionOutcomeEvaluator.ts # Evaluates action effectiveness from before/after measurements
 │   └── storage.ts             # localStorage persistence (measurements + actions)
 ├── ui/
 │   ├── settingsPanel.ts       # Pool settings drawer
@@ -211,6 +213,7 @@ tests/
 ├── chemistry.test.ts          # Catalog + recommendation engine tests
 ├── measurement.test.ts        # Validation + ID generation tests
 ├── actions.test.ts            # Action persistence, export/import, merge, sorting tests
+├── actionOutcomeEvaluator.test.ts # Action outcome evaluation tests
 ├── storage.test.ts            # Settings + measurement persistence + export/import tests
 └── maintenanceAssistant.test.ts # Full assistant integration tests
 ```
