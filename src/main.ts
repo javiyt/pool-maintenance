@@ -3,8 +3,8 @@ import { MeasurementForm } from './ui/measurementForm';
 import { RecommendationsPanel } from './ui/recommendationsPanel';
 import { HistoryPanel } from './ui/historyPanel';
 import { addMeasurement } from './domain/storage';
-import { calculateRecommendations } from './domain/chemistry';
-import { loadSettings } from './domain/storage';
+import { loadSettings, loadMeasurements } from './domain/storage';
+import { runAssistant } from './domain/maintenanceAssistant';
 
 function toLocalDatetime(d: Date): string {
   const y = d.getFullYear();
@@ -40,9 +40,10 @@ function init(): void {
     addMeasurement(measurement);
     historyPanel.render();
 
-    // Calculate and show recommendations
+    // Run the maintenance assistant with full history
     const settings = loadSettings();
-    const result = calculateRecommendations(measurement, settings);
+    const measurements = loadMeasurements();
+    const result = runAssistant(measurements, settings);
     recommendationsPanel.show(result);
 
     // Scroll to recommendations

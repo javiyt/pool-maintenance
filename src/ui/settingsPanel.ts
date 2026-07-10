@@ -1,4 +1,6 @@
 import type { PoolSettings } from '../domain/settings';
+import { DEFAULT_SALT_CHLORINATOR } from '../domain/settings';
+import type { SaltChlorinatorConfig } from '../domain/settings';
 import { loadSettings, saveSettings } from '../domain/storage';
 
 export class SettingsPanel {
@@ -8,7 +10,14 @@ export class SettingsPanel {
   private volumeUnitSelect: HTMLSelectElement;
   private poolTypeSelect: HTMLSelectElement;
   private unitSystemSelect: HTMLSelectElement;
+  private scEnabled: HTMLInputElement;
+  private scProduction: HTMLInputElement;
+  private scOutput: HTMLInputElement;
+  private scHours: HTMLInputElement;
+  private scMaxOutput: HTMLInputElement;
+  private scMaxHours: HTMLInputElement;
   private statusEl: HTMLElement;
+  private scFields: NodeListOf<HTMLElement>;
   private onSave: ((s: PoolSettings) => void) | null = null;
 
   constructor() {
@@ -18,7 +27,14 @@ export class SettingsPanel {
     this.volumeUnitSelect = document.getElementById('volumeUnit') as HTMLSelectElement;
     this.poolTypeSelect = document.getElementById('poolType') as HTMLSelectElement;
     this.unitSystemSelect = document.getElementById('unitSystem') as HTMLSelectElement;
+    this.scEnabled = document.getElementById('scEnabled') as HTMLInputElement;
+    this.scProduction = document.getElementById('scProduction') as HTMLInputElement;
+    this.scOutput = document.getElementById('scOutput') as HTMLInputElement;
+    this.scHours = document.getElementById('scHours') as HTMLInputElement;
+    this.scMaxOutput = document.getElementById('scMaxOutput') as HTMLInputElement;
+    this.scMaxHours = document.getElementById('scMaxHours') as HTMLInputElement;
     this.statusEl = document.getElementById('settingsStatus') as HTMLElement;
+    this.scFields = document.querySelectorAll('.sc-field') as NodeListOf<HTMLElement>;
 
     const toggleBtn = document.getElementById('settingsToggleBtn') as HTMLButtonElement;
     const closeBtn = document.getElementById('settingsCloseBtn') as HTMLButtonElement;
@@ -32,6 +48,9 @@ export class SettingsPanel {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !this.panel.hidden) this.close();
     });
+
+    // Toggle salt chlorinator fields visibility
+    this.scEnabled.addEventListener('change', () => this.toggleScFields());
   }
 
   onChange(cb: (s: PoolSettings) => void): void {
@@ -44,6 +63,17 @@ export class SettingsPanel {
     this.volumeUnitSelect.value = s.volumeUnit;
     this.poolTypeSelect.value = s.poolType;
     this.unitSystemSelect.value = s.unitSystem;
+
+    // Salt chlorinator fields
+    const sc = s.saltChlorinator ?? DEFAULT_SALT_CHLORINATOR;
+    this.scEnabled.checked = sc.enabled;
+    this.scProduction.value = String(sc.productionGramsPerHour);
+    this.scOutput.value = String(sc.currentOutputPercent);
+    this.scHours.value = String(sc.filtrationHoursPerDay);
+    this.scMaxOutput.value = String(sc.maxRecommendedOutputPercent);
+    this.scMaxHours.value = String(sc.maxRecommendedHoursPerDay);
+    this.toggleScFields();
+
     this.statusEl.textContent = '';
     this.statusEl.className = 'status-msg';
     this.panel.hidden = false;
@@ -51,6 +81,13 @@ export class SettingsPanel {
 
   close(): void {
     this.panel.hidden = true;
+  }
+
+  private toggleScFields(): void {
+    const visible = this.scEnabled.checked;
+    for (const el of this.scFields) {
+      (el as HTMLElement).style.display = visible ? '' : 'none';
+    }
   }
 
   private handleSave(): void {
@@ -72,6 +109,19 @@ export class SettingsPanel {
       poolType: this.poolTypeSelect.value as PoolSettings['poolType'],
       unitSystem: this.unitSystemSelect.value as PoolSettings['unitSystem'],
     };
+
+    // Salt chlorinator config
+    if (this.scEnabled.checked) {
+      const sc: SaltChlorinatorConfig = {
+        enabled: true,
+        productionGramsPerHour: parseFloat(this.scProduction.value) || DEFAULT_SALT_CHLORINATOR.productionGramsPerHour,
+        currentOutputPercent: parseFloat(this.scOutput.value) || DEFAULT_SALT_CHLORINATOR.currentOutputPercent,
+        filtrationHoursPerDay: parseFloat(this.scHours.value) || DEFAULT_SALT_CHLORINATOR.filtrationHoursPerDay,
+        maxRecommendedOutputPercent: parseFloat(this.scMaxOutput.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedOutputPercent,
+        maxRecommendedHoursPerDay: parseFloat(this.scMaxHours.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedHoursPerDay,
+      };
+      settings.saltChlorinator = sc;
+    }
 
     saveSettings(settings);
     this.showStatus('Settings saved.', 'success');

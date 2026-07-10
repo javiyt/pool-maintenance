@@ -503,6 +503,160 @@ body {
   text-align: center;
 }
 
+/* ═══ Assistant Summary ══════════════════════════════════════════ */
+.as-status-banner {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  text-align: center;
+}
+
+.as-status-balanced {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.as-status-needs-attention {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.as-status-needs-correction {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.as-status-unsafe {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.as-status-insufficient-data {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.as-summary {
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
+
+.as-next-check {
+  font-size: 0.85rem;
+  background: var(--color-bg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.as-next-check strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.as-subtitle {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+/* ═══ Trends Grid ════════════════════════════════════════════════ */
+.as-trends {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-bg);
+}
+
+.as-trends-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.5rem;
+}
+
+.as-trend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: help;
+}
+
+.as-trend-item.trend-info {
+  background: var(--color-bg);
+}
+
+.as-trend-item.trend-low {
+  background: var(--color-success-bg);
+}
+
+.as-trend-item.trend-medium {
+  background: var(--color-warning-bg);
+}
+
+.as-trend-item.trend-high,
+.as-trend-item.trend-danger {
+  background: var(--color-danger-bg);
+}
+
+.trend-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  width: 1.2rem;
+  text-align: center;
+}
+
+.trend-field {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.trend-value {
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══ Grouped Recommendations ════════════════════════════════════ */
+.as-rec-group {
+  margin-bottom: 1rem;
+}
+
+.as-rec-group-info {
+  opacity: 0.75;
+}
+
+.as-rec-group-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--color-bg);
+}
+
+/* ═══ Settings: Salt Chlorinator ═════════════════════════════════ */
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1rem 0;
+}
+
+.settings-subtitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-muted);
+}
+
 /* ═══ Responsive ═════════════════════════════════════════════════ */
 @media (max-width: 480px) {
   .app-main {
