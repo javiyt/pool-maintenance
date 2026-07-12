@@ -2,23 +2,24 @@ import { loadActions, deleteAction, loadMeasurements } from '../domain/storage';
 import type { MaintenanceAction, MaintenanceActionKind } from '../domain/actions';
 import { evaluateActionOutcomes } from '../domain/actionOutcomeEvaluator';
 import type { ActionOutcome, OutcomeEffectiveness } from '../domain/actionOutcomeEvaluator';
+import { t, formatAmount, formatDateTime } from '../i18n/index';
 
 const ACTION_KIND_LABELS: Record<MaintenanceActionKind, string> = {
-  chemical: 'Chemical',
-  chlorinator: 'Chlorinator',
-  filtration: 'Filtration',
-  'water-replacement': 'Water',
-  cleaning: 'Cleaning',
-  'manual-test': 'Test',
-  other: 'Other',
+  chemical: t('actionKind.chemical'),
+  chlorinator: t('actionKind.chlorinator'),
+  filtration: t('actionKind.filtration'),
+  'water-replacement': t('actionKind.waterReplacement'),
+  cleaning: t('actionKind.cleaning'),
+  'manual-test': t('actionKind.manualTest'),
+  other: t('actionKind.other'),
 };
 
 const OUTCOME_LABELS: Record<OutcomeEffectiveness, { label: string; cssClass: string }> = {
-  effective: { label: 'Effective', cssClass: 'outcome-effective' },
-  'partially-effective': { label: 'Partial', cssClass: 'outcome-partial' },
-  ineffective: { label: 'Ineffective', cssClass: 'outcome-ineffective' },
-  unexpected: { label: 'Unexpected', cssClass: 'outcome-unexpected' },
-  unknown: { label: 'Unknown', cssClass: 'outcome-unknown' },
+  effective: { label: t('outcome.effective'), cssClass: 'outcome-effective' },
+  'partially-effective': { label: t('outcome.partiallyEffective'), cssClass: 'outcome-partial' },
+  ineffective: { label: t('outcome.ineffective'), cssClass: 'outcome-ineffective' },
+  unexpected: { label: t('outcome.unexpected'), cssClass: 'outcome-unexpected' },
+  unknown: { label: t('outcome.unknown'), cssClass: 'outcome-unknown' },
 };
 
 export class ActionHistory {
@@ -38,7 +39,7 @@ export class ActionHistory {
     const measurements = loadMeasurements();
 
     if (actions.length === 0) {
-      this.content.innerHTML = '<p class="empty-state">No maintenance actions recorded yet.</p>';
+      this.content.innerHTML = `<p class="empty-state">${escapeHtml(t('actionHistory.empty'))}</p>`;
       return;
     }
 
@@ -58,7 +59,7 @@ export class ActionHistory {
     this.content.querySelectorAll('.action-delete').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.id;
-        if (id && confirm('Delete this action?')) {
+        if (id && confirm(t('actionHistory.deleteConfirm'))) {
           deleteAction(id);
           this.render();
           this.onChangeCb?.();
@@ -74,7 +75,7 @@ export class ActionHistory {
     if (a.chemical) {
       const c = a.chemical;
       const amountStr = formatAmount(c.amount, c.unit);
-      detailsHtml = `<div class="action-details">${escapeHtml(c.mainComponent)} — ${amountStr} (${productTypeLabel(c.productType)})</div>`;
+      detailsHtml = `<div class="action-details">${escapeHtml(c.mainComponent)} — ${escapeHtml(amountStr)} (${escapeHtml(productTypeLabel(c.productType))})</div>`;
     } else if (a.chlorinator) {
       const parts: string[] = [];
       if (a.chlorinator.previousOutputPercent !== undefined) {
@@ -97,12 +98,12 @@ export class ActionHistory {
       const parts: string[] = [];
       if (a.waterReplacement.estimatedLiters) parts.push(`${a.waterReplacement.estimatedLiters} L`);
       if (a.waterReplacement.estimatedPercent) parts.push(`~${a.waterReplacement.estimatedPercent}%`);
-      detailsHtml = `<div class="action-details">Water replacement: ${escapeHtml(parts.join(', '))}</div>`;
+      detailsHtml = `<div class="action-details">${escapeHtml(t('actionForm.type.waterReplacement'))}: ${escapeHtml(parts.join(', '))}</div>`;
     }
 
     let relatedHtml = '';
     if (a.relatedMeasurementId) {
-      relatedHtml = `<div class="action-related">Linked to measurement ${escapeHtml(a.relatedMeasurementId.slice(0, 12))}…</div>`;
+      relatedHtml = `<div class="action-related">${escapeHtml(t('outcome.linkedTo', { id: a.relatedMeasurementId.slice(0, 12) + '…' }))}</div>`;
     }
 
     if (a.notes) {
@@ -117,7 +118,7 @@ export class ActionHistory {
       outcomeHtml = `
         <div class="action-outcome ${o.cssClass}">
           <span class="action-outcome-badge">${escapeHtml(o.label)}</span>
-          <span class="action-outcome-confidence">${Math.round(outcome.confidence * 100)}% confidence</span>
+          <span class="action-outcome-confidence">${escapeHtml(t('outcome.confidence', { pct: Math.round(outcome.confidence * 100) }))}</span>
           <div class="action-outcome-details">${changesHtml}</div>
           ${outcome.confidenceReasons.length > 0
             ? `<div class="action-outcome-reasons">${outcome.confidenceReasons.map((r) => escapeHtml(r)).join('<br>')}</div>`
@@ -131,7 +132,7 @@ export class ActionHistory {
         <div class="action-meta">
           <span class="action-kind-badge">${escapeHtml(kindLabel)}</span>
           <span class="history-date">${escapeHtml(formatDateTime(a.performedAt))}</span>
-          <button class="action-delete" data-id="${escapeHtml(a.id)}">Delete</button>
+          <button class="action-delete" data-id="${escapeHtml(a.id)}">${escapeHtml(t('actionHistory.delete'))}</button>
         </div>
         <div class="action-description">${escapeHtml(a.description)}</div>
         ${detailsHtml}
@@ -144,15 +145,15 @@ export class ActionHistory {
 
 function renderChanges(changes: { ph?: number; ec?: number; tds?: number; salt?: number; orp?: number; fac?: number; temperature?: number }): string {
   const parts: string[] = [];
-  if (changes.ph !== undefined) parts.push(`pH ${formatDelta(changes.ph)}`);
-  if (changes.fac !== undefined) parts.push(`FAC ${formatDelta(changes.fac)}`);
-  if (changes.orp !== undefined) parts.push(`ORP ${formatDelta(changes.orp)}`);
-  if (changes.salt !== undefined) parts.push(`Salt ${formatDelta(changes.salt)}`);
-  if (changes.ec !== undefined) parts.push(`EC ${formatDelta(changes.ec)}`);
-  if (changes.tds !== undefined) parts.push(`TDS ${formatDelta(changes.tds)}`);
-  if (changes.temperature !== undefined) parts.push(`Temp ${formatDelta(changes.temperature)}`);
+  if (changes.ph !== undefined) parts.push(t('outcome.changes.ph', { delta: formatDelta(changes.ph) }));
+  if (changes.fac !== undefined) parts.push(t('outcome.changes.fac', { delta: formatDelta(changes.fac) }));
+  if (changes.orp !== undefined) parts.push(t('outcome.changes.orp', { delta: formatDelta(changes.orp) }));
+  if (changes.salt !== undefined) parts.push(t('outcome.changes.salt', { delta: formatDelta(changes.salt) }));
+  if (changes.ec !== undefined) parts.push(t('outcome.changes.ec', { delta: formatDelta(changes.ec) }));
+  if (changes.tds !== undefined) parts.push(t('outcome.changes.tds', { delta: formatDelta(changes.tds) }));
+  if (changes.temperature !== undefined) parts.push(t('outcome.changes.temperature', { delta: formatDelta(changes.temperature) }));
 
-  if (parts.length === 0) return 'No changes measured.';
+  if (parts.length === 0) return t('outcome.noChanges');
   return parts.join(' · ');
 }
 
@@ -161,38 +162,16 @@ function formatDelta(delta: number): string {
   return String(delta);
 }
 
-function formatAmount(amount: number, unit: string): string {
-  if (unit === 'ml' && amount >= 1000) {
-    return `${(amount / 1000).toFixed(1)} L`;
-  }
-  return `${amount} ${unit}`;
-}
-
 function productTypeLabel(pt: string): string {
-  const labels: Record<string, string> = {
-    'ph-reducer': 'pH reducer',
-    'ph-increaser': 'pH increaser',
-    'chlorine-granules': 'Chlorine',
-    'chlorine-stabilizer': 'Stabilizer',
-    'alkalinity-reducer': 'Alkalinity reducer',
-    'pool-salt': 'Salt',
+  const keyMap: Record<string, string> = {
+    'ph-reducer': 'productType.phReducer',
+    'ph-increaser': 'productType.phIncreaser',
+    'chlorine-granules': 'productType.chlorineGranules',
+    'chlorine-stabilizer': 'productType.chlorineStabilizer',
+    'alkalinity-reducer': 'productType.alkalinityReducer',
+    'pool-salt': 'productType.poolSalt',
   };
-  return labels[pt] ?? pt;
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
+  return t(keyMap[pt] as any) ?? pt;
 }
 
 function escapeHtml(s: string): string {

@@ -6,6 +6,7 @@ import {
   evaluateActionOutcomes,
   type ActionOutcome,
 } from './actionOutcomeEvaluator';
+import type { TranslationKey, TranslationParams } from '../i18n/types';
 
 // ── Public types ─────────────────────────────────────────────────
 
@@ -40,6 +41,10 @@ export interface HistoricalInsight {
   label: string;
   description: string;
   value: string;
+  labelKey?: TranslationKey;
+  labelParams?: TranslationParams;
+  descriptionKey?: TranslationKey;
+  descriptionParams?: TranslationParams;
   sampleSize: number;
   confidence: LearningConfidence;
   actionType: string;
@@ -486,14 +491,16 @@ export function deriveInsights(adjustments: LearnedAdjustment[]): HistoricalInsi
     (a) => a.actionType === 'chlorinator' && a.metric === 'fac' && a.confidence !== 'none',
   );
   for (const adj of chlorinatorFAC) {
-    const bandLabel = adj.filters.outputPercentBand
-      ? ` (output ${adj.filters.outputPercentBand}%)`
-      : '';
-    const tempLabel = adj.filters.temperatureBand
-      ? `, ${adj.filters.temperatureBand} water` : '';
     insights.push({
-      label: `FAC increase per chlorinator adjustment${bandLabel}${tempLabel}`,
+      label: `FAC increase per chlorinator adjustment${adj.filters.outputPercentBand ? ` (output ${adj.filters.outputPercentBand}%)` : ''}${adj.filters.temperatureBand ? `, ${adj.filters.temperatureBand} water` : ''}`,
       description: `Observed median FAC increase of ${adj.observedMedianEffect} ppm per chlorinator adjustment.`,
+      labelKey: 'insights.facPerChlorinator',
+      labelParams: {
+        band: adj.filters.outputPercentBand ? ` (output ${adj.filters.outputPercentBand}%)` : '',
+        temp: adj.filters.temperatureBand ? `, ${adj.filters.temperatureBand} water` : '',
+      },
+      descriptionKey: 'insights.facPerChlorinator.desc',
+      descriptionParams: { value: String(adj.observedMedianEffect) },
       value: `${adj.observedMedianEffect > 0 ? '+' : ''}${adj.observedMedianEffect} ppm`,
       sampleSize: adj.sampleSize,
       confidence: adj.confidence,
@@ -507,11 +514,14 @@ export function deriveInsights(adjustments: LearnedAdjustment[]): HistoricalInsi
     (a) => a.actionType === 'chemical:chlorine-granules' && a.metric === 'fac' && a.confidence !== 'none',
   );
   for (const adj of granulesFAC) {
-    const tempLabel = adj.filters.temperatureBand
-      ? ` (${adj.filters.temperatureBand} water)` : '';
+    const tempVal = adj.filters.temperatureBand ?? '';
     insights.push({
-      label: `FAC response to chlorine granules${tempLabel}`,
+      label: `FAC response to chlorine granules${tempVal ? ` (${tempVal} water)` : ''}`,
       description: `Observed median FAC change of ${adj.observedMedianEffect} ppm after chlorine granules application.`,
+      labelKey: 'insights.facResponseGranules',
+      labelParams: { temp: tempVal ? ` (${tempVal} water)` : '' },
+      descriptionKey: 'insights.facResponseGranules.desc',
+      descriptionParams: { value: String(adj.observedMedianEffect) },
       value: `${adj.observedMedianEffect > 0 ? '+' : ''}${adj.observedMedianEffect} ppm`,
       sampleSize: adj.sampleSize,
       confidence: adj.confidence,
@@ -527,11 +537,15 @@ export function deriveInsights(adjustments: LearnedAdjustment[]): HistoricalInsi
   );
   for (const adj of phAdjustments) {
     const productLabel = adj.actionType === 'chemical:ph-reducer' ? 'pH reducer' : 'pH increaser';
-    const tempLabel = adj.filters.temperatureBand
-      ? ` (${adj.filters.temperatureBand} water)` : '';
+    const tempVal = adj.filters.temperatureBand ?? '';
+    const isReducer = adj.actionType === 'chemical:ph-reducer';
     insights.push({
-      label: `pH response to ${productLabel}${tempLabel}`,
+      label: `pH response to ${productLabel}${tempVal ? ` (${tempVal} water)` : ''}`,
       description: `Observed median pH change of ${adj.observedMedianEffect} after ${productLabel} application.`,
+      labelKey: isReducer ? 'insights.phResponseReducer' : 'insights.phResponseIncreaser',
+      labelParams: { temp: tempVal ? ` (${tempVal} water)` : '' },
+      descriptionKey: isReducer ? 'insights.phResponseReducer.desc' : 'insights.phResponseIncreaser.desc',
+      descriptionParams: { value: String(adj.observedMedianEffect) },
       value: `${adj.observedMedianEffect > 0 ? '+' : ''}${adj.observedMedianEffect}`,
       sampleSize: adj.sampleSize,
       confidence: adj.confidence,
@@ -546,8 +560,11 @@ export function deriveInsights(adjustments: LearnedAdjustment[]): HistoricalInsi
   );
   for (const adj of saltAdjustments) {
     insights.push({
-      label: `Salt level response to pool salt addition`,
+      label: 'Salt level response to pool salt addition',
       description: `Observed median salt increase of ${adj.observedMedianEffect} ppm after pool salt application.`,
+      labelKey: 'insights.saltResponse',
+      descriptionKey: 'insights.saltResponse.desc',
+      descriptionParams: { value: String(adj.observedMedianEffect) },
       value: `+${adj.observedMedianEffect} ppm`,
       sampleSize: adj.sampleSize,
       confidence: adj.confidence,

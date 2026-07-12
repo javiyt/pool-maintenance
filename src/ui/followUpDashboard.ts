@@ -1,3 +1,5 @@
+import { t, formatDateTime } from '../i18n/index';
+import type { TranslationKey } from '../i18n/types';
 import {
   loadActions,
   saveActions,
@@ -20,9 +22,17 @@ import {
   addUnusualEventNote,
   type FollowUp,
   type UnusualEventType,
-  UNUSUAL_EVENT_LABELS,
 } from '../domain/followUp';
 import type { MaintenanceAction } from '../domain/actions';
+
+const EVENT_TYPE_KEYS: Array<{ key: string; tKey: TranslationKey }> = [
+  { key: 'rain', tKey: 'event.rain' },
+  { key: 'manyBathers', tKey: 'event.manyBathers' },
+  { key: 'refill', tKey: 'event.refill' },
+  { key: 'cleaning', tKey: 'event.cleaning' },
+  { key: 'coverRemoved', tKey: 'event.coverRemoved' },
+  { key: 'equipmentIssue', tKey: 'event.equipmentIssue' },
+];
 
 export class FollowUpDashboard {
   private content: HTMLElement;
@@ -82,7 +92,7 @@ export class FollowUpDashboard {
 
     if (followUps.length === 0) {
       this.content.innerHTML =
-        '<p class="empty-state">No follow-up actions to track. When you mark a recommendation as performed, a follow-up will appear here.</p>';
+        `<p class="empty-state">${escapeHtml(t('followup.empty'))}</p>`;
       return;
     }
 
@@ -98,7 +108,7 @@ export class FollowUpDashboard {
     if (pending.length > 0) {
       sections.push(`
         <div class="followup-section">
-          <h3 class="followup-section-title">Pending Retests</h3>
+          <h3 class="followup-section-title">${escapeHtml(t('followup.pending.title'))}</h3>
           <div class="followup-list">
             ${pending.map((fu) => this.renderPendingItem(fu, actionMap)).join('')}
           </div>
@@ -110,7 +120,7 @@ export class FollowUpDashboard {
     if (recent.length > 0) {
       sections.push(`
         <div class="followup-section">
-          <h3 class="followup-section-title">Recently Evaluated</h3>
+          <h3 class="followup-section-title">${escapeHtml(t('followup.evaluated.title'))}</h3>
           <div class="followup-list">
             ${recent.map((fu) => this.renderEvaluatedItem(fu, actionMap)).join('')}
           </div>
@@ -122,7 +132,7 @@ export class FollowUpDashboard {
     if (effective.length > 0) {
       sections.push(`
         <div class="followup-section">
-          <h3 class="followup-section-title">Effective Actions</h3>
+          <h3 class="followup-section-title">${escapeHtml(t('followup.effective.title'))}</h3>
           <div class="followup-list">
             ${effective.slice(0, 5).map((fu) => this.renderEvaluatedItem(fu, actionMap)).join('')}
           </div>
@@ -134,16 +144,16 @@ export class FollowUpDashboard {
     if (ineffUnexp.length > 0) {
       sections.push(`
         <div class="followup-section">
-          <h3 class="followup-section-title">Ineffective or Unexpected Actions</h3>
+          <h3 class="followup-section-title">${escapeHtml(t('followup.ineffective.title'))}</h3>
           <div class="followup-list">
             ${ineffUnexp.slice(0, 5).map((fu) => this.renderEvaluatedItem(fu, actionMap, false)).join('')}
           </div>
-          ${ineffUnexp.length > 5 ? `<p class="followup-more">+ ${ineffUnexp.length - 5} more</p>` : ''}
+          ${ineffUnexp.length > 5 ? `<p class="followup-more">${escapeHtml(t('followup.more', { count: ineffUnexp.length - 5 }))}</p>` : ''}
         </div>
       `);
     }
 
-    this.content.innerHTML = sections.join('') || '<p class="empty-state">No follow-up data to display.</p>';
+    this.content.innerHTML = sections.join('') || `<p class="empty-state">${escapeHtml(t('followup.noData'))}</p>`;
 
     // Bind flag/note controls
     this.bindControls();
@@ -153,7 +163,7 @@ export class FollowUpDashboard {
     const action = actionMap.get(fu.actionId);
     const actionDesc = action ? escapeHtml(action.description) : 'Unknown action';
     const delayLabel = delayHoursToString(fu.suggestedRetestDelay);
-    const statusLabel = fu.status === 'retest-due' ? '🔴 Due now' : '⏳ Awaiting retest';
+    const statusLabel = t(fu.status === 'retest-due' ? 'followup.dueNow' : 'followup.awaitingRetest');
 
     // Generate a message based on action kind
     const actionKind = action?.kind;
@@ -163,42 +173,48 @@ export class FollowUpDashboard {
       <div class="followup-item followup-pending" data-fu-id="${escapeHtml(fu.id)}">
         <div class="followup-meta">
           <span class="followup-status-badge ${fu.status === 'retest-due' ? 'badge-due' : 'badge-waiting'}">${statusLabel}</span>
-          <span class="followup-time">Retest after ~${delayLabel}</span>
+          <span class="followup-time">${escapeHtml(t('followup.retestAfter', { delay: delayLabel }))}</span>
         </div>
         <div class="followup-message">${escapeHtml(message)}</div>
         <div class="followup-actions">
           <div class="followup-flags">
             <label class="followup-flag">
               <input type="checkbox" class="fu-atypical" ${fu.atypical ? 'checked' : ''} />
-              Atypical
+              ${escapeHtml(t('followup.atypical'))}
             </label>
             <label class="followup-flag">
               <input type="checkbox" class="fu-incorrect" ${fu.incorrectlyRecorded ? 'checked' : ''} />
-              Incorrect record
+              ${escapeHtml(t('followup.incorrectRecord'))}
             </label>
             <label class="followup-flag">
               <input type="checkbox" class="fu-exclude" ${fu.excludedFromLearning ? 'checked' : ''} />
-              Exclude from learning
+              ${escapeHtml(t('followup.excludeFromLearning'))}
             </label>
           </div>
           <div class="followup-event-notes">
             <select class="fu-event-select">
-              <option value="">Add unusual event…</option>
-              ${Object.entries(UNUSUAL_EVENT_LABELS).map(([key, label]) =>
-                `<option value="${key}">${escapeHtml(label)}</option>`
+              <option value="">${escapeHtml(t('followup.addEvent'))}</option>
+              ${EVENT_TYPE_KEYS.map(({ key, tKey }) =>
+                `<option value="${key}">${escapeHtml(t(tKey))}</option>`
               ).join('')}
             </select>
             ${fu.unusualEventNotes.length > 0
-              ? `<div class="followup-event-tags">${fu.unusualEventNotes.map((n) =>
-                  `<span class="followup-event-tag">${escapeHtml(UNUSUAL_EVENT_LABELS[n.eventType as UnusualEventType] ?? n.eventType)}${n.note ? `: ${escapeHtml(n.note)}` : ''}</span>`
-                ).join('')}</div>`
+              ? `<div class="followup-event-tags">${fu.unusualEventNotes.map((n) => {
+                  const label = n.eventType in EVENT_TYPE_KEYS_MAP
+                    ? t(EVENT_TYPE_KEYS_MAP[n.eventType as keyof typeof EVENT_TYPE_KEYS_MAP])
+                    : n.eventType;
+                  return `<span class="followup-event-tag">${escapeHtml(label)}${n.note ? `: ${escapeHtml(n.note)}` : ''}</span>`;
+                }).join('')}</div>`
               : ''}
           </div>
         </div>
         ${action?.unusualEventNotes && action.unusualEventNotes.length > 0
-          ? `<div class="followup-event-tags">${action.unusualEventNotes.map((n: any) =>
-              `<span class="followup-event-tag">${escapeHtml(UNUSUAL_EVENT_LABELS[n.eventType as UnusualEventType] ?? n.eventType)}${n.note ? `: ${escapeHtml(n.note)}` : ''}</span>`
-            ).join('')}</div>`
+          ? `<div class="followup-event-tags">${action.unusualEventNotes.map((n: any) => {
+              const label = n.eventType in EVENT_TYPE_KEYS_MAP
+                ? t(EVENT_TYPE_KEYS_MAP[n.eventType as keyof typeof EVENT_TYPE_KEYS_MAP])
+                : n.eventType;
+              return `<span class="followup-event-tag">${escapeHtml(label)}${n.note ? `: ${escapeHtml(n.note)}` : ''}</span>`;
+            }).join('')}</div>`
           : ''}
       </div>
     `;
@@ -211,17 +227,26 @@ export class FollowUpDashboard {
 
     let outcomeHtml = '';
     if (outcome && showEffectiveness) {
-      const effectivenessLabel = outcome.effectiveness === 'effective' ? '✅ Effective'
-        : outcome.effectiveness === 'partially-effective' ? '🟡 Partial'
-        : outcome.effectiveness === 'ineffective' ? '❌ Ineffective'
-        : outcome.effectiveness === 'unexpected' ? '🔮 Unexpected'
-        : '❓ Unknown';
+      const effectivenessKey: TranslationKey = outcome.effectiveness === 'effective' ? 'outcome.effective'
+        : outcome.effectiveness === 'partially-effective' ? 'outcome.partiallyEffective'
+        : outcome.effectiveness === 'ineffective' ? 'outcome.ineffective'
+        : outcome.effectiveness === 'unexpected' ? 'outcome.unexpected'
+        : 'outcome.unknown';
+
+      const effectivenessEmoji: Record<string, string> = {
+        'effective': '✅',
+        'partially-effective': '🟡',
+        'ineffective': '❌',
+        'unexpected': '🔮',
+      };
+      const emoji = effectivenessEmoji[outcome.effectiveness] ?? '❓';
+      const effectivenessLabel = `${emoji} ${t(effectivenessKey)}`;
 
       const changesHtml = renderChanges(outcome.changes);
       outcomeHtml = `
         <div class="followup-outcome">
-          <span class="followup-effectiveness">${effectivenessLabel}</span>
-          <span class="followup-confidence">${Math.round(outcome.confidence * 100)}% confidence</span>
+          <span class="followup-effectiveness">${escapeHtml(effectivenessLabel)}</span>
+          <span class="followup-confidence">${escapeHtml(t('outcome.confidence', { pct: Math.round(outcome.confidence * 100) }))}</span>
           <div class="followup-changes">${changesHtml}</div>
         </div>
       `;
@@ -243,15 +268,15 @@ export class FollowUpDashboard {
           <div class="followup-flags">
             <label class="followup-flag">
               <input type="checkbox" class="fu-atypical" ${fu.atypical ? 'checked' : ''} />
-              Atypical
+              ${escapeHtml(t('followup.atypical'))}
             </label>
             <label class="followup-flag">
               <input type="checkbox" class="fu-incorrect" ${fu.incorrectlyRecorded ? 'checked' : ''} />
-              Incorrect record
+              ${escapeHtml(t('followup.incorrectRecord'))}
             </label>
             <label class="followup-flag">
               <input type="checkbox" class="fu-exclude" ${fu.excludedFromLearning ? 'checked' : ''} />
-              Exclude from learning
+              ${escapeHtml(t('followup.excludeFromLearning'))}
             </label>
           </div>
         </div>
@@ -262,28 +287,28 @@ export class FollowUpDashboard {
   private getPendingMessage(actionKind: string | undefined, actionDesc: string): string {
     switch (actionKind) {
       case 'chemical':
-        return `You added ${actionDesc.toLowerCase().replace(/^added\s+/i, '')}. Add a new measurement to evaluate the result.`;
+        return t('followup.pending.chemical', { desc: stripAddedPrefix(actionDesc) });
       case 'chlorinator':
-        return `You adjusted the chlorinator. Add a new measurement to see if FAC has improved.`;
+        return t('followup.pending.chlorinator');
       case 'filtration':
-        return `You changed the filtration schedule. Add a new measurement to check the effect on water quality.`;
+        return t('followup.pending.filtration');
       case 'water-replacement':
-        return `You performed a water replacement. Add a new measurement to check salt and TDS levels.`;
+        return t('followup.pending.waterReplacement');
       default:
-        return `Action recorded: ${actionDesc}. Add a new measurement to evaluate the result.`;
+        return t('followup.pending.generic', { desc: actionDesc });
     }
   }
 
   private getOutcomeMessage(action: MaintenanceAction | undefined, outcome: ActionOutcome): string {
     if (!action) return '';
     const changes: string[] = [];
-    if (outcome.changes.fac !== undefined) changes.push(`FAC ${formatDelta(outcome.changes.fac)} ppm`);
-    if (outcome.changes.ph !== undefined) changes.push(`pH ${formatDelta(outcome.changes.ph)}`);
-    if (outcome.changes.orp !== undefined) changes.push(`ORP ${formatDelta(outcome.changes.orp)}`);
-    if (outcome.changes.salt !== undefined) changes.push(`Salt ${formatDelta(outcome.changes.salt)}`);
+    if (outcome.changes.fac !== undefined) changes.push(t('outcome.changes.fac', { delta: formatDelta(outcome.changes.fac) }));
+    if (outcome.changes.ph !== undefined) changes.push(t('outcome.changes.ph', { delta: formatDelta(outcome.changes.ph) }));
+    if (outcome.changes.orp !== undefined) changes.push(t('outcome.changes.orp', { delta: formatDelta(outcome.changes.orp) }));
+    if (outcome.changes.salt !== undefined) changes.push(t('outcome.changes.salt', { delta: formatDelta(outcome.changes.salt) }));
 
     if (changes.length > 0) {
-      return `${changes.join(', ')} after the action.`;
+      return changes.join(', ') + '.';
     }
     return '';
   }
@@ -353,17 +378,27 @@ export class FollowUpDashboard {
 
 // ── Helpers ───────────────────────────────────────────────────────
 
+/** Lookup from event type string (e.g. 'rain') to its TranslationKey. */
+const EVENT_TYPE_KEYS_MAP: Record<string, TranslationKey> = {
+  rain: 'event.rain',
+  manyBathers: 'event.manyBathers',
+  refill: 'event.refill',
+  cleaning: 'event.cleaning',
+  coverRemoved: 'event.coverRemoved',
+  equipmentIssue: 'event.equipmentIssue',
+};
+
 function renderChanges(changes: { ph?: number; ec?: number; tds?: number; salt?: number; orp?: number; fac?: number; temperature?: number }): string {
   const parts: string[] = [];
-  if (changes.ph !== undefined) parts.push(`pH ${formatDelta(changes.ph)}`);
-  if (changes.fac !== undefined) parts.push(`FAC ${formatDelta(changes.fac)}`);
-  if (changes.orp !== undefined) parts.push(`ORP ${formatDelta(changes.orp)}`);
-  if (changes.salt !== undefined) parts.push(`Salt ${formatDelta(changes.salt)}`);
-  if (changes.ec !== undefined) parts.push(`EC ${formatDelta(changes.ec)}`);
-  if (changes.tds !== undefined) parts.push(`TDS ${formatDelta(changes.tds)}`);
-  if (changes.temperature !== undefined) parts.push(`Temp ${formatDelta(changes.temperature)}`);
+  if (changes.ph !== undefined) parts.push(t('outcome.changes.ph', { delta: formatDelta(changes.ph) }));
+  if (changes.fac !== undefined) parts.push(t('outcome.changes.fac', { delta: formatDelta(changes.fac) }));
+  if (changes.orp !== undefined) parts.push(t('outcome.changes.orp', { delta: formatDelta(changes.orp) }));
+  if (changes.salt !== undefined) parts.push(t('outcome.changes.salt', { delta: formatDelta(changes.salt) }));
+  if (changes.ec !== undefined) parts.push(t('outcome.changes.ec', { delta: formatDelta(changes.ec) }));
+  if (changes.tds !== undefined) parts.push(t('outcome.changes.tds', { delta: formatDelta(changes.tds) }));
+  if (changes.temperature !== undefined) parts.push(t('outcome.changes.temperature', { delta: formatDelta(changes.temperature) }));
 
-  if (parts.length === 0) return 'No changes measured.';
+  if (parts.length === 0) return t('outcome.noChanges');
   return parts.join(' · ');
 }
 
@@ -378,23 +413,13 @@ function delayHoursToString(hours: number): string {
   return `${days}d`;
 }
 
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-}
-
 function escapeHtml(s: string): string {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+/** Strip a leading "Added " (case-insensitive) prefix from a description string. */
+function stripAddedPrefix(s: string): string {
+  return s.replace(/^[Aa]dded\s/, '');
 }

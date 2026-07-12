@@ -2,6 +2,7 @@ import type { Measurement } from './measurement';
 import type { PoolSettings, HistoricalLearningConfig } from './settings';
 import { volumeInLiters, DEFAULT_HISTORICAL_LEARNING } from './settings';
 import { getTargetRange, classifyLevel, TARGET_RANGES } from './chemistry';
+import type { TargetRange } from './chemistry';
 import { analyzeTrends } from './trendAnalysis';
 import type { MeasurementTrend } from './trendAnalysis';
 import { calculateChlorinatorAdjustment } from './saltChlorinator';
@@ -9,6 +10,7 @@ import type { SaltChlorinatorConfig } from './saltChlorinator';
 import type { MaintenanceAction } from './actions';
 import { computeLearning, getTemperatureBand, getOutputPercentBand } from './historicalLearning';
 import type { LearnedAdjustment, LearningConfidence } from './historicalLearning';
+import type { TranslationKey, TranslationParams } from '../i18n/types';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -36,14 +38,31 @@ export interface MaintenanceRecommendation {
   title: string;
   summary: string;
   reason: string;
+  /** Translation key for the title (rendered instead of `title` when available). */
+  titleKey?: TranslationKey;
+  /** Translation parameters for the title. */
+  titleParams?: TranslationParams;
+  /** Translation key for the summary (rendered instead of `summary` when available). */
+  summaryKey?: TranslationKey;
+  /** Translation parameters for the summary. */
+  summaryParams?: TranslationParams;
+  /** Translation key for the reason (rendered instead of `reason` when available). */
+  reasonKey?: TranslationKey;
+  /** Translation parameters for the reason. */
+  reasonParams?: TranslationParams;
   priority: number;
   relatedFields: Array<keyof Measurement>;
   chemicalProductId?: string;
   genericProductName?: string;
+  /** Translation key for the generic product name. */
+  genericProductNameKey?: TranslationKey;
   mainComponent?: string;
+  /** Translation key for the main component. */
+  mainComponentKey?: TranslationKey;
   estimatedAmount?: number;
   unit?: 'ml' | 'l' | 'g' | 'kg';
   equipmentName?: string;
+  equipmentNameKey?: TranslationKey;
   suggestedOutputPercent?: number;
   suggestedAdditionalHours?: number;
   suggestedFiltrationHours?: number;
@@ -102,6 +121,187 @@ function makeRange(min: number, max: number, unit: string) {
 function sortBySeverity(a: MaintenanceRecommendation, b: MaintenanceRecommendation): number {
   const order: Record<string, number> = { danger: 0, high: 1, medium: 2, low: 3, info: 4 };
   return (order[a.severity] ?? 5) - (order[b.severity] ?? 5);
+}
+
+// ── Translation key enrichment ──────────────────────────────────
+
+/**
+ * Enrich recommendations with translation keys based on structured
+ * properties (kind, chemicalProductId, etc.) so the UI can render
+ * in any language without the domain knowing the selected language.
+ */
+function enrichRecommendationKeys(
+  recs: MaintenanceRecommendation[],
+  latest: Measurement,
+  _phRange: TargetRange,
+  _facRange: TargetRange,
+  _saltRange: TargetRange,
+  _settings: PoolSettings,
+): void {
+  for (const rec of recs) {
+    // ── Product name / component keys ──────────────────────────
+    if (rec.chemicalProductId) {
+      const pid = rec.chemicalProductId;
+      const productKeyMap: Record<string, { nameKey: TranslationKey; componentKey: TranslationKey }> = {
+        'ph-reducer-liquid': { nameKey: 'product.phReducer.name', componentKey: 'product.phReducer.component' },
+        'ph-increaser-liquid': { nameKey: 'product.phIncreaser.name', componentKey: 'product.phIncreaser.component' },
+        'chlorine-granules': { nameKey: 'product.chlorineGranules.name', componentKey: 'product.chlorineGranules.component' },
+        'chlorine-stabilizer': { nameKey: 'product.chlorineStabilizer.name', componentKey: 'product.chlorineStabilizer.component' },
+        'total-alkalinity-reducer': { nameKey: 'product.alkalinityReducer.name', componentKey: 'product.alkalinityReducer.component' },
+        'pool-salt': { nameKey: 'product.poolSalt.name', componentKey: 'product.poolSalt.component' },
+      };
+      const pm = productKeyMap[pid];
+      if (pm) {
+        rec.genericProductNameKey = pm.nameKey;
+        rec.mainComponentKey = pm.componentKey;
+      }
+    }
+
+    // ── Equipment name ─────────────────────────────────────────
+    if (rec.kind === 'equipment' && rec.equipmentName?.toLowerCase().includes('clorador')) {
+      rec.equipmentNameKey = 'equipment.chlorinator';
+    }
+
+    // ── Title / summary / reason keys ──────────────────────────
+    const phVal = latest.ph?.toFixed(1) ?? '';
+    const facVal = latest.fac?.toFixed(1) ?? '';
+    const orpVal = latest.orp ?? 0;
+
+    // Strategy: match by (kind, severity, chemicalProductId, priority) combo
+    if (rec.kind === 'warning' && rec.severity === 'danger' && rec.relatedFields.includes('ph')) {
+      rec.titleKey = 'rec.ph.critical.title';
+      rec.summaryKey = 'rec.ph.critical.summary';
+      rec.summaryParams = { value: phVal };
+      rec.reasonKey = 'rec.ph.critical.reason';
+      rec.reasonParams = { value: phVal, min: String(_phRange.min), max: String(_phRange.max) };
+    } else if (rec.kind === 'warning' && rec.severity === 'danger' && rec.relatedFields.includes('fac')) {
+      rec.titleKey = 'rec.fac.critical.title';
+      rec.summaryKey = 'rec.fac.critical.summary';
+      rec.summaryParams = { value: facVal };
+      rec.reasonKey = 'rec.fac.critical.reason';
+      rec.reasonParams = { value: facVal, min: String(_facRange.min), max: String(_facRange.max) };
+    } else if (rec.kind === 'warning' && rec.severity === 'high' && rec.relatedFields.includes('orp')) {
+      rec.titleKey = 'rec.orp.veryLow.title';
+      rec.summaryKey = 'rec.orp.veryLow.summary';
+      rec.summaryParams = { value: String(orpVal) };
+      rec.reasonKey = 'rec.orp.veryLow.reason';
+      rec.reasonParams = { value: String(orpVal) };
+    } else if (rec.kind === 'monitor' && rec.severity === 'medium' && rec.title.includes('ORP')) {
+      rec.titleKey = 'rec.orp.below650.title';
+      rec.summaryKey = 'rec.orp.below650.summary';
+      rec.summaryParams = { value: String(orpVal) };
+      rec.reasonKey = 'rec.orp.below650.reason';
+      rec.reasonParams = { value: String(orpVal) };
+    } else if (rec.kind === 'monitor' && rec.severity === 'low' && rec.relatedFields.includes('temperature')) {
+      rec.titleKey = 'rec.temp.high.title';
+      rec.summaryKey = 'rec.temp.high.summary';
+      rec.summaryParams = { value: latest.temperature?.toFixed(1) ?? '' };
+      rec.reasonKey = 'rec.temp.high.reason';
+    } else if (rec.chemicalProductId === 'ph-increaser-liquid') {
+      rec.titleKey = 'rec.ph.raise.title';
+      rec.summaryKey = 'rec.ph.raise.summary';
+      rec.summaryParams = { value: phVal, min: String(_phRange.min), max: String(_phRange.max) };
+      rec.reasonKey = 'rec.ph.raise.reason';
+      rec.reasonParams = { value: phVal, min: String(_phRange.min), max: String(_phRange.max) };
+    } else if (rec.chemicalProductId === 'ph-reducer-liquid') {
+      rec.titleKey = 'rec.ph.lower.title';
+      rec.summaryKey = 'rec.ph.lower.summary';
+      rec.summaryParams = { value: phVal, min: String(_phRange.min), max: String(_phRange.max) };
+      rec.reasonKey = 'rec.ph.lower.reason';
+      rec.reasonParams = { value: phVal, min: String(_phRange.min), max: String(_phRange.max) };
+    } else if (rec.chemicalProductId === 'pool-salt') {
+      rec.titleKey = 'rec.salt.add.title';
+      rec.summaryKey = 'rec.salt.add.summary';
+      rec.summaryParams = { value: String(latest.salt ?? 0), min: String(_saltRange.min), max: String(_saltRange.max) };
+      rec.reasonKey = 'rec.salt.add.reason';
+      rec.reasonParams = { value: String(latest.salt ?? 0), target: String(_saltRange.ideal), min: String(_saltRange.min), max: String(_saltRange.max) };
+    } else if (rec.chemicalProductId === 'chlorine-granules' && rec.severity !== 'info') {
+      if (rec.title.includes('acción correctiva temporal') || rec.title.includes('temporary corrective')) {
+        rec.titleKey = 'rec.chlorine.shockTemp.title';
+        rec.summaryKey = 'rec.chlorine.shockTemp.summary';
+        rec.reasonKey = 'rec.chlorine.shockTemp.reason';
+        const orpExtra = latest.orp !== undefined && latest.orp < 650 ? ` y el ORP (${latest.orp} mV) también está bajo` : '';
+        rec.reasonParams = { orpExtra };
+      } else {
+        rec.titleKey = 'rec.chlorine.granules.title';
+        rec.summaryKey = 'rec.chlorine.granules.summary';
+        rec.summaryParams = { value: facVal };
+        rec.reasonKey = 'rec.chlorine.granules.reason';
+        const orpExtra = latest.orp !== undefined && latest.orp < 650 ? ` y el ORP (${latest.orp} mV) también está bajo` : '';
+        rec.reasonParams = { value: facVal, min: String(_facRange.min), max: String(_facRange.max), orpExtra };
+      }
+    } else if (rec.kind === 'equipment' && rec.equipmentName?.toLowerCase().includes('clorador')) {
+      if (rec.severity === 'low') {
+        rec.titleKey = 'rec.chlorinator.optimize.title';
+        rec.summaryKey = 'rec.chlorinator.optimize.summary';
+        rec.summaryParams = { current: facVal, target: String(_facRange.ideal) };
+        rec.reasonKey = 'rec.chlorinator.optimize.reason';
+        rec.reasonParams = { current: facVal, target: String(_facRange.ideal) };
+      } else {
+        rec.titleKey = 'rec.chlorinator.adjust.title';
+        rec.summaryKey = 'rec.chlorinator.adjust.summary';
+        rec.summaryParams = { current: facVal, target: String(_facRange.ideal) };
+        rec.reasonKey = 'rec.chlorinator.adjust.reason';
+        rec.reasonParams = { current: facVal, min: String(_facRange.min), max: String(_facRange.max) };
+      }
+    } else if (rec.kind === 'warning' && rec.severity === 'medium' && rec.title.includes('grande')) {
+      rec.titleKey = 'rec.largeCorrection.title';
+      rec.summaryKey = 'rec.largeCorrection.summary';
+      rec.reasonKey = 'rec.largeCorrection.reason';
+      const hours = rec.suggestedAdditionalHours ?? rec.suggestedOutputPercent ?? 0;
+      rec.reasonParams = { hours: String(hours) };
+    } else if (rec.kind === 'monitor' && rec.severity === 'medium' && rec.relatedFields.includes('ph') && rec.relatedFields.includes('fac')) {
+      rec.titleKey = 'rec.ph.correctFirst.title';
+      rec.summaryKey = 'rec.ph.correctFirst.summary';
+      rec.reasonKey = 'rec.ph.correctFirst.reason';
+      rec.reasonParams = { value: phVal };
+    } else if (rec.kind === 'monitor' && rec.severity === 'medium' && !rec.relatedFields.includes('ph') && rec.relatedFields.includes('fac')) {
+      rec.titleKey = 'rec.fac.slightlyLow.title';
+      rec.summaryKey = 'rec.fac.slightlyLow.summary';
+      rec.summaryParams = { value: facVal };
+      rec.reasonKey = 'rec.fac.slightlyLow.reason';
+      rec.reasonParams = { value: facVal, min: String(_facRange.min), max: String(_facRange.max) };
+    } else if (rec.kind === 'no-action' && rec.severity !== 'info' && rec.relatedFields.includes('fac')) {
+      rec.titleKey = 'rec.fac.high.title';
+      rec.summaryKey = 'rec.fac.high.summary';
+      rec.summaryParams = { value: facVal, min: String(_facRange.min), max: String(_facRange.max) };
+      rec.reasonKey = 'rec.fac.high.reason';
+      rec.reasonParams = { value: facVal, min: String(_facRange.min), max: String(_facRange.max) };
+    } else if (rec.kind === 'warning' && rec.severity === 'medium' && rec.relatedFields.includes('salt')) {
+      rec.titleKey = 'rec.salt.high.title';
+      rec.summaryKey = 'rec.salt.high.summary';
+      rec.summaryParams = { value: String(latest.salt ?? 0), min: String(_saltRange.min), max: String(_saltRange.max) };
+      rec.reasonKey = 'rec.salt.high.reason';
+    } else if (rec.kind === 'manual-test' && rec.title.includes('ácido cianúrico')) {
+      rec.titleKey = 'rec.cya.measure.title';
+      rec.summaryKey = 'rec.cya.measure.summary';
+      rec.reasonKey = 'rec.cya.measure.reason';
+    } else if (rec.kind === 'manual-test' && rec.title.includes('alcalinidad')) {
+      rec.titleKey = 'rec.alkalinity.measure.title';
+      rec.summaryKey = 'rec.alkalinity.measure.summary';
+      rec.reasonKey = 'rec.alkalinity.measure.reason';
+    } else if (rec.kind === 'monitor' && rec.title.includes('FAC en descenso')) {
+      rec.titleKey = 'rec.fac.dropping.title';
+      rec.summaryKey = 'rec.fac.dropping.summary';
+      rec.summaryParams = { value: facVal };
+    } else if (rec.kind === 'monitor' && rec.title.includes('ORP en descenso')) {
+      rec.titleKey = 'rec.orp.dropping.title';
+      rec.summaryKey = 'rec.orp.dropping.summary';
+      rec.summaryParams = { value: String(orpVal) };
+    } else if (rec.kind === 'monitor' && rec.title.includes('Sal en descenso')) {
+      rec.titleKey = 'rec.salt.dropping.title';
+      rec.summaryKey = 'rec.salt.dropping.summary';
+      rec.summaryParams = { value: String(latest.salt ?? 0) };
+    } else if (rec.kind === 'monitor' && rec.severity === 'low' && rec.title.includes('pH en aumento')) {
+      rec.titleKey = 'rec.ph.rising.title';
+      rec.summaryKey = 'rec.ph.rising.summary';
+      rec.summaryParams = { value: phVal };
+    } else if (rec.kind === 'no-action' && rec.severity === 'info' && rec.title.includes('Todo en orden')) {
+      rec.titleKey = 'rec.allGood.title';
+      rec.summaryKey = 'rec.allGood.summary';
+      rec.reasonKey = 'rec.allGood.reason';
+    }
+  }
 }
 
 // ── Main assistant ────────────────────────────────────────────────
@@ -947,6 +1147,9 @@ export function runAssistant(
 
   // ── Sort recommendations by severity ──────────────────────────
   recommendations.sort(sortBySeverity);
+
+  // ── Enrich with translation keys ────────────────────────────
+  enrichRecommendationKeys(recommendations, latest, phRange, facRange, saltRange, settings);
 
   // ── Build summary ─────────────────────────────────────────────
   const summary = buildSummary(worstStatus, latest, settings);

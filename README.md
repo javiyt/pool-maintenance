@@ -400,7 +400,7 @@ any local setup.
 
 | Item | Details |
 |---|---|
-| **URL** | [https://javiyt.github.io/pool-maintenance/](https://javiyt.github.io/pool-maintenance/) |
+| **URL** | [https://javi.yt/pool-maintenance/](https://javi.yt/pool-maintenance/) |
 | **Trigger** | Every push to `main` (or manual `workflow_dispatch`) |
 | **Source** | [`.github/workflows/pages.yml`](.github/workflows/pages.yml) |
 
@@ -444,7 +444,7 @@ devices or deployments.
 |---|---|
 | `http://localhost:5173` | Local dev — isolated data |
 | `http://raspberry-pi:8090` | Docker/Raspberry Pi — isolated data |
-| `https://javiyt.github.io/pool-maintenance/` | GitHub Pages — isolated data |
+| `https://javi.yt/pool-maintenance/` | GitHub Pages — isolated data |
 
 To move data between environments, use the **JSON export/import** feature:
 
