@@ -727,6 +727,10 @@ body {
   align-items: stretch;
 }
 
+.action-panel[hidden] {
+  display: none !important;
+}
+
 .action-overlay {
   position: fixed;
   inset: 0;

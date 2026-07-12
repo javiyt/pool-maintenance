@@ -55,17 +55,27 @@ export interface ActionFormPrefill {
   relatedMeasurementId?: string;
 }
 
+function requiredElement<T extends HTMLElement = HTMLElement>(id: string, kind: string): T {
+  const el = document.getElementById(id) as T | null;
+  if (!el) {
+    throw new Error(`ActionForm: required element #${id} not found — cannot initialise ${kind}.`);
+  }
+  return el;
+}
+
 export class ActionForm {
   private panel: HTMLElement;
   private overlay: HTMLElement;
-  private closeBtn: HTMLElement;
+  private closeBtn: HTMLButtonElement;
   private form: HTMLFormElement;
   private kindSelect: HTMLSelectElement;
   private dateTimeInput: HTMLInputElement;
   private errorsEl: HTMLElement;
   private relatedSelect: HTMLSelectElement;
   private descriptionInput: HTMLInputElement;
+  private drawer: HTMLElement;
   private currentPrefill: ActionFormPrefill | null = null;
+  private previousFocused: HTMLElement | null = null;
   private onSaveCb: ((action: MaintenanceAction, followUpInfo?: { recommendationId?: string; retestAfterHours?: number }) => void) | null = null;
 
   private readonly kindFieldMap: Record<string, string> = {
@@ -76,20 +86,29 @@ export class ActionForm {
   };
 
   constructor() {
-    this.panel = document.getElementById('actionFormPanel') as HTMLElement;
-    this.overlay = document.getElementById('actionFormOverlay') as HTMLElement;
-    this.closeBtn = document.getElementById('actionFormCloseBtn') as HTMLElement;
-    this.form = document.getElementById('actionForm') as HTMLFormElement;
-    this.kindSelect = document.getElementById('actionKind') as HTMLSelectElement;
-    this.dateTimeInput = document.getElementById('actionDateTime') as HTMLInputElement;
-    this.errorsEl = document.getElementById('actionFormErrors') as HTMLElement;
-    this.relatedSelect = document.getElementById('actionRelatedMeasurement') as HTMLSelectElement;
-    this.descriptionInput = document.getElementById('actionDescription') as HTMLInputElement;
+    this.panel = requiredElement('actionFormPanel', 'panel');
+    this.overlay = requiredElement('actionFormOverlay', 'overlay');
+    this.closeBtn = requiredElement<HTMLButtonElement>('actionFormCloseBtn', 'close button');
+    this.form = requiredElement<HTMLFormElement>('actionForm', 'form');
+    this.kindSelect = requiredElement<HTMLSelectElement>('actionKind', 'kind select');
+    this.dateTimeInput = requiredElement<HTMLInputElement>('actionDateTime', 'date-time input');
+    this.errorsEl = requiredElement('actionFormErrors', 'errors element');
+    this.relatedSelect = requiredElement<HTMLSelectElement>('actionRelatedMeasurement', 'related measurement select');
+    this.descriptionInput = requiredElement<HTMLInputElement>('actionDescription', 'description input');
+    this.drawer = requiredElement('actionFormDrawer', 'drawer');
 
     this.overlay.addEventListener('click', () => this.close());
     this.closeBtn.addEventListener('click', () => this.close());
     this.kindSelect.addEventListener('change', () => this.toggleKindFields());
     this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+    this.drawer.addEventListener('click', (e) => e.stopPropagation());
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.panel.hidden) {
+        e.preventDefault();
+        this.close();
+      }
+    });
   }
 
   onSave(cb: (action: MaintenanceAction, followUpInfo?: { recommendationId?: string; retestAfterHours?: number }) => void): void {
@@ -97,13 +116,15 @@ export class ActionForm {
   }
 
   open(prefill?: ActionFormPrefill): void {
+    this.previousFocused = document.activeElement as HTMLElement | null;
     this.currentPrefill = prefill ?? null;
-    const now = dateToLocalDatetime(new Date());
-    this.dateTimeInput.value = now;
 
     // Reset form
     this.form.reset();
     this.clearErrors();
+
+    // Set default date-time
+    const now = dateToLocalDatetime(new Date());
     this.dateTimeInput.value = now;
 
     // Populate measurement dropdown
@@ -136,10 +157,21 @@ export class ActionForm {
 
     this.toggleKindFields();
     this.panel.hidden = false;
+
+    // Focus the close button so the panel is keyboard-accessible
+    this.closeBtn.focus();
   }
 
   close(): void {
     this.panel.hidden = true;
+    this.clearErrors();
+    this.currentPrefill = null;
+
+    // Restore focus to the element that opened the panel
+    if (this.previousFocused && typeof this.previousFocused.focus === 'function') {
+      this.previousFocused.focus();
+    }
+    this.previousFocused = null;
   }
 
   private toggleKindFields(): void {
