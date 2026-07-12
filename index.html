@@ -177,12 +177,12 @@
     </section>
 
     <!-- ── Action Form Modal ─────────────────────────────────────── -->
-    <aside id="actionFormPanel" class="action-panel" role="dialog" aria-label="Record action" hidden>
+    <aside id="actionFormPanel" class="action-panel" role="dialog" aria-label="Record action" aria-modal="true" hidden>
       <div class="action-overlay" id="actionFormOverlay"></div>
-      <div class="action-drawer">
+      <div id="actionFormDrawer" class="action-drawer">
         <div class="action-header">
           <h2 id="actionFormTitle">Record Maintenance Action</h2>
-          <button id="actionFormCloseBtn" class="btn-icon" aria-label="Close">&times;</button>
+          <button type="button" id="actionFormCloseBtn" class="btn-icon" aria-label="Close">&times;</button>
         </div>
         <div class="action-body">
           <form id="actionForm" novalidate>
