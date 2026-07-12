@@ -393,6 +393,65 @@ podman ps
 See [deploy/README.md](deploy/README.md) for details on installation, rollback,
 auto-update, and uninstallation.
 
+## GitHub Pages
+
+This project is also deployed to **GitHub Pages** for quick browser access without
+any local setup.
+
+| Item | Details |
+|---|---|
+| **URL** | [https://javiyt.github.io/pool-maintenance/](https://javiyt.github.io/pool-maintenance/) |
+| **Trigger** | Every push to `main` (or manual `workflow_dispatch`) |
+| **Source** | [`.github/workflows/pages.yml`](.github/workflows/pages.yml) |
+
+### Required repository setting
+
+Before the first deployment, configure the Pages source:
+
+1. Open the repository **Settings** → **Pages**.
+2. Under **Build and deployment**, select **GitHub Actions** as the source.
+3. No further configuration is needed — the workflow handles the rest.
+
+### Build locally for Pages
+
+```bash
+pnpm build:pages
+```
+
+This sets the asset base path to `/pool-maintenance/` so all CSS and JavaScript
+load correctly on the Pages domain. Verify the output:
+
+```bash
+grep -o '/pool-maintenance/assets/' dist/index.html | head -1
+```
+
+### Normal (root) build
+
+```bash
+pnpm build
+```
+
+This is the default build used for local previews and the Docker/Raspberry Pi
+deployment. Asset paths are rooted at `/`.
+
+### Data persistence
+
+The app uses **browser `localStorage`** — all data stays in your browser.
+There is no server, no shared database, and no automatic synchronisation between
+devices or deployments.
+
+| Environment | Storage scope |
+|---|---|
+| `http://localhost:5173` | Local dev — isolated data |
+| `http://raspberry-pi:8090` | Docker/Raspberry Pi — isolated data |
+| `https://javiyt.github.io/pool-maintenance/` | GitHub Pages — isolated data |
+
+To move data between environments, use the **JSON export/import** feature:
+
+1. On the source deployment, click **Export JSON** in Measurement History.
+2. On the target deployment, click **Import JSON** and select the downloaded file.
+3. All measurements, actions, and settings are restored.
+
 ## License
 
 MIT

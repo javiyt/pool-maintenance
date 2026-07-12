@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config';
 
+const isGitHubPages = process.env.DEPLOY_TARGET === 'github-pages';
+
 export default defineConfig({
-  root: '.',
+  base: isGitHubPages ? '/pool-maintenance/' : '/',
   build: {
     outDir: 'dist',
   },
