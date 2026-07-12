@@ -1,6 +1,7 @@
 export type PoolType = 'chlorine' | 'saltwater';
 export type VolumeUnit = 'liters' | 'cubicMeters';
 export type UnitSystem = 'metric' | 'imperial';
+export type AppLanguage = 'en' | 'es';
 
 export interface SaltChlorinatorConfig {
   enabled: boolean;
@@ -24,6 +25,7 @@ export interface PoolSettings {
   volumeUnit: VolumeUnit;
   poolType: PoolType;
   unitSystem: UnitSystem;
+  language?: AppLanguage;
   saltChlorinator?: SaltChlorinatorConfig;
   historicalLearning?: HistoricalLearningConfig;
 }

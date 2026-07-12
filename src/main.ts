@@ -10,6 +10,13 @@ import { addMeasurement, addFollowUp } from './domain/storage';
 import { loadSettings, loadMeasurements, loadActions } from './domain/storage';
 import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
 import { createFollowUp } from './domain/followUp';
+import {
+  setLanguage,
+  detectBrowserLanguage,
+  validateLanguage,
+  t,
+} from './i18n/index';
+import type { AppLanguage } from './i18n/types';
 
 function toLocalDatetime(d: Date): string {
   const y = d.getFullYear();
@@ -31,6 +38,20 @@ function runAndShowRecommendations(
 }
 
 function init(): void {
+  // ── Initialize language ───────────────────────────────────────
+  const savedSettings = loadSettings();
+  const browserLang = detectBrowserLanguage();
+  const initialLang = savedSettings.language
+    ? validateLanguage(savedSettings.language)
+    : browserLang;
+  setLanguage(initialLang);
+
+  // Set the <html lang> attribute
+  document.documentElement.lang = initialLang === 'es' ? 'es' : 'en';
+
+  // Set the document title
+  document.title = t('app.title');
+
   // Set default date-time to right now on the datetime-local input
   const dateTimeInput = document.getElementById('mDateTime') as HTMLInputElement;
   dateTimeInput.value = toLocalDatetime(new Date());
@@ -43,6 +64,34 @@ function init(): void {
   const actionHistory = new ActionHistory();
   const historicalInsights = new HistoricalInsightsPanel();
   const followUpDashboard = new FollowUpDashboard();
+
+  // ── Full re-render function (used on language change) ─────────
+  function fullReRender(): void {
+    // Update document title and html lang
+    document.title = t('app.title');
+
+    // Re-render all dynamic content
+    historyPanel.render();
+    actionHistory.render();
+    historicalInsights.render();
+
+    // Re-run recommendations if there are measurements
+    const measurements = loadMeasurements();
+    if (measurements.length > 0) {
+      runAndShowRecommendations(recommendationsPanel);
+    } else {
+      recommendationsPanel.hide();
+    }
+  }
+
+  // ── Handle language change from settings ──────────────────────
+  settingsPanel.onLanguageChange((lang: AppLanguage) => {
+    setLanguage(lang);
+    fullReRender();
+    // Update language dropdown to reflect current setting
+    const langSelect = document.getElementById('appLanguage') as HTMLSelectElement;
+    if (langSelect) langSelect.value = lang;
+  });
 
   // Re-render history whenever measurements change
   historyPanel.onChange(() => {

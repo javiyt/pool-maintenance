@@ -2,6 +2,8 @@ import type { PoolSettings } from '../domain/settings';
 import { DEFAULT_SALT_CHLORINATOR, DEFAULT_HISTORICAL_LEARNING } from '../domain/settings';
 import type { SaltChlorinatorConfig, HistoricalLearningConfig } from '../domain/settings';
 import { loadSettings, saveSettings } from '../domain/storage';
+import { t, setLanguage, getLanguage, validateLanguage } from '../i18n/index';
+import type { AppLanguage } from '../i18n/types';
 
 export class SettingsPanel {
   private panel: HTMLElement;
@@ -24,7 +26,9 @@ export class SettingsPanel {
   private hlMinFactor: HTMLInputElement;
   private hlMaxFactor: HTMLInputElement;
   private hlFields: NodeListOf<HTMLElement>;
+  private languageSelect: HTMLSelectElement;
   private onSave: ((s: PoolSettings) => void) | null = null;
+  private onLangChange: ((lang: AppLanguage) => void) | null = null;
 
   constructor() {
     this.panel = document.getElementById('settingsPanel') as HTMLElement;
@@ -47,6 +51,7 @@ export class SettingsPanel {
     this.hlMinFactor = document.getElementById('hlMinFactor') as HTMLInputElement;
     this.hlMaxFactor = document.getElementById('hlMaxFactor') as HTMLInputElement;
     this.hlFields = document.querySelectorAll('.hl-field') as NodeListOf<HTMLElement>;
+    this.languageSelect = document.getElementById('appLanguage') as HTMLSelectElement;
 
     const toggleBtn = document.getElementById('settingsToggleBtn') as HTMLButtonElement;
     const closeBtn = document.getElementById('settingsCloseBtn') as HTMLButtonElement;
@@ -71,12 +76,17 @@ export class SettingsPanel {
     this.onSave = cb;
   }
 
+  onLanguageChange(cb: (lang: AppLanguage) => void): void {
+    this.onLangChange = cb;
+  }
+
   open(): void {
     const s = loadSettings();
     this.volumeInput.value = s.volume > 0 ? String(s.volume) : '';
     this.volumeUnitSelect.value = s.volumeUnit;
     this.poolTypeSelect.value = s.poolType;
     this.unitSystemSelect.value = s.unitSystem;
+    this.languageSelect.value = getLanguage();
 
     // Salt chlorinator fields
     const sc = s.saltChlorinator ?? DEFAULT_SALT_CHLORINATOR;
@@ -125,13 +135,19 @@ export class SettingsPanel {
     const volume = parseFloat(this.volumeInput.value);
 
     if (isNaN(volume) || volume <= 0) {
-      this.showStatus('Please enter a pool volume greater than 0.', 'error');
+      this.showStatus(t('settings.enterVolume'), 'error');
       return;
     }
 
     if (volume > 10000000) {
-      this.showStatus('Volume seems unreasonably large. Please double-check.', 'error');
+      this.showStatus(t('settings.volumeTooLarge'), 'error');
       return;
+    }
+
+    // Handle language change immediately
+    const newLang = validateLanguage(this.languageSelect.value);
+    if (newLang !== getLanguage()) {
+      setLanguage(newLang);
     }
 
     const settings: PoolSettings = {
@@ -139,6 +155,7 @@ export class SettingsPanel {
       volumeUnit: this.volumeUnitSelect.value as PoolSettings['volumeUnit'],
       poolType: this.poolTypeSelect.value as PoolSettings['poolType'],
       unitSystem: this.unitSystemSelect.value as PoolSettings['unitSystem'],
+      language: newLang,
     };
 
     // Salt chlorinator config
@@ -165,7 +182,13 @@ export class SettingsPanel {
     settings.historicalLearning = hl;
 
     saveSettings(settings);
-    this.showStatus('Settings saved.', 'success');
+    this.showStatus(t('settings.saved'), 'success');
+
+    // Notify language change first (so UI re-renders before settings panel closes)
+    if (newLang !== undefined) {
+      this.onLangChange?.(newLang);
+    }
+
     this.onSave?.(settings);
   }
 

@@ -1,6 +1,8 @@
 import type { MaintenanceAssistantResult, MaintenanceRecommendation } from '../domain/maintenanceAssistant';
 import type { ActionFormPrefill } from './actionForm';
 import type { MaintenanceActionKind } from '../domain/actions';
+import type { TranslationKey, TranslationParams } from '../i18n/types';
+import { t, formatNumber, formatAmount } from '../i18n/index';
 
 export class RecommendationsPanel {
   private section: HTMLElement;
@@ -42,9 +44,7 @@ export class RecommendationsPanel {
 
     parts.push(`
       <div class="rec-disclaimer">
-        <strong>Importante:</strong> Estas son recomendaciones <em>aproximadas</em>.
-        Siga siempre las instrucciones de dosificación en las etiquetas de sus productos químicos.
-        Si no está seguro, consulte a un profesional de mantenimiento de piscinas.
+        ${escapeHtml(t('rec.disclaimer'))}
       </div>
     `);
 
@@ -61,16 +61,17 @@ export class RecommendationsPanel {
   // ── Status banner ─────────────────────────────────────────────
 
   private renderStatusBanner(result: MaintenanceAssistantResult): string {
-    const statusLabels: Record<string, string> = {
-      balanced: 'En equilibrio',
-      'needs-attention': 'Requiere atención',
-      'needs-correction': 'Requiere corrección',
-      unsafe: '⚠️ No seguro',
-      'insufficient-data': 'Sin datos suficientes',
+    const statusLabels: Record<string, TranslationKey> = {
+      balanced: 'status.balanced',
+      'needs-attention': 'status.needsAttention',
+      'needs-correction': 'status.needsCorrection',
+      unsafe: 'status.unsafe',
+      'insufficient-data': 'status.insufficientData',
     };
 
     const statusClass = `as-status-${result.status}`;
-    const label = statusLabels[result.status] ?? result.status;
+    const key = statusLabels[result.status] as TranslationKey | undefined;
+    const label = key ? t(key) : result.status;
 
     return `<div class="as-status-banner ${statusClass}">${escapeHtml(label)}</div>`;
   }
@@ -83,19 +84,19 @@ export class RecommendationsPanel {
 
     if (nextCheckSuggestion.hoursFromNow !== undefined) {
       if (nextCheckSuggestion.hoursFromNow < 24) {
-        timeStr = `~${nextCheckSuggestion.hoursFromNow} hora(s)`;
+        timeStr = t('nextCheck.hours', { hours: nextCheckSuggestion.hoursFromNow });
       } else {
         const days = Math.round(nextCheckSuggestion.hoursFromNow / 24);
-        timeStr = `~${days} día(s)`;
+        timeStr = t('nextCheck.days', { days });
       }
     }
 
     let html = '<div class="as-next-check">';
-    html += '<strong>Próxima revisión recomendada:</strong> ';
+    html += `<strong>${escapeHtml(t('nextCheck.label'))}</strong> `;
     if (timeStr) {
       html += `${escapeHtml(timeStr)} — `;
     }
-    html += `${escapeHtml(nextCheckSuggestion.reason)}`;
+    html += `${escapeHtml(t(getNextCheckReasonKey(result.status)))}`;
     html += '</div>';
 
     return html;
@@ -104,7 +105,7 @@ export class RecommendationsPanel {
   // ── Trends section ────────────────────────────────────────────
 
   private renderTrends(result: MaintenanceAssistantResult): string {
-    const parts: string[] = ['<div class="as-trends"><h3 class="as-subtitle">Tendencias</h3>'];
+    const parts: string[] = [`<div class="as-trends"><h3 class="as-subtitle">${escapeHtml(t('trends.title'))}</h3>`];
 
     const relevantTrends = result.trends.filter(
       (t) => t.field === 'ph' || t.field === 'fac' || t.field === 'orp' || t.field === 'salt' || t.field === 'temperature',
@@ -116,9 +117,9 @@ export class RecommendationsPanel {
       const sevClass = `trend-${trend.severity}`;
 
       parts.push(`
-        <div class="as-trend-item ${sevClass}" title="${escapeHtml(trend.message)}">
+        <div class="as-trend-item ${sevClass}" title="${escapeHtmlAttr(trend.message)}">
           <span class="trend-icon">${directionIcon}</span>
-          <span class="trend-field">${escapeHtml(fieldLabel(trend.field))}</span>
+          <span class="trend-field">${escapeHtml(t(fieldToKey(trend.field)))}</span>
           <span class="trend-value">${escapeHtml(formatTrendValue(trend))}</span>
         </div>
       `);
@@ -133,14 +134,14 @@ export class RecommendationsPanel {
   private renderGroupedRecommendations(result: MaintenanceAssistantResult): string {
     // Group by kind in display order
     const kindOrder: Array<{ kind: string; label: string }> = [
-      { kind: 'warning', label: 'Alertas urgentes' },
-      { kind: 'chemical', label: 'Correcciones químicas' },
-      { kind: 'equipment', label: 'Ajustes de equipo' },
-      { kind: 'filtration', label: 'Ajustes de filtración' },
-      { kind: 'manual-test', label: 'Pruebas manuales' },
-      { kind: 'monitor', label: 'Monitoreo' },
-      { kind: 'retest', label: 'Repetir medición' },
-      { kind: 'no-action', label: 'Sin acción requerida' },
+      { kind: 'warning', label: t('group.warning') },
+      { kind: 'chemical', label: t('group.chemical') },
+      { kind: 'equipment', label: t('group.equipment') },
+      { kind: 'filtration', label: t('group.filtration') },
+      { kind: 'manual-test', label: t('group.manualTest') },
+      { kind: 'monitor', label: t('group.monitor') },
+      { kind: 'retest', label: t('group.retest') },
+      { kind: 'no-action', label: t('group.noAction') },
     ];
 
     const groups = new Map<string, MaintenanceRecommendation[]>();
@@ -150,7 +151,7 @@ export class RecommendationsPanel {
       groups.set(rec.kind, list);
     }
 
-    const parts: string[] = ['<div class="as-recommendations"><h3 class="as-subtitle">Recomendaciones</h3>'];
+    const parts: string[] = ['<div class="as-recommendations">'];
 
     for (const { kind, label } of kindOrder) {
       const items = groups.get(kind);
@@ -178,13 +179,24 @@ export class RecommendationsPanel {
     const severityClass = item.severity === 'high' || item.severity === 'danger' ? 'rec-danger' : '';
 
     let nameHtml = '';
-    if (item.genericProductName) {
-      nameHtml = `<div class="rec-chemical">${escapeHtml(item.genericProductName)}</div>`;
+    if (item.genericProductNameKey || item.genericProductName) {
+      const prodName = item.genericProductNameKey ? t(item.genericProductNameKey) : item.genericProductName!;
+      nameHtml = `<div class="rec-chemical">${escapeHtml(prodName)}</div>`;
     }
-    if (item.mainComponent) {
-      nameHtml += `<div class="rec-component">Componente activo: ${escapeHtml(item.mainComponent)}</div>`;
+    if (item.mainComponentKey || item.mainComponent) {
+      const component = item.mainComponentKey ? t(item.mainComponentKey) : item.mainComponent!;
+      nameHtml += `<div class="rec-component">${escapeHtml(t('rec.component.active', { name: component }))}</div>`;
     }
-    nameHtml += `<div class="rec-purpose"><strong>${escapeHtml(item.title)}</strong></div>`;
+    // Equipment name: use equipmentNameKey if available
+    if (item.equipmentNameKey || item.equipmentName) {
+      const equipName = item.equipmentNameKey ? t(item.equipmentNameKey) : item.equipmentName!;
+      nameHtml += `<div class="rec-equipment">${escapeHtml(equipName)}</div>`;
+    }
+    // Title: use titleKey if available
+    const recTitle = item.titleKey
+      ? t(item.titleKey, item.titleParams)
+      : item.title;
+    nameHtml += `<div class="rec-purpose"><strong>${escapeHtml(recTitle)}</strong></div>`;
 
     // Amount
     let amountHtml = '';
@@ -192,51 +204,66 @@ export class RecommendationsPanel {
       amountHtml = `<div class="rec-amount">${escapeHtml(formatAmount(item.estimatedAmount, item.unit))}</div>`;
     }
 
-    // Reason
-    const reasonHtml = `<div class="rec-detail">${escapeHtml(item.reason)}</div>`;
+    // Summary: use summaryKey if available
+    const recSummary = item.summaryKey
+      ? t(item.summaryKey, item.summaryParams)
+      : item.summary;
+    const summaryHtml = `<div class="rec-detail">${escapeHtml(recSummary)}</div>`;
 
-    // Summary
-    const summaryHtml = `<div class="rec-detail">${escapeHtml(item.summary)}</div>`;
+    // Reason: use reasonKey if available
+    const recReason = item.reasonKey
+      ? t(item.reasonKey, item.reasonParams)
+      : item.reason;
+    const reasonHtml = `<div class="rec-detail">${escapeHtml(recReason)}</div>`;
 
     // Equipment adjustments
     let equipHtml = '';
     if (item.suggestedOutputPercent !== undefined) {
-      equipHtml += `<div class="rec-detail">Producción sugerida: ${item.suggestedOutputPercent}%</div>`;
+      equipHtml += `<div class="rec-detail">${escapeHtml(t('empty.suggestedOutput', { output: String(item.suggestedOutputPercent) }))}</div>`;
     }
     if (item.suggestedAdditionalHours !== undefined) {
-      equipHtml += `<div class="rec-detail">Horas adicionales sugeridas: ${item.suggestedAdditionalHours}h</div>`;
+      equipHtml += `<div class="rec-detail">${escapeHtml(t('empty.suggestedHours', { hours: String(item.suggestedAdditionalHours) }))}</div>`;
     }
 
     // Current value + target range
     let rangeHtml = '';
     if (item.currentValue !== undefined && item.targetRange) {
-      rangeHtml = `<div class="rec-detail">Valor actual: ${item.currentValue} ${escapeHtml(item.targetRange.unit)} — Rango objetivo: ${item.targetRange.min}–${item.targetRange.max} ${escapeHtml(item.targetRange.unit)}</div>`;
+      rangeHtml = `<div class="rec-detail">${escapeHtml(t('rec.currentValue', {
+        value: formatNumber(item.currentValue),
+        unit: item.targetRange.unit,
+        min: formatNumber(item.targetRange.min),
+        max: formatNumber(item.targetRange.max),
+      }))}</div>`;
     }
 
     // Safety notes
     let safetyHtml = '';
     if (item.safetyNotes.length > 0) {
-      safetyHtml = `<div class="rec-subsection"><strong>Precauciones:</strong><ul>${item.safetyNotes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>`;
+      safetyHtml = `<div class="rec-subsection"><strong>${escapeHtml(t('rec.safetyNotes'))}</strong><ul>${item.safetyNotes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>`;
     }
 
     // Calculation notes
     let calcHtml = '';
     if (item.calculationNotes.length > 0) {
-      calcHtml = `<div class="rec-subsection"><strong>Notas de cálculo:</strong><ul>${item.calculationNotes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>`;
+      calcHtml = `<div class="rec-subsection"><strong>${escapeHtml(t('rec.calcNotes.title'))}</strong><ul>${item.calculationNotes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>`;
     }
 
     // Follow-up actions
     let followHtml = '';
     if (item.followUpActions.length > 0) {
-      followHtml = `<div class="rec-subsection"><strong>Próximos pasos:</strong><ul>${item.followUpActions.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>`;
+      followHtml = `<div class="rec-subsection"><strong>${escapeHtml(t('rec.followUp.title'))}</strong><ul>${item.followUpActions.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>`;
     }
 
     // Severity badge
-    const severityLabel = item.severity === 'danger' ? 'Peligro'
-      : item.severity === 'high' ? 'Alta'
-      : item.severity === 'medium' ? 'Media'
-      : item.severity === 'low' ? 'Baja'
-      : 'Informativo';
+    const severityKey: Record<string, TranslationKey> = {
+      danger: 'severity.danger',
+      high: 'severity.high',
+      medium: 'severity.medium',
+      low: 'severity.low',
+    };
+    const severityLabel = severityKey[item.severity]
+      ? t(severityKey[item.severity])
+      : t('severity.info');
 
     // Personalization (historical learning)
     const personalizationHtml = this.renderPersonalization(item);
@@ -269,21 +296,67 @@ export class RecommendationsPanel {
     const p = item.personalization;
     if (!p) return '';
 
-    const confidenceLabel = p.confidence === 'high' ? 'Alta'
-      : p.confidence === 'medium' ? 'Media'
-      : p.confidence === 'low' ? 'Baja'
-      : 'Ninguna';
+    const confidenceKey: Record<string, TranslationKey> = {
+      high: 'confidence.high',
+      medium: 'confidence.medium',
+      low: 'confidence.low',
+    };
+    const confidenceLabel = t(confidenceKey[p.confidence ?? 'low']);
+
     const confidenceClass = p.confidence === 'high' ? 'badge-high'
       : p.confidence === 'medium' ? 'badge-medium'
       : 'badge-low';
+
+    // Determine if this is a chlorinator (equipment) or granules (chemical) adjustment
+    const isChlorinator = item.kind === 'equipment';
+
+    // Build explanation using translation keys
+    let explanationKey: TranslationKey;
+    let explanationParams: TranslationParams = {};
+
+    if (!p.applied) {
+      // Insufficient data case
+      explanationKey = isChlorinator
+        ? 'personalization.explanation.insufficient.chlorinator'
+        : 'personalization.explanation.insufficient.granules';
+      explanationParams = {
+        samples: String(p.sampleSize ?? 0),
+        confidence: confidenceLabel,
+      };
+    } else if (p.theoreticalValue !== undefined && p.personalizedValue !== undefined && p.theoreticalValue !== p.personalizedValue) {
+      // Adjusted case
+      const cf = p.correctionFactor ?? 1;
+      const direction = cf < 1 ? 'more' : 'less';
+      const pct = Math.round(Math.abs((1 - cf) * 100));
+      explanationKey = isChlorinator
+        ? 'personalization.explanation.adjusted.chlorinator'
+        : 'personalization.explanation.adjusted.granules';
+      explanationParams = {
+        theoretical: String(p.theoreticalValue),
+        samples: String(p.sampleSize ?? 0),
+        pct: String(pct),
+        direction,
+        personalised: String(p.personalizedValue),
+      };
+    } else {
+      // Aligns (no adjustment needed) case
+      const value = p.theoreticalValue ?? p.personalizedValue ?? 0;
+      explanationKey = isChlorinator
+        ? 'personalization.explanation.aligns.chlorinator'
+        : 'personalization.explanation.aligns.granules';
+      explanationParams = {
+        value: String(value),
+        samples: String(p.sampleSize ?? 0),
+      };
+    }
 
     let valueHtml = '';
     if (p.applied && p.theoreticalValue !== undefined && p.personalizedValue !== undefined) {
       valueHtml = `
         <div class="rec-personalization-values">
-          <span class="rec-personalization-theoretical">Teórico: ${formatAmount(p.theoreticalValue, getUnit(item))}</span>
+          <span class="rec-personalization-theoretical">${escapeHtml(t('rec.personalization.theoretical'))} ${escapeHtml(formatAmount(p.theoreticalValue, getUnit(item)))}</span>
           <span class="rec-personalization-arrow">→</span>
-          <span class="rec-personalization-personalized">Personalizado: ${formatAmount(p.personalizedValue, getUnit(item))}</span>
+          <span class="rec-personalization-personalized">${escapeHtml(t('rec.personalization.personalized'))} ${escapeHtml(formatAmount(p.personalizedValue, getUnit(item)))}</span>
         </div>
       `;
     }
@@ -291,14 +364,14 @@ export class RecommendationsPanel {
     return `
       <div class="rec-personalization">
         <div class="rec-personalization-header">
-          <span class="rec-personalization-label">Aprendizaje histórico</span>
+          <span class="rec-personalization-label">${escapeHtml(t('rec.personalization.title'))}</span>
           <span class="rec-personalization-badge ${confidenceClass}">${escapeHtml(confidenceLabel)}</span>
         </div>
         ${valueHtml}
         <div class="rec-personalization-meta">
-          <span class="rec-personalization-samples">${p.sampleSize ?? 0} muestra(s)</span>
+          <span class="rec-personalization-samples">${escapeHtml(t('rec.personalization.samples', { count: String(p.sampleSize ?? 0) }))}</span>
         </div>
-        <div class="rec-personalization-explanation">${escapeHtml(p.explanation)}</div>
+        <div class="rec-personalization-explanation">${escapeHtml(t(explanationKey, explanationParams))}</div>
       </div>
     `;
   }
@@ -355,7 +428,7 @@ export class RecommendationsPanel {
       prefill.filtrationNewHours = item.suggestedFiltrationHours;
     }
 
-    return `<button class="rec-perform-btn" data-prefill='${escapeHtmlAttr(JSON.stringify(prefill))}'>Mark as performed</button>`;
+    return `<button class="rec-perform-btn" data-prefill='${escapeHtmlAttr(JSON.stringify(prefill))}'>${escapeHtml(t('rec.performButton'))}</button>`;
   }
 
   /**
@@ -386,13 +459,28 @@ export class RecommendationsPanel {
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function formatAmount(amount: number, unit: string): string {
-  if (amount <= 0) return '—';
-  if (unit === 'ml' && amount >= 1000) {
-    const l = (amount / 1000).toFixed(1);
-    return `${l} l`;
-  }
-  return `${amount} ${unit}`;
+/**
+ * Get the translation key for the next check reason based on pool status.
+ */
+function getNextCheckReasonKey(status: string): TranslationKey {
+  const map: Record<string, TranslationKey> = {
+    'unsafe': 'nextCheck.unsafe',
+    'needs-correction': 'nextCheck.correction',
+    'needs-attention': 'nextCheck.attention',
+    'balanced': 'nextCheck.balanced',
+    'insufficient-data': 'nextCheck.insufficientData',
+  };
+  return map[status] ?? 'nextCheck.insufficientData';
+}
+
+function escapeHtml(s: string): string {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
@@ -405,37 +493,31 @@ function getUnit(item: MaintenanceRecommendation): string {
   return '';
 }
 
-function fieldLabel(field: string): string {
-  const labels: Record<string, string> = {
-    ph: 'pH',
-    ec: 'EC',
-    tds: 'TDS',
-    salt: 'Sal',
-    orp: 'ORP',
-    fac: 'FAC',
-    temperature: 'Temp',
+/**
+ * Map a trend field name to its translation key.
+ */
+function fieldToKey(field: string): TranslationKey {
+  const keyMap: Record<string, TranslationKey> = {
+    ph: 'field.ph',
+    ec: 'field.ec',
+    tds: 'field.tds',
+    salt: 'field.salt',
+    orp: 'field.orp',
+    fac: 'field.fac',
+    temperature: 'field.temperature',
   };
-  return labels[field] ?? field;
+  return keyMap[field] ?? (field as TranslationKey);
 }
 
 function formatTrendValue(trend: { field: string; latestValue: number; direction: string }): string {
   const field = trend.field;
-  if (field === 'ph') return trend.latestValue.toFixed(1);
-  if (field === 'fac') return `${trend.latestValue.toFixed(1)} ppm`;
-  if (field === 'orp') return `${trend.latestValue} mV`;
-  if (field === 'salt') return `${trend.latestValue} ppm`;
-  if (field === 'temperature') return `${trend.latestValue.toFixed(1)} °C`;
-  return String(trend.latestValue);
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-}
-
-function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const fmt1 = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (field === 'ph') return formatNumber(trend.latestValue, undefined, fmt1);
+  if (field === 'fac') return `${formatNumber(trend.latestValue, undefined, fmt1)} ppm`;
+  if (field === 'orp') return `${formatNumber(trend.latestValue)} mV`;
+  if (field === 'salt') return `${formatNumber(trend.latestValue)} ppm`;
+  if (field === 'temperature') return `${formatNumber(trend.latestValue, undefined, fmt1)} °C`;
+  return formatNumber(trend.latestValue);
 }
 
 /**

@@ -6,6 +6,7 @@ import type {
 import { generateActionId } from '../domain/actions';
 import { addAction } from '../domain/storage';
 import { loadMeasurements } from '../domain/storage';
+import { t } from '../i18n/index';
 
 function localDatetimeToISO(localValue: string): string {
   return new Date(localValue).toISOString();
@@ -222,14 +223,14 @@ export class ActionForm {
 
     const dateTimeLocal = this.dateTimeInput.value;
     if (!dateTimeLocal) {
-      this.showError('Date and time is required.');
+      this.showError(t('actionForm.errors.dateTime'));
       return;
     }
     const performedAt = localDatetimeToISO(dateTimeLocal);
 
     const description = this.descriptionInput.value.trim();
     if (!description) {
-      this.showError('Description is required.');
+      this.showError(t('actionForm.errors.description'));
       return;
     }
 

@@ -1,3 +1,4 @@
+import { t, formatDateTime } from '../i18n/index';
 import {
   loadMeasurements,
   deleteMeasurement,
@@ -41,8 +42,7 @@ export class HistoryPanel {
     const list = loadMeasurements();
 
     if (list.length === 0) {
-      this.content.innerHTML =
-        '<p class="empty-state">No measurements recorded yet. Fill in the form above and save your first measurement.</p>';
+      this.content.innerHTML = `<p class="empty-state">${t('history.empty')}</p>`;
       return;
     }
 
@@ -63,7 +63,7 @@ export class HistoryPanel {
         <div class="history-item" data-id="${escapeHtml(m.id)}">
           <div class="history-meta">
             <span class="history-date">${escapeHtml(formatDateTime(m.measuredAt))}</span>
-            <button class="history-delete" data-id="${escapeHtml(m.id)}">Delete</button>
+            <button class="history-delete" data-id="${escapeHtml(m.id)}">${t('history.delete')}</button>
           </div>
           <div class="history-values">
             ${vals.map((v) => `<span class="history-value">${escapeHtml(v)}</span>`).join('')}
@@ -79,7 +79,7 @@ export class HistoryPanel {
     this.content.querySelectorAll('.history-delete').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.id;
-        if (id && confirm('Delete this measurement?')) {
+        if (id && confirm(t('history.deleteConfirm'))) {
           deleteMeasurement(id);
           this.render();
           this.onChangeCb?.();
@@ -91,7 +91,7 @@ export class HistoryPanel {
   private handleExport(): void {
     const measurements = loadMeasurements();
     if (measurements.length === 0) {
-      alert('No measurements to export.');
+      alert(t('history.export.empty'));
       return;
     }
 
@@ -119,11 +119,11 @@ export class HistoryPanel {
         saveMeasurements(merged);
 
         const messages: string[] = [];
-        messages.push(`Imported ${result.count} measurement(s).`);
+        messages.push(t('history.import.success', { count: result.count }));
 
         if (result.poolConfig) {
           saveSettings(result.poolConfig);
-          messages.push('Pool configuration restored from file.');
+          messages.push(t('history.import.poolConfig'));
         }
 
         // Merge imported actions if present (v4+)
@@ -131,7 +131,7 @@ export class HistoryPanel {
           const existingActions = loadActions();
           const mergedActions = mergeActions(existingActions, result.actions);
           saveActions(mergedActions);
-          messages.push(`Imported ${result.actions.length} action(s).`);
+          messages.push(t('history.import.actions', { count: result.actions.length }));
         }
 
         // Merge imported follow-ups if present (v6+)
@@ -139,7 +139,7 @@ export class HistoryPanel {
           const existingFus = loadFollowUps();
           const mergedFus = mergeFollowUps(existingFus, result.followUps);
           saveFollowUps(mergedFus);
-          messages.push(`Imported ${result.followUps.length} follow-up(s).`);
+          messages.push(t('history.import.followUps', { count: result.followUps.length }));
 
           // Normalize exclusion flags: sync follow-up exclusions to actions
           // so imported exclusion state takes effect without UI interaction.
@@ -148,42 +148,27 @@ export class HistoryPanel {
           const normalizedActions = normalizeActionExclusionFlags(currentActions, allFollowUps);
           if (normalizedActions !== currentActions) {
             saveActions(normalizedActions);
-            messages.push('Applied exclusion flags from follow-up records.');
+            messages.push(t('history.import.exclusions'));
           }
         }
 
         // Notify the user if duplicate measurements were skipped
         const skipped = result.count - (merged.length - existing.length);
         if (skipped > 0) {
-          messages.push(`${skipped} duplicate(s) skipped.`);
+          messages.push(t('history.import.duplicates', { count: skipped }));
         }
 
         this.render();
         this.onChangeCb?.();
         alert(messages.join('\n'));
       } catch (err) {
-        alert(`Import failed: ${(err as Error).message}`);
+        alert(t('history.import.failed', { message: (err as Error).message }));
       }
     };
     reader.readAsText(file);
 
     // Reset so the same file can be re-imported
     this.importInput.value = '';
-  }
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
   }
 }
 

@@ -1,3 +1,5 @@
+import { t } from '../i18n/index';
+import type { TranslationKey } from '../i18n/types';
 import type { Measurement } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
 
@@ -24,6 +26,27 @@ function dateToLocalDatetime(d: Date): string {
 
 function getNum(id: string): number {
   return parseFloat((document.getElementById(id) as HTMLInputElement).value);
+}
+
+/**
+ * Map of English validation error strings (from validateMeasurement) to
+ * their corresponding translation keys. Unknown strings pass through
+ * untranslated.
+ */
+const errorKeyMap: Record<string, TranslationKey> = {
+  'pH must be between 0 and 14.': 'validation.ph.range',
+  'EC must be a positive number.': 'validation.ec.positive',
+  'TDS must be a positive number.': 'validation.tds.positive',
+  'Salt must be a positive number.': 'validation.salt.positive',
+  'ORP must be a positive number.': 'validation.orp.positive',
+  'FAC must be zero or a positive number.': 'validation.fac.positive',
+  'Temperature must be between -10 and 60 °C.': 'validation.temperature.range',
+  'Date and time is required.': 'validation.datetime.required',
+};
+
+function translateError(msg: string): string {
+  const key = errorKeyMap[msg];
+  return key ? t(key) : msg;
 }
 
 export class MeasurementForm {
@@ -92,7 +115,7 @@ export class MeasurementForm {
 
   private showErrors(errors: Record<string, string>): void {
     this.errorsEl.innerHTML = Object.values(errors)
-      .map((msg) => `<div class="form-error">${escapeHtml(msg)}</div>`)
+      .map((msg) => `<div class="form-error">${escapeHtml(translateError(msg))}</div>`)
       .join('');
 
     // Mark invalid fields
