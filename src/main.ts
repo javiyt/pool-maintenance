@@ -7,7 +7,7 @@ import { ActionHistory } from './ui/actionHistory';
 import { HistoricalInsightsPanel } from './ui/historicalInsights';
 import { FollowUpDashboard } from './ui/followUpDashboard';
 import { addMeasurement, addFollowUp } from './domain/storage';
-import { loadSettings, loadMeasurements, loadActions } from './domain/storage';
+import { loadSettings, saveSettings, loadMeasurements, loadActions } from './domain/storage';
 import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
 import { createFollowUp } from './domain/followUp';
 import {
@@ -15,8 +15,8 @@ import {
   detectBrowserLanguage,
   validateLanguage,
   t,
+  applyStaticTranslations,
 } from './i18n/index';
-import type { AppLanguage } from './i18n/types';
 
 function toLocalDatetime(d: Date): string {
   const y = d.getFullYear();
@@ -47,6 +47,15 @@ function init(): void {
     : browserLang;
   setLanguage(initialLang);
 
+  // Persist browser-derived default on first visit so the selector
+  // and reload behaviour remain deterministic
+  if (!savedSettings.language) {
+    saveSettings({ ...savedSettings, language: initialLang });
+  }
+
+  // Apply translations to static HTML elements (headings, labels, etc.)
+  applyStaticTranslations();
+
   // Set the <html lang> attribute
   document.documentElement.lang = initialLang === 'es' ? 'es' : 'en';
 
@@ -68,6 +77,9 @@ function init(): void {
 
   // ── Full re-render function (used on language change) ─────────
   function fullReRender(): void {
+    // Re-apply static translations to all data-i18n elements
+    applyStaticTranslations();
+
     // Update document title and html lang
     document.title = t('app.title');
 
@@ -75,6 +87,7 @@ function init(): void {
     historyPanel.render();
     actionHistory.render();
     historicalInsights.render();
+    followUpDashboard.render();
 
     // Re-run recommendations if there are measurements
     const measurements = loadMeasurements();
@@ -86,12 +99,8 @@ function init(): void {
   }
 
   // ── Handle language change from settings ──────────────────────
-  settingsPanel.onLanguageChange((lang: AppLanguage) => {
-    setLanguage(lang);
+  settingsPanel.onLanguageChange(() => {
     fullReRender();
-    // Update language dropdown to reflect current setting
-    const langSelect = document.getElementById('appLanguage') as HTMLSelectElement;
-    if (langSelect) langSelect.value = lang;
   });
 
   // Re-render history whenever measurements change

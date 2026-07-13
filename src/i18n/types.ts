@@ -496,6 +496,20 @@ export type TranslationKey =
   | 'rec.performButton'
   | 'rec.followUp.title'
 
+  // ── Recommendation section heading ───────────────────────────
+  | 'rec.section.title'
+
+  // ── Footer ───────────────────────────────────────────────────
+  | 'footer.disclaimer'
+
+  // ── Settings accessibility ───────────────────────────────────
+  | 'settings.open'
+  | 'settings.close'
+
+  // ── Action form accessibility ────────────────────────────────
+  | 'actionForm.close'
+  | 'actionForm.mainComponent.placeholder'
+
   // ── Empty state / generic ────────────────────────────────────
   | 'empty.noData'
   | 'empty.suggestedHours'

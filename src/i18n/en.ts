@@ -456,6 +456,20 @@ export const en: Record<TranslationKey, string> = {
   'insights.tempLabel.hot': 'hot',
   'insights.outputBand': 'output {band}%',
 
+  // ── Recommendation section heading ───────────────────────────
+  'rec.section.title': 'Recommendations',
+
+  // ── Footer ───────────────────────────────────────────────────
+  'footer.disclaimer': 'This tool provides approximate recommendations only. Always follow the dosage instructions on your chemical product labels. This is not a substitute for professional pool maintenance advice.',
+
+  // ── Settings accessibility ───────────────────────────────────
+  'settings.open': 'Open pool settings',
+  'settings.close': 'Close settings',
+
+  // ── Action form accessibility ────────────────────────────────
+  'actionForm.close': 'Close',
+  'actionForm.mainComponent.placeholder': 'e.g. pH reducer acid',
+
   // ── Export/Import ────────────────────────────────────────────
   'export.defaultFilename': 'pool-export-{date}.json',
   'export.errors.invalidJson': 'The file does not contain valid JSON. Please check the file and try again.',

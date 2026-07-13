@@ -11,8 +11,8 @@
   <!-- ═══ Header ═══════════════════════════════════════════════════ -->
   <header class="app-header">
     <div class="header-inner">
-      <h1 class="app-title">Pool Maintenance Assistant</h1>
-      <button id="settingsToggleBtn" class="btn-icon" aria-label="Open pool settings" title="Pool Settings">
+      <h1 class="app-title" data-i18n="app.title">Pool Maintenance Assistant</h1>
+      <button id="settingsToggleBtn" class="btn-icon" data-i18n-title="settings.open" aria-label="Open pool settings" title="Pool Settings">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1.08 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1.08z"/>
         </svg>
@@ -25,97 +25,97 @@
     <div class="settings-overlay" id="settingsOverlay"></div>
     <div class="settings-drawer">
       <div class="settings-header">
-        <h2>Pool Settings</h2>
-        <button id="settingsCloseBtn" class="btn-icon" aria-label="Close settings">&times;</button>
+        <h2 data-i18n="settings.title">Pool Settings</h2>
+        <button id="settingsCloseBtn" class="btn-icon" data-i18n-title="settings.close" aria-label="Close settings">&times;</button>
       </div>
       <div class="settings-body">
         <div class="field">
-          <label for="appLanguage">Language / Idioma</label>
+          <label for="appLanguage" data-i18n="settings.language">Language / Idioma</label>
           <select id="appLanguage">
             <option value="en">English</option>
             <option value="es">Español</option>
           </select>
         </div>
         <div class="field">
-          <label for="poolVolume">Pool volume</label>
+          <label for="poolVolume" data-i18n="settings.volume">Pool volume</label>
           <div class="field-row">
             <input type="number" id="poolVolume" min="0" step="1" required />
             <select id="volumeUnit" aria-label="Volume unit">
-              <option value="liters">Liters</option>
-              <option value="cubicMeters">Cubic meters</option>
+              <option value="liters" data-i18n="settings.volumeUnit.liters">Liters</option>
+              <option value="cubicMeters" data-i18n="settings.volumeUnit.cubicMeters">Cubic meters</option>
             </select>
           </div>
         </div>
         <div class="field">
-          <label for="poolType">Pool type</label>
+          <label for="poolType" data-i18n="settings.poolType">Pool type</label>
           <select id="poolType">
-            <option value="chlorine">Chlorine pool</option>
-            <option value="saltwater">Saltwater pool</option>
+            <option value="chlorine" data-i18n="settings.poolType.chlorine">Chlorine pool</option>
+            <option value="saltwater" data-i18n="settings.poolType.saltwater">Saltwater pool</option>
           </select>
         </div>
         <div class="field">
-          <label for="unitSystem">Unit system</label>
+          <label for="unitSystem" data-i18n="settings.unitSystem">Unit system</label>
           <select id="unitSystem">
-            <option value="metric">Metric</option>
-            <option value="imperial">Imperial</option>
+            <option value="metric" data-i18n="settings.unitSystem.metric">Metric</option>
+            <option value="imperial" data-i18n="settings.unitSystem.imperial">Imperial</option>
           </select>
         </div>
         <hr class="settings-divider" />
-        <h3 class="settings-subtitle">Salt chlorinator</h3>
+        <h3 class="settings-subtitle" data-i18n="settings.chlorinator.title">Salt chlorinator</h3>
         <div class="field">
-          <label for="scEnabled">
+          <label for="scEnabled" data-i18n="settings.chlorinator.enabled">
             <input type="checkbox" id="scEnabled" />
             Salt chlorinator installed
           </label>
         </div>
         <div class="field sc-field">
-          <label for="scProduction">Production (g/h)</label>
+          <label for="scProduction" data-i18n="settings.chlorinator.production">Production (g/h)</label>
           <input type="number" id="scProduction" min="0" step="1" />
         </div>
         <div class="field sc-field">
-          <label for="scOutput">Current output (%)</label>
+          <label for="scOutput" data-i18n="settings.chlorinator.output">Current output (%)</label>
           <input type="number" id="scOutput" min="0" max="100" step="1" />
         </div>
         <div class="field sc-field">
-          <label for="scHours">Filtration hours per day</label>
+          <label for="scHours" data-i18n="settings.chlorinator.hours">Filtration hours per day</label>
           <input type="number" id="scHours" min="0" step="1" />
         </div>
         <div class="field sc-field">
-          <label for="scMaxOutput">Max recommended output (%)</label>
+          <label for="scMaxOutput" data-i18n="settings.chlorinator.maxOutput">Max recommended output (%)</label>
           <input type="number" id="scMaxOutput" min="0" max="100" step="1" />
         </div>
         <div class="field sc-field">
-          <label for="scMaxHours">Max hours per day</label>
+          <label for="scMaxHours" data-i18n="settings.chlorinator.maxHours">Max hours per day</label>
           <input type="number" id="scMaxHours" min="0" step="1" />
         </div>
         <hr class="settings-divider" />
-        <h3 class="settings-subtitle">Historical learning</h3>
+        <h3 class="settings-subtitle" data-i18n="settings.learning.title">Historical learning</h3>
         <div class="field">
-          <label for="hlEnabled">
+          <label for="hlEnabled" data-i18n="settings.learning.enabled">
             <input type="checkbox" id="hlEnabled" />
             Enable historical personalization
           </label>
         </div>
         <div class="field hl-field">
-          <label for="hlMinSamples">Minimum samples</label>
+          <label for="hlMinSamples" data-i18n="settings.learning.minSamples">Minimum samples</label>
           <input type="number" id="hlMinSamples" min="3" max="100" step="1" />
         </div>
         <div class="field hl-field">
-          <label for="hlApplyLow">Apply low-confidence adjustments</label>
+          <label for="hlApplyLow" data-i18n="settings.learning.applyLow">Apply low-confidence adjustments</label>
           <div class="field-row">
             <input type="checkbox" id="hlApplyLow" />
-            <span class="field-hint">Not recommended — low confidence means fewer than 5 comparable samples</span>
+            <span class="field-hint" data-i18n="settings.learning.applyLowHint">Not recommended — low confidence means fewer than 5 comparable samples</span>
           </div>
         </div>
         <div class="field hl-field">
-          <label for="hlMinFactor">Min correction factor</label>
+          <label for="hlMinFactor" data-i18n="settings.learning.minFactor">Min correction factor</label>
           <input type="number" id="hlMinFactor" min="0.1" max="0.9" step="0.1" />
         </div>
         <div class="field hl-field">
-          <label for="hlMaxFactor">Max correction factor</label>
+          <label for="hlMaxFactor" data-i18n="settings.learning.maxFactor">Max correction factor</label>
           <input type="number" id="hlMaxFactor" min="1.1" max="3.0" step="0.1" />
         </div>
-        <button id="settingsSaveBtn" class="btn-primary">Save Settings</button>
+        <button id="settingsSaveBtn" class="btn-primary" data-i18n="settings.save">Save Settings</button>
         <p id="settingsStatus" class="status-msg" aria-live="polite"></p>
       </div>
     </div>
@@ -126,122 +126,122 @@
 
     <!-- ── New Measurement ──────────────────────────────────────── -->
     <section class="card" aria-labelledby="measurement-heading">
-      <h2 id="measurement-heading" class="card-title">New Measurement</h2>
+      <h2 id="measurement-heading" class="card-title" data-i18n="measurement.title">New Measurement</h2>
       <form id="measurementForm" novalidate>
         <div class="field">
-          <label for="mDateTime">Date &amp; time</label>
+          <label for="mDateTime" data-i18n="measurement.dateTime">Date &amp; time</label>
           <input type="datetime-local" id="mDateTime" required />
         </div>
         <div class="field">
-          <label for="mPh">pH</label>
+          <label for="mPh" data-i18n="measurement.ph">pH</label>
           <input type="number" id="mPh" min="0" max="14" step="0.1" required />
-          <span class="field-hint">Target: 7.2–7.6</span>
+          <span class="field-hint" data-i18n="measurement.ph.hint">Target: 7.2–7.6</span>
         </div>
         <div class="field">
-          <label for="mEc">EC (µS/cm)</label>
+          <label for="mEc" data-i18n="measurement.ec">EC (µS/cm)</label>
           <input type="number" id="mEc" min="0" step="1" required />
         </div>
         <div class="field">
-          <label for="mTds">TDS (ppm)</label>
+          <label for="mTds" data-i18n="measurement.tds">TDS (ppm)</label>
           <input type="number" id="mTds" min="0" step="1" required />
         </div>
         <div class="field">
-          <label for="mSalt">Salt (ppm)</label>
+          <label for="mSalt" data-i18n="measurement.salt">Salt (ppm)</label>
           <input type="number" id="mSalt" min="0" step="1" required />
-          <span class="field-hint">Target: 2,700–3,400 ppm</span>
+          <span class="field-hint" data-i18n="measurement.salt.hint">Target: 2,700–3,400 ppm</span>
         </div>
         <div class="field">
-          <label for="mOrp">ORP (mV)</label>
+          <label for="mOrp" data-i18n="measurement.orp">ORP (mV)</label>
           <input type="number" id="mOrp" min="0" step="1" required />
-          <span class="field-hint">Target: 650–800 mV</span>
+          <span class="field-hint" data-i18n="measurement.orp.hint">Target: 650–800 mV</span>
         </div>
         <div class="field">
-          <label for="mFac">FAC (ppm)</label>
+          <label for="mFac" data-i18n="measurement.fac">FAC (ppm)</label>
           <input type="number" id="mFac" min="0" step="0.1" required />
-          <span class="field-hint">Target: 1–3 ppm</span>
+          <span class="field-hint" data-i18n="measurement.fac.hint">Target: 1–3 ppm</span>
         </div>
         <div class="field">
-          <label for="mTemperature">Temperature (°C)</label>
+          <label for="mTemperature" data-i18n="measurement.temperature">Temperature (°C)</label>
           <input type="number" id="mTemperature" min="-10" max="60" step="0.1" required />
         </div>
         <div class="field">
-          <label for="mNotes">Notes <span class="optional">optional</span></label>
+          <label for="mNotes" data-i18n="measurement.notes">Notes <span class="optional" data-i18n="measurement.notes.optional">optional</span></label>
           <textarea id="mNotes" rows="2"></textarea>
         </div>
 
         <!-- ── Context ────────────────────────────────────────────── -->
         <details class="context-section">
-          <summary>Since the previous measurement</summary>
+          <summary data-i18n="context.section.title">Since the previous measurement</summary>
           <div class="context-grid">
             <div class="field">
-              <label for="ctxSunlight">Sunlight</label>
+              <label for="ctxSunlight" data-i18n="context.sunlight">Sunlight</label>
               <select id="ctxSunlight">
-                <option value="">—</option>
-                <option value="none">None</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+                <option value="" data-i18n="">—</option>
+                <option value="none" data-i18n="context.sunlight.none">None</option>
+                <option value="low" data-i18n="context.sunlight.low">Low</option>
+                <option value="medium" data-i18n="context.sunlight.medium">Medium</option>
+                <option value="high" data-i18n="context.sunlight.high">High</option>
               </select>
             </div>
             <div class="field">
-              <label for="ctxPoolCovered">Pool covered</label>
+              <label for="ctxPoolCovered" data-i18n="context.poolCovered">Pool covered</label>
               <select id="ctxPoolCovered">
-                <option value="">—</option>
-                <option value="true">Yes</option>
-                <option value="false">No</option>
+                <option value="" data-i18n="">—</option>
+                <option value="true" data-i18n="context.poolCovered.yes">Yes</option>
+                <option value="false" data-i18n="context.poolCovered.no">No</option>
               </select>
             </div>
             <div class="field">
-              <label for="ctxBatherLoad">Bather load</label>
+              <label for="ctxBatherLoad" data-i18n="context.batherLoad">Bather load</label>
               <select id="ctxBatherLoad">
-                <option value="">—</option>
-                <option value="none">None</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+                <option value="" data-i18n="">—</option>
+                <option value="none" data-i18n="context.batherLoad.none">None</option>
+                <option value="low" data-i18n="context.batherLoad.low">Low</option>
+                <option value="medium" data-i18n="context.batherLoad.medium">Medium</option>
+                <option value="high" data-i18n="context.batherLoad.high">High</option>
               </select>
             </div>
             <div class="field">
-              <label>
+              <label data-i18n="context.rainSincePrevious">
                 <input type="checkbox" id="ctxRain" />
                 Rain since previous measurement
               </label>
             </div>
             <div class="field">
-              <label for="ctxWaterAdded">Water added (litres)</label>
+              <label for="ctxWaterAdded" data-i18n="context.waterAdded">Water added (litres)</label>
               <input type="number" id="ctxWaterAdded" min="0" step="100" />
             </div>
             <div class="field">
-              <label>
+              <label data-i18n="context.backwashPerformed">
                 <input type="checkbox" id="ctxBackwash" />
                 Backwash performed
               </label>
             </div>
             <div class="field">
-              <label for="ctxChlorOutput">Chlorinator output (%)</label>
+              <label for="ctxChlorOutput" data-i18n="context.chlorinatorOutput">Chlorinator output (%)</label>
               <input type="number" id="ctxChlorOutput" min="0" max="100" step="1" />
             </div>
             <div class="field">
-              <label for="ctxChlorHours">Chlorinator hours</label>
+              <label for="ctxChlorHours" data-i18n="context.chlorinatorHours">Chlorinator hours</label>
               <input type="number" id="ctxChlorHours" min="0" step="0.5" />
             </div>
             <div class="field">
-              <label for="ctxFiltHours">Filtration hours</label>
+              <label for="ctxFiltHours" data-i18n="context.filtrationHours">Filtration hours</label>
               <input type="number" id="ctxFiltHours" min="0" step="0.5" />
             </div>
             <div class="field">
-              <label>
+              <label data-i18n="context.visibleAlgae">
                 <input type="checkbox" id="ctxAlgae" />
                 Visible algae
               </label>
             </div>
             <div class="field">
-              <label for="ctxClarity">Water clarity</label>
+              <label for="ctxClarity" data-i18n="context.waterClarity">Water clarity</label>
               <select id="ctxClarity">
-                <option value="">—</option>
-                <option value="clear">Clear</option>
-                <option value="slightly-cloudy">Slightly cloudy</option>
-                <option value="cloudy">Cloudy</option>
+                <option value="" data-i18n="">—</option>
+                <option value="clear" data-i18n="context.waterClarity.clear">Clear</option>
+                <option value="slightly-cloudy" data-i18n="context.waterClarity.slightlyCloudy">Slightly cloudy</option>
+                <option value="cloudy" data-i18n="context.waterClarity.cloudy">Cloudy</option>
               </select>
             </div>
           </div>
@@ -250,14 +250,14 @@
         <div id="formErrors" class="form-errors" aria-live="polite" role="alert"></div>
 
         <div class="form-actions">
-          <button type="submit" class="btn-primary">Save &amp; Calculate</button>
+          <button type="submit" class="btn-primary" data-i18n="measurement.save">Save &amp; Calculate</button>
         </div>
       </form>
     </section>
 
     <!-- ── Recommendations ──────────────────────────────────────── -->
     <section id="recommendationsSection" class="card" aria-labelledby="rec-heading" hidden>
-      <h2 id="rec-heading" class="card-title">Recommendations</h2>
+      <h2 id="rec-heading" class="card-title" data-i18n="rec.section.title">Recommendations</h2>
       <div id="recContent"></div>
     </section>
 
@@ -266,56 +266,56 @@
       <div class="action-overlay" id="actionFormOverlay"></div>
       <div id="actionFormDrawer" class="action-drawer">
         <div class="action-header">
-          <h2 id="actionFormTitle">Record Maintenance Action</h2>
-          <button type="button" id="actionFormCloseBtn" class="btn-icon" aria-label="Close">&times;</button>
+          <h2 id="actionFormTitle" data-i18n="actionForm.title">Record Maintenance Action</h2>
+          <button type="button" id="actionFormCloseBtn" class="btn-icon" data-i18n-title="actionForm.close" aria-label="Close">&times;</button>
         </div>
         <div class="action-body">
           <form id="actionForm" novalidate>
             <div class="field">
-              <label for="actionDateTime">Date &amp; time</label>
+              <label for="actionDateTime" data-i18n="actionForm.dateTime">Date &amp; time</label>
               <input type="datetime-local" id="actionDateTime" required />
             </div>
             <div class="field">
-              <label for="actionKind">Action type</label>
+              <label for="actionKind" data-i18n="actionForm.type">Action type</label>
               <select id="actionKind" required>
-                <option value="chemical">Chemical addition</option>
-                <option value="chlorinator">Salt chlorinator adjustment</option>
-                <option value="filtration">Filtration adjustment</option>
-                <option value="water-replacement">Partial water replacement</option>
-                <option value="cleaning">Cleaning</option>
-                <option value="manual-test">Manual test</option>
-                <option value="other">Other</option>
+                <option value="chemical" data-i18n="actionForm.type.chemical">Chemical addition</option>
+                <option value="chlorinator" data-i18n="actionForm.type.chlorinator">Salt chlorinator adjustment</option>
+                <option value="filtration" data-i18n="actionForm.type.filtration">Filtration adjustment</option>
+                <option value="water-replacement" data-i18n="actionForm.type.waterReplacement">Partial water replacement</option>
+                <option value="cleaning" data-i18n="actionForm.type.cleaning">Cleaning</option>
+                <option value="manual-test" data-i18n="actionForm.type.manualTest">Manual test</option>
+                <option value="other" data-i18n="actionForm.type.other">Other</option>
               </select>
             </div>
             <div class="field">
-              <label for="actionDescription">Description</label>
-              <input type="text" id="actionDescription" required placeholder="e.g. Added pH reducer" />
+              <label for="actionDescription" data-i18n="actionForm.description">Description</label>
+              <input type="text" id="actionDescription" required data-i18n-placeholder="actionForm.description.placeholder" placeholder="e.g. Added pH reducer" />
             </div>
 
             <!-- Chemical fields -->
             <div id="actionChemicalFields" class="action-kind-fields" hidden>
               <div class="field">
-                <label for="actionChemicalProduct">Product type</label>
+                <label for="actionChemicalProduct" data-i18n="actionForm.productType">Product type</label>
                 <select id="actionChemicalProduct">
-                  <option value="ph-reducer">pH reducer</option>
-                  <option value="ph-increaser">pH increaser</option>
-                  <option value="chlorine-granules">Chlorine granules</option>
-                  <option value="chlorine-stabilizer">Chlorine stabilizer</option>
-                  <option value="alkalinity-reducer">Alkalinity reducer</option>
-                  <option value="pool-salt">Pool salt</option>
+                  <option value="ph-reducer" data-i18n="productType.phReducer">pH reducer</option>
+                  <option value="ph-increaser" data-i18n="productType.phIncreaser">pH increaser</option>
+                  <option value="chlorine-granules" data-i18n="productType.chlorineGranules">Chlorine granules</option>
+                  <option value="chlorine-stabilizer" data-i18n="productType.chlorineStabilizer">Chlorine stabilizer</option>
+                  <option value="alkalinity-reducer" data-i18n="productType.alkalinityReducer">Alkalinity reducer</option>
+                  <option value="pool-salt" data-i18n="productType.poolSalt">Pool salt</option>
                 </select>
               </div>
               <div class="field">
-                <label for="actionChemicalComponent">Main component</label>
-                <input type="text" id="actionChemicalComponent" placeholder="e.g. Ácido reductor de pH" />
+                <label for="actionChemicalComponent" data-i18n="actionForm.mainComponent">Main component</label>
+                <input type="text" id="actionChemicalComponent" data-i18n-placeholder="actionForm.mainComponent.placeholder" placeholder="e.g. Ácido reductor de pH" />
               </div>
               <div class="field-row">
                 <div class="field" style="flex:1">
-                  <label for="actionChemicalAmount">Amount</label>
+                  <label for="actionChemicalAmount" data-i18n="actionForm.amount">Amount</label>
                   <input type="number" id="actionChemicalAmount" min="0" step="0.1" />
                 </div>
                 <div class="field" style="flex:0 0 auto; min-width:80px">
-                  <label for="actionChemicalUnit">Unit</label>
+                  <label for="actionChemicalUnit" data-i18n="actionForm.unit">Unit</label>
                   <select id="actionChemicalUnit">
                     <option value="ml">ml</option>
                     <option value="l">L</option>
@@ -329,19 +329,19 @@
             <!-- Chlorinator fields -->
             <div id="actionChlorinatorFields" class="action-kind-fields" hidden>
               <div class="field">
-                <label for="actionChlorinatorPrevOutput">Previous output (%)</label>
+                <label for="actionChlorinatorPrevOutput" data-i18n="actionForm.prevOutput">Previous output (%)</label>
                 <input type="number" id="actionChlorinatorPrevOutput" min="0" max="100" step="1" />
               </div>
               <div class="field">
-                <label for="actionChlorinatorNewOutput">New output (%)</label>
+                <label for="actionChlorinatorNewOutput" data-i18n="actionForm.newOutput">New output (%)</label>
                 <input type="number" id="actionChlorinatorNewOutput" min="0" max="100" step="1" />
               </div>
               <div class="field">
-                <label for="actionChlorinatorAddHours">Additional hours</label>
+                <label for="actionChlorinatorAddHours" data-i18n="actionForm.addHours">Additional hours</label>
                 <input type="number" id="actionChlorinatorAddHours" min="0" step="1" />
               </div>
               <div class="field">
-                <label for="actionChlorinatorTotalHours">Total hours per day</label>
+                <label for="actionChlorinatorTotalHours" data-i18n="actionForm.totalHours">Total hours per day</label>
                 <input type="number" id="actionChlorinatorTotalHours" min="0" step="1" />
               </div>
             </div>
@@ -349,11 +349,11 @@
             <!-- Filtration fields -->
             <div id="actionFiltrationFields" class="action-kind-fields" hidden>
               <div class="field">
-                <label for="actionFiltrationPrevHours">Previous hours per day</label>
+                <label for="actionFiltrationPrevHours" data-i18n="actionForm.prevHours">Previous hours per day</label>
                 <input type="number" id="actionFiltrationPrevHours" min="0" step="1" />
               </div>
               <div class="field">
-                <label for="actionFiltrationNewHours">New hours per day</label>
+                <label for="actionFiltrationNewHours" data-i18n="actionForm.filtrationNewHours">New hours per day</label>
                 <input type="number" id="actionFiltrationNewHours" min="0" step="1" />
               </div>
             </div>
@@ -361,30 +361,30 @@
             <!-- Water replacement fields -->
             <div id="actionWaterFields" class="action-kind-fields" hidden>
               <div class="field">
-                <label for="actionWaterLiters">Estimated liters</label>
+                <label for="actionWaterLiters" data-i18n="actionForm.estimatedLiters">Estimated liters</label>
                 <input type="number" id="actionWaterLiters" min="0" step="100" />
               </div>
               <div class="field">
-                <label for="actionWaterPercent">Estimated percent</label>
+                <label for="actionWaterPercent" data-i18n="actionForm.estimatedPercent">Estimated percent</label>
                 <input type="number" id="actionWaterPercent" min="0" max="100" step="1" />
               </div>
             </div>
 
             <div class="field">
-              <label for="actionNotes">Notes <span class="optional">optional</span></label>
+              <label for="actionNotes" data-i18n="actionForm.notes">Notes <span class="optional" data-i18n="actionForm.notes.optional">optional</span></label>
               <textarea id="actionNotes" rows="2"></textarea>
             </div>
             <div class="field">
-              <label for="actionRelatedMeasurement">Linked measurement <span class="optional">optional</span></label>
+              <label for="actionRelatedMeasurement" data-i18n="actionForm.linkedMeasurement">Linked measurement <span class="optional" data-i18n="actionForm.linkedMeasurement.none">optional</span></label>
               <select id="actionRelatedMeasurement">
-                <option value="">— None —</option>
+                <option value="" data-i18n="actionForm.linkedMeasurement.none">— None —</option>
               </select>
             </div>
 
             <div id="actionFormErrors" class="form-errors" aria-live="polite" role="alert"></div>
 
             <div class="form-actions">
-              <button type="submit" class="btn-primary">Save Action</button>
+              <button type="submit" class="btn-primary" data-i18n="actionForm.save">Save Action</button>
             </div>
           </form>
         </div>
@@ -393,47 +393,47 @@
 
     <!-- ── Follow-Up Dashboard ──────────────────────────────────── -->
     <section class="card" aria-labelledby="followup-heading">
-      <h2 id="followup-heading" class="card-title">Action Follow-Up</h2>
+      <h2 id="followup-heading" class="card-title" data-i18n="followup.title">Action Follow-Up</h2>
       <div id="followUpDashboardContent">
-        <p class="empty-state">No follow-up actions to track. When you mark a recommendation as performed, a follow-up will appear here.</p>
+        <p class="empty-state" data-i18n="followup.empty">No follow-up actions to track. When you mark a recommendation as performed, a follow-up will appear here.</p>
       </div>
     </section>
 
     <!-- ── Measurement History ──────────────────────────────────────── -->
     <section class="card" aria-labelledby="history-heading">
-      <h2 id="history-heading" class="card-title">Measurement History</h2>
+      <h2 id="history-heading" class="card-title" data-i18n="history.title">Measurement History</h2>
 
       <div class="history-toolbar">
-        <button id="exportBtn" class="btn-secondary" title="Export all measurements as JSON">Export JSON</button>
-        <button id="importBtn" class="btn-secondary" title="Import measurements from JSON file">Import JSON</button>
+        <button id="exportBtn" class="btn-secondary" data-i18n="history.export" title="Export all measurements as JSON">Export JSON</button>
+        <button id="importBtn" class="btn-secondary" data-i18n="history.import" title="Import measurements from JSON file">Import JSON</button>
         <input type="file" id="importFileInput" accept=".json" hidden />
       </div>
 
       <div id="historyContent">
-        <p class="empty-state">No measurements recorded yet. Fill in the form above and save your first measurement.</p>
+        <p class="empty-state" data-i18n="history.empty">No measurements recorded yet. Fill in the form above and save your first measurement.</p>
       </div>
     </section>
 
     <!-- ── Action History ───────────────────────────────────────── -->
     <section class="card" aria-labelledby="action-history-heading">
-      <h2 id="action-history-heading" class="card-title">Maintenance Action History</h2>
+      <h2 id="action-history-heading" class="card-title" data-i18n="actionHistory.title">Maintenance Action History</h2>
       <div id="actionHistoryContent">
-        <p class="empty-state">No maintenance actions recorded yet.</p>
+        <p class="empty-state" data-i18n="actionHistory.empty">No maintenance actions recorded yet.</p>
       </div>
     </section>
 
     <!-- ── Historical Insights ──────────────────────────────────── -->
     <section class="card" aria-labelledby="insights-heading">
-      <h2 id="insights-heading" class="card-title">Historical Insights</h2>
+      <h2 id="insights-heading" class="card-title" data-i18n="insights.title">Historical Insights</h2>
       <div id="insightsContent">
-        <p class="empty-state">Not enough data yet. Record more measurements and actions to see historical insights.</p>
+        <p class="empty-state" data-i18n="insights.empty">Not enough data yet. Record more measurements and actions to see historical insights.</p>
       </div>
     </section>
   </main>
 
   <!-- ═══ Footer ═══════════════════════════════════════════════════ -->
   <footer class="app-footer">
-    <p>
+    <p data-i18n="footer.disclaimer">
       <strong>Disclaimer:</strong> This tool provides approximate recommendations only.
       Always follow the dosage instructions on your chemical product labels.
       This is not a substitute for professional pool maintenance advice.

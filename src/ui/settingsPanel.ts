@@ -70,6 +70,12 @@ export class SettingsPanel {
     this.scEnabled.addEventListener('change', () => this.toggleScFields());
     // Toggle historical learning fields visibility
     this.hlEnabled.addEventListener('change', () => this.toggleHlFields());
+
+    // Apply and persist language immediately when the dropdown changes
+    // (independent of pool volume / Save button)
+    this.languageSelect.addEventListener('change', () => {
+      this.applyLanguage(this.languageSelect.value as AppLanguage);
+    });
   }
 
   onChange(cb: (s: PoolSettings) => void): void {
@@ -78,6 +84,17 @@ export class SettingsPanel {
 
   onLanguageChange(cb: (lang: AppLanguage) => void): void {
     this.onLangChange = cb;
+  }
+
+  /** Apply a new language immediately: set runtime, persist, notify UI. */
+  private applyLanguage(lang: AppLanguage): void {
+    const validated = validateLanguage(lang);
+    if (validated === getLanguage()) return;
+
+    setLanguage(validated);
+    const settings = loadSettings();
+    saveSettings({ ...settings, language: validated });
+    this.onLangChange?.(validated);
   }
 
   open(): void {
@@ -144,19 +161,18 @@ export class SettingsPanel {
       return;
     }
 
-    // Handle language change immediately
-    const newLang = validateLanguage(this.languageSelect.value);
-    if (newLang !== getLanguage()) {
-      setLanguage(newLang);
-    }
-
     const settings: PoolSettings = {
       volume,
       volumeUnit: this.volumeUnitSelect.value as PoolSettings['volumeUnit'],
       poolType: this.poolTypeSelect.value as PoolSettings['poolType'],
       unitSystem: this.unitSystemSelect.value as PoolSettings['unitSystem'],
-      language: newLang,
     };
+
+    // Preserve existing settings (language, salt chlorinator, historical learning)
+    const existing = loadSettings();
+    if (existing.language) {
+      settings.language = existing.language;
+    }
 
     // Salt chlorinator config
     if (this.scEnabled.checked) {
@@ -169,6 +185,9 @@ export class SettingsPanel {
         maxRecommendedHoursPerDay: parseFloat(this.scMaxHours.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedHoursPerDay,
       };
       settings.saltChlorinator = sc;
+    } else if (existing.saltChlorinator) {
+      // Preserve salt chlorinator config when checkbox is unchecked
+      settings.saltChlorinator = { ...existing.saltChlorinator, enabled: false };
     }
 
     // Historical learning config
@@ -183,12 +202,6 @@ export class SettingsPanel {
 
     saveSettings(settings);
     this.showStatus(t('settings.saved'), 'success');
-
-    // Notify language change first (so UI re-renders before settings panel closes)
-    if (newLang !== undefined) {
-      this.onLangChange?.(newLang);
-    }
-
     this.onSave?.(settings);
   }
 
