@@ -53,6 +53,64 @@ export function validateLanguage(lang: unknown): AppLanguage {
   return 'en';
 }
 
+/**
+ * Apply current-language translations to all static DOM elements that
+ * carry data-i18n, data-i18n-placeholder, or data-i18n-title attributes.
+ *
+ * - data-i18n          → element.textContent = t(key)
+ * - data-i18n-placeholder → (input/textarea) element.placeholder = t(key)
+ * - data-i18n-title    → element.title = t(key)
+ *
+ * Safe to call before the DOM is fully ready (no-op if no elements match).
+ */
+export function applyStaticTranslations(): void {
+  const doc = typeof document === 'undefined' ? undefined : document;
+  if (!doc) return;
+
+  // textContent for headings, labels, buttons, options, etc.
+  // When the element has child nodes (e.g. <label> with <input> or <span>),
+  // only replace text nodes so children are preserved.
+  doc.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+    const key = el.dataset.i18n;
+    if (!key) return;
+    const translation = t(key as TranslationKey);
+
+    const hasChildElements = Array.from(el.childNodes).some(
+      (n) => n.nodeType === Node.ELEMENT_NODE,
+    );
+    if (hasChildElements) {
+      // Replace only text nodes — preserve <input>, <span>, etc.
+      el.childNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE && node.textContent!.trim().length > 0) {
+          node.textContent = translation;
+        }
+      });
+    } else {
+      el.textContent = translation;
+    }
+  });
+
+  // placeholder for inputs / textareas
+  doc
+    .querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      '[data-i18n-placeholder]',
+    )
+    .forEach((el) => {
+      const key = el.dataset.i18nPlaceholder;
+      if (key) {
+        el.placeholder = t(key as TranslationKey);
+      }
+    });
+
+  // title attribute
+  doc.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((el) => {
+    const key = el.dataset.i18nTitle;
+    if (key) {
+      el.title = t(key as TranslationKey);
+    }
+  });
+}
+
 // ── Translation function ─────────────────────────────────────────
 
 const MISSING_KEY_MARKER = '⚠ MISSING TRANSLATION: ';

@@ -456,6 +456,20 @@ export const es: Record<TranslationKey, string> = {
   'insights.tempLabel.hot': 'caliente',
   'insights.outputBand': 'producción {band}%',
 
+  // ── Recommendation section heading ───────────────────────────
+  'rec.section.title': 'Recomendaciones',
+
+  // ── Footer ───────────────────────────────────────────────────
+  'footer.disclaimer': 'Esta herramienta proporciona recomendaciones aproximadas. Siga siempre las instrucciones de dosificación en las etiquetas de sus productos químicos. Esto no sustituye el asesoramiento profesional de mantenimiento de piscinas.',
+
+  // ── Settings accessibility ───────────────────────────────────
+  'settings.open': 'Abrir configuración',
+  'settings.close': 'Cerrar configuración',
+
+  // ── Action form accessibility ────────────────────────────────
+  'actionForm.close': 'Cerrar',
+  'actionForm.mainComponent.placeholder': 'Ej. ácido reductor de pH',
+
   // ── Export/Import ────────────────────────────────────────────
   'export.defaultFilename': 'exportacion-piscina-{date}.json',
   'export.errors.invalidJson': 'El archivo no contiene JSON válido. Revisa el archivo e inténtalo de nuevo.',
