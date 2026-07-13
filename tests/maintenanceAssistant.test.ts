@@ -978,3 +978,153 @@ describe('proactive chlorinator adjustment', () => {
     expect(optRec).toBeUndefined();
   });
 });
+
+// ── Staged recommendations tests ────────────────────────────────────
+
+describe('staged recommendations', () => {
+  it('high pH + low FAC/ORP shows pH correction and blocked sanitation action (saltwater)', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: 8.0, fac: 0.4, orp: 560 })],
+      makeSettings({
+        poolType: 'saltwater',
+        volume: 50000,
+        saltChlorinator: {
+          enabled: true,
+          productionGramsPerHour: 20,
+          currentOutputPercent: 60,
+          filtrationHoursPerDay: 6,
+          maxRecommendedOutputPercent: 100,
+          maxRecommendedHoursPerDay: 12,
+        },
+      }),
+    );
+
+    // Should have pH correction (actionable, stage 1)
+    const phRec = result.recommendations.find(
+      (r) => r.chemicalProductId === 'ph-reducer-liquid',
+    );
+    expect(phRec).toBeDefined();
+    expect(phRec!.state).toBe('actionable');
+    expect(phRec!.stage).toBe(1);
+
+    // Should have blocked sanitation warning
+    const blockedRec = result.recommendations.find(
+      (r) => r.state === 'blocked',
+    );
+    expect(blockedRec).toBeDefined();
+    expect(blockedRec!.stage).toBe(2);
+    expect(blockedRec!.dependencies).toBeDefined();
+    expect(blockedRec!.dependencies!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('high pH + low FAC shows pH correction and blocked rec (chlorine pool)', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: 8.0, fac: 0.3, orp: 550 })],
+      makeSettings({ poolType: 'chlorine' }),
+    );
+
+    // pH correction should be actionable stage 1
+    const phRec = result.recommendations.find(
+      (r) => r.chemicalProductId === 'ph-reducer-liquid',
+    );
+    expect(phRec).toBeDefined();
+    expect(phRec!.state).toBe('actionable');
+    expect(phRec!.stage).toBe(1);
+
+    // Blocked sanitation warning (FAC critically low)
+    const blockedRec = result.recommendations.find(
+      (r) => r.state === 'blocked',
+    );
+    expect(blockedRec).toBeDefined();
+    expect(blockedRec!.stage).toBe(2);
+  });
+
+  it('FAC slightly low with pH out of range shows blocked rec without aggressive dose', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: 8.0, fac: 0.8, orp: 620 })],
+      makeSettings({ poolType: 'chlorine' }),
+    );
+
+    // pH should be first priority
+    const phRec = result.recommendations.find(
+      (r) => r.chemicalProductId === 'ph-reducer-liquid',
+    );
+    expect(phRec).toBeDefined();
+    expect(phRec!.priority).toBeLessThan(5);
+
+    // Should have blocked stage 2 rec
+    const blockedRec = result.recommendations.find(
+      (r) => r.state === 'blocked',
+    );
+    expect(blockedRec).toBeDefined();
+
+    // No aggressive chlorine shock dose while pH is out of range
+    const chlorineRec = result.recommendations.find(
+      (r) => r.chemicalProductId === 'chlorine-granules',
+    );
+    // If there is a chlorine rec, it should be blocked
+    if (chlorineRec) {
+      expect(chlorineRec.state).toBe('blocked');
+    }
+  });
+
+  it('pH within range still produces chlorinator adjustment without blocking', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: 7.4, fac: 0.4, orp: 560 })],
+      makeSettings({
+        poolType: 'saltwater',
+        volume: 50000,
+        saltChlorinator: {
+          enabled: true,
+          productionGramsPerHour: 20,
+          currentOutputPercent: 60,
+          filtrationHoursPerDay: 6,
+          maxRecommendedOutputPercent: 100,
+          maxRecommendedHoursPerDay: 12,
+        },
+      }),
+    );
+
+    // No blocked recs since pH is in range
+    const blockedRec = result.recommendations.find(
+      (r) => r.state === 'blocked',
+    );
+    expect(blockedRec).toBeUndefined();
+
+    // Should have actionable chlorinator adjustment
+    const chlorRec = result.recommendations.find(
+      (r) => r.kind === 'equipment',
+    );
+    expect(chlorRec).toBeDefined();
+  });
+
+  it('sanitation recommendation has dependencies when blocked', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: 8.0, fac: 0.4, orp: 560 })],
+      makeSettings({
+        poolType: 'saltwater',
+        volume: 50000,
+        saltChlorinator: {
+          enabled: true,
+          productionGramsPerHour: 20,
+          currentOutputPercent: 60,
+          filtrationHoursPerDay: 6,
+          maxRecommendedOutputPercent: 100,
+          maxRecommendedHoursPerDay: 12,
+        },
+      }),
+    );
+
+    const blockedRecs = result.recommendations.filter((r) => r.state === 'blocked');
+    expect(blockedRecs.length).toBeGreaterThanOrEqual(1);
+
+    // Each blocked rec should have a dependency explaining why
+    for (const rec of blockedRecs) {
+      expect(rec.dependencies).toBeDefined();
+      expect(rec.dependencies!.length).toBeGreaterThanOrEqual(1);
+      const firstDep = rec.dependencies![0];
+      expect(firstDep.condition).toBeDefined();
+      expect(firstDep.explanationKey).toBeDefined();
+    }
+  });
+});

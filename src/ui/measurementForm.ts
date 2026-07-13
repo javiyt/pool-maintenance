@@ -1,6 +1,6 @@
 import { t } from '../i18n/index';
 import type { TranslationKey } from '../i18n/types';
-import type { Measurement } from '../domain/measurement';
+import type { Measurement, MeasurementContext } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
 
 /**
@@ -74,6 +74,9 @@ export class MeasurementForm {
     const measuredAt = dateTimeLocal ? localDatetimeToISO(dateTimeLocal) : '';
     const notes = (document.getElementById('mNotes') as HTMLTextAreaElement).value;
 
+    // Read context
+    const context = readContext();
+
     const partial: Partial<Measurement> = {
       measuredAt,
       ph: getNum('mPh'),
@@ -84,6 +87,7 @@ export class MeasurementForm {
       fac: getNum('mFac'),
       temperature: getNum('mTemperature'),
       notes: notes || undefined,
+      context: context || undefined,
     };
 
     const validation = validateMeasurement(partial);
@@ -105,6 +109,7 @@ export class MeasurementForm {
       fac: partial.fac!,
       temperature: partial.temperature!,
       notes: partial.notes,
+      context: partial.context,
     };
 
     this.form.reset();
@@ -135,4 +140,47 @@ function escapeHtml(s: string): string {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+/**
+ * Read measurement context fields from the form.
+ * Returns undefined if all fields are empty/default.
+ */
+function readContext(): MeasurementContext | undefined {
+  const sunlight = (document.getElementById('ctxSunlight') as HTMLSelectElement).value;
+  const poolCoveredRaw = (document.getElementById('ctxPoolCovered') as HTMLSelectElement).value;
+  const batherLoad = (document.getElementById('ctxBatherLoad') as HTMLSelectElement).value;
+  const rain = (document.getElementById('ctxRain') as HTMLInputElement).checked;
+  const waterAddedRaw = (document.getElementById('ctxWaterAdded') as HTMLInputElement).value;
+  const backwash = (document.getElementById('ctxBackwash') as HTMLInputElement).checked;
+  const chlorOutputRaw = (document.getElementById('ctxChlorOutput') as HTMLInputElement).value;
+  const chlorHoursRaw = (document.getElementById('ctxChlorHours') as HTMLInputElement).value;
+  const filtHoursRaw = (document.getElementById('ctxFiltHours') as HTMLInputElement).value;
+  const algae = (document.getElementById('ctxAlgae') as HTMLInputElement).checked;
+  const clarity = (document.getElementById('ctxClarity') as HTMLSelectElement).value;
+
+  const ctx: MeasurementContext = {};
+
+  if (sunlight === 'none' || sunlight === 'low' || sunlight === 'medium' || sunlight === 'high') {
+    ctx.sunlight = sunlight;
+  }
+  if (poolCoveredRaw === 'true' || poolCoveredRaw === 'false') {
+    ctx.poolCovered = poolCoveredRaw === 'true';
+  }
+  if (batherLoad === 'none' || batherLoad === 'low' || batherLoad === 'medium' || batherLoad === 'high') {
+    ctx.batherLoad = batherLoad;
+  }
+  if (rain) ctx.rainSincePreviousMeasurement = true;
+  if (waterAddedRaw) ctx.waterAddedLiters = parseFloat(waterAddedRaw);
+  if (backwash) ctx.backwashPerformed = true;
+  if (chlorOutputRaw) ctx.chlorinatorOutputPercent = parseFloat(chlorOutputRaw);
+  if (chlorHoursRaw) ctx.chlorinatorHoursSincePreviousMeasurement = parseFloat(chlorHoursRaw);
+  if (filtHoursRaw) ctx.filtrationHoursSincePreviousMeasurement = parseFloat(filtHoursRaw);
+  if (algae) ctx.visibleAlgae = true;
+  if (clarity === 'clear' || clarity === 'slightly-cloudy' || clarity === 'cloudy') {
+    ctx.waterClarity = clarity;
+  }
+
+  if (Object.keys(ctx).length === 0) return undefined;
+  return ctx;
 }

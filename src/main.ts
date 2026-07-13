@@ -33,6 +33,7 @@ function runAndShowRecommendations(
   const settings = loadSettings();
   const measurements = loadMeasurements();
   const actions = loadActions();
+  recommendationsPanel.setHistory(measurements, actions, settings);
   const result = runPersonalizedAssistant(measurements, actions, settings);
   recommendationsPanel.show(result);
 }

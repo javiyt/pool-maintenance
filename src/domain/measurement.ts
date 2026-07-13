@@ -1,3 +1,17 @@
+export interface MeasurementContext {
+  sunlight?: 'none' | 'low' | 'medium' | 'high';
+  poolCovered?: boolean;
+  batherLoad?: 'none' | 'low' | 'medium' | 'high';
+  rainSincePreviousMeasurement?: boolean;
+  waterAddedLiters?: number;
+  backwashPerformed?: boolean;
+  chlorinatorOutputPercent?: number;
+  chlorinatorHoursSincePreviousMeasurement?: number;
+  filtrationHoursSincePreviousMeasurement?: number;
+  visibleAlgae?: boolean;
+  waterClarity?: 'clear' | 'slightly-cloudy' | 'cloudy';
+}
+
 export interface Measurement {
   id: string;
   measuredAt: string; // ISO 8601, e.g. "2026-07-09T10:35:00.000Z"
@@ -9,6 +23,7 @@ export interface Measurement {
   fac: number; // free available chlorine, ppm
   temperature: number; // water temperature, °C
   notes?: string;
+  context?: MeasurementContext;
 }
 
 export interface ValidationResult {

@@ -3,6 +3,7 @@ import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import type { MaintenanceAction } from './actions';
 import type { FollowUp } from './followUp';
+import type { DiagnosticExperiment } from './latentStateEstimator';
 
 const KEY_PREFIX = 'pool-maintenance:';
 
@@ -170,7 +171,51 @@ export function mergeFollowUps(
 
 // ── Export / Import ────────────────────────────────────────────────
 
-export const EXPORT_SCHEMA_VERSION = 6;
+// ── Diagnostic experiments ─────────────────────────────────────────
+
+export function loadExperiments(): DiagnosticExperiment[] {
+  try {
+    const raw = localStorage.getItem(key('experiments'));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as DiagnosticExperiment[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveExperiments(experiments: DiagnosticExperiment[]): void {
+  localStorage.setItem(key('experiments'), JSON.stringify(experiments));
+}
+
+export function addExperiment(exp: DiagnosticExperiment): DiagnosticExperiment[] {
+  const list = loadExperiments();
+  list.push(exp);
+  saveExperiments(list);
+  return list;
+}
+
+export function updateExperiment(id: string, updates: Partial<DiagnosticExperiment>): DiagnosticExperiment[] {
+  const list = loadExperiments();
+  const idx = list.findIndex((e) => e.id === id);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], ...updates };
+    saveExperiments(list);
+  }
+  return list;
+}
+
+export function mergeExperiments(
+  existing: DiagnosticExperiment[],
+  incoming: DiagnosticExperiment[],
+): DiagnosticExperiment[] {
+  const existingIds = new Set(existing.map((e) => e.id));
+  const deduped = incoming.filter((e) => !existingIds.has(e.id));
+  return [...existing, ...deduped];
+}
+
+export const EXPORT_SCHEMA_VERSION = 7;
 
 export interface ExportData {
   schemaVersion: number;
@@ -179,19 +224,21 @@ export interface ExportData {
   measurements: Measurement[];
   actions: MaintenanceAction[];
   followUps: FollowUp[];
+  experiments?: DiagnosticExperiment[];
 }
 
 export interface ImportResult {
   measurements: Measurement[];
   actions: MaintenanceAction[];
   followUps: FollowUp[];
+  experiments: DiagnosticExperiment[];
   poolConfig: PoolSettings | null;
   count: number;
 }
 
 /**
  * Build the full export payload including pool configuration,
- * measurement history, and schema metadata.
+ * measurement history, schema metadata, and diagnostic experiments.
  *
  * @param now Optional date to use as the export timestamp (for testing).
  */
@@ -203,6 +250,7 @@ export function exportData(now?: Date): ExportData {
     measurements: loadMeasurements(),
     actions: loadActions(),
     followUps: loadFollowUps(),
+    experiments: loadExperiments(),
   };
 }
 
@@ -210,6 +258,7 @@ export function exportData(now?: Date): ExportData {
  * Parse and validate an import JSON string.
  *
  * Supports:
+ * - v7: `{ schemaVersion: 7, poolConfig, measurements, actions, followUps, experiments }` — adds diagnostic experiments
  * - v6: `{ schemaVersion: 6, poolConfig, measurements, actions, followUps }` — adds follow-ups
  * - v5: `{ schemaVersion: 5, poolConfig, measurements, actions }` — adds historicalLearning config to poolConfig
  * - v4: `{ schemaVersion: 4, poolConfig, measurements, actions }` — current format before v5
@@ -235,7 +284,7 @@ export function parseImportData(jsonString: string): ImportResult {
   // ── Legacy format: plain array of measurements ────────────────
   if (Array.isArray(data)) {
     if (data.length === 0) {
-      return { measurements: [], actions: [], followUps: [], poolConfig: null, count: 0 };
+      return { measurements: [], actions: [], followUps: [], experiments: [], poolConfig: null, count: 0 };
     }
 
     for (const item of data) {
@@ -252,7 +301,7 @@ export function parseImportData(jsonString: string): ImportResult {
     }
 
     const measurements = data.map(migrateMeasurement);
-    return { measurements, actions: [], followUps: [], poolConfig: null, count: measurements.length };
+    return { measurements, actions: [], followUps: [], experiments: [], poolConfig: null, count: measurements.length };
   }
 
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
@@ -305,12 +354,25 @@ export function parseImportData(jsonString: string): ImportResult {
       followUps = obj.followUps as FollowUp[];
     }
 
+    // Parse experiments (v7+); v6 and older exports won't have this field
+    let experiments: DiagnosticExperiment[] = [];
+    if (Array.isArray(obj.experiments)) {
+      for (const item of obj.experiments) {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error(
+            'Invalid JSON format: experiments must be an array of objects.',
+          );
+        }
+      }
+      experiments = obj.experiments as DiagnosticExperiment[];
+    }
+
     let poolConfig: PoolSettings | null = null;
     if (obj.poolConfig && typeof obj.poolConfig === 'object') {
       poolConfig = { ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings;
     }
 
-    return { measurements, actions, followUps, poolConfig, count: measurements.length };
+    return { measurements, actions, followUps, experiments, poolConfig, count: measurements.length };
   }
 
   throw new Error(

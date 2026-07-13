@@ -314,3 +314,107 @@ describe('no brand names', () => {
     });
   }
 });
+
+// ── New i18n key tests ───────────────────────────────────────────
+
+describe('estimated state i18n', () => {
+  const langPairs: Array<[string, string]> = [
+    ['en', 'estimate.section.title'],
+    ['en', 'estimate.alkalinity.title'],
+    ['en', 'estimate.cya.title'],
+    ['en', 'estimate.state.likelyLow'],
+    ['en', 'estimate.state.probablyNormal'],
+    ['en', 'estimate.state.likelyHigh'],
+    ['en', 'estimate.state.unknown'],
+    ['en', 'estimate.state.likelyInsufficient'],
+    ['en', 'estimate.state.probablyAdequate'],
+    ['en', 'estimate.state.possiblyExcessive'],
+    ['en', 'estimate.state.inconclusive'],
+    ['en', 'estimate.evidence.title'],
+    ['en', 'estimate.alternatives.title'],
+    ['en', 'estimate.disclaimer'],
+    ['es', 'estimate.section.title'],
+    ['es', 'estimate.alkalinity.title'],
+    ['es', 'estimate.state.likelyLow'],
+    ['es', 'estimate.state.probablyNormal'],
+    ['es', 'estimate.state.likelyHigh'],
+    ['es', 'estimate.state.unknown'],
+    ['es', 'estimate.state.likelyInsufficient'],
+    ['es', 'estimate.state.inconclusive'],
+  ];
+
+  for (const [lang, key] of langPairs) {
+    it(`renders ${key} in ${lang}`, () => {
+      const result = t(key as any, undefined, lang as any);
+      expect(result).not.toContain('⚠ MISSING TRANSLATION');
+      expect(result.length).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe('staged recommendation i18n', () => {
+  const langPairs: Array<[string, string]> = [
+    ['en', 'rec.dependency.phInRange'],
+    ['en', 'rec.dependency.retestPh'],
+    ['en', 'rec.stage.label'],
+    ['en', 'rec.stage.blocked'],
+    ['en', 'rec.state.blocked'],
+    ['en', 'rec.dependencies.title'],
+    ['es', 'rec.dependency.phInRange'],
+    ['es', 'rec.dependency.retestPh'],
+    ['es', 'rec.stage.label'],
+    ['es', 'rec.stage.blocked'],
+    ['es', 'rec.state.blocked'],
+    ['es', 'rec.dependencies.title'],
+  ];
+
+  for (const [lang, key] of langPairs) {
+    it(`renders ${key} in ${lang}`, () => {
+      const params = key === 'rec.stage.label' ? { stage: '1' } : undefined;
+      const result = t(key as any, params, lang as any);
+      expect(result).not.toContain('⚠ MISSING TRANSLATION');
+      expect(result.length).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe('experiment i18n', () => {
+  const keys: string[] = [
+    'experiment.title',
+    'experiment.phBuffer.title',
+    'experiment.chlorineRetention.title',
+    'experiment.phBuffer.step1',
+    'experiment.chlorineRetention.step1',
+  ];
+
+  for (const lang of ['en', 'es'] as const) {
+    for (const key of keys) {
+      it(`renders ${key} in ${lang}`, () => {
+        const result = t(key as any, undefined, lang);
+        expect(result).not.toContain('⚠ MISSING TRANSLATION');
+        expect(result.length).toBeGreaterThan(0);
+      });
+    }
+  }
+});
+
+describe('context i18n', () => {
+  const keys: string[] = [
+    'context.section.title',
+    'context.sunlight',
+    'context.poolCovered',
+    'context.batherLoad',
+    'context.rainSincePrevious',
+    'context.waterClarity',
+  ];
+
+  for (const lang of ['en', 'es'] as const) {
+    for (const key of keys) {
+      it(`renders ${key} in ${lang}`, () => {
+        const result = t(key as any, undefined, lang);
+        expect(result).not.toContain('⚠ MISSING TRANSLATION');
+        expect(result.length).toBeGreaterThan(0);
+      });
+    }
+  }
+});
