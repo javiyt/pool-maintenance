@@ -6,16 +6,16 @@
 # Runtime stage: serve static assets with nginx.
 
 # ============================================================== builder
-FROM --platform=$TARGETPLATFORM node:22-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN corepack enable
 
 WORKDIR /app
 
-COPY pnpm-lock.yaml package.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-COPY tsconfig.json vite.config.ts ./
+COPY tsconfig.json tsconfig.app.json vite.config.ts ./
 COPY src/ src/
 COPY index.html .
 

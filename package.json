@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "build:pages": "DEPLOY_TARGET=github-pages tsc && DEPLOY_TARGET=github-pages vite build",
+    "build": "tsc --project tsconfig.app.json --noEmit && vite build",
+    "build:pages": "DEPLOY_TARGET=github-pages tsc --project tsconfig.app.json --noEmit && DEPLOY_TARGET=github-pages vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

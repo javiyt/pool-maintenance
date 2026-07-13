@@ -10,7 +10,8 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "outDir": "dist",
+    "rootDir": ".",
+    "noEmit": true,
     "sourceMap": true,
     "skipLibCheck": true
   },
