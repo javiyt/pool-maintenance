@@ -3,11 +3,19 @@ import type { ActionFormPrefill } from './actionForm';
 import type { MaintenanceActionKind } from '../domain/actions';
 import type { TranslationKey, TranslationParams } from '../i18n/types';
 import { t, formatNumber, formatAmount } from '../i18n/index';
+import type { LatentParameterEstimate, EstimatedAlkalinityState, EstimatedCyanuricAcidState } from '../domain/latentStateEstimator';
+import { estimateAlkalinityState, estimateCyanuricAcidState } from '../domain/latentStateEstimator';
+import type { Measurement } from '../domain/measurement';
+import type { MaintenanceAction } from '../domain/actions';
+import type { PoolSettings } from '../domain/settings';
 
 export class RecommendationsPanel {
   private section: HTMLElement;
   private content: HTMLElement;
   private onPerformCb: ((prefill: ActionFormPrefill) => void) | null = null;
+  private measurements: Measurement[] = [];
+  private actions: MaintenanceAction[] = [];
+  private settings: PoolSettings | null = null;
 
   constructor() {
     this.section = document.getElementById('recommendationsSection') as HTMLElement;
@@ -16,6 +24,12 @@ export class RecommendationsPanel {
 
   onMarkAsPerformed(cb: (prefill: ActionFormPrefill) => void): void {
     this.onPerformCb = cb;
+  }
+
+  setHistory(measurements: Measurement[], actions: MaintenanceAction[], settings: PoolSettings): void {
+    this.measurements = measurements;
+    this.actions = actions;
+    this.settings = settings;
   }
 
   show(result: MaintenanceAssistantResult): void {
@@ -40,6 +54,11 @@ export class RecommendationsPanel {
     // ── Recommendations grouped by kind ─────────────────────────
     if (result.recommendations.length > 0) {
       parts.push(this.renderGroupedRecommendations(result));
+    }
+
+    // ── Estimated unmeasured parameters ────────────────────────
+    if (this.measurements.length > 0 && this.settings) {
+      parts.push(this.renderLatentEstimates());
     }
 
     parts.push(`
@@ -268,6 +287,33 @@ export class RecommendationsPanel {
     // Personalization (historical learning)
     const personalizationHtml = this.renderPersonalization(item);
 
+    // State badge and dependencies for staged recommendations
+    let stateHtml = '';
+    if (item.state) {
+      const stateKeyMap: Record<string, TranslationKey> = {
+        actionable: 'rec.state.actionable',
+        blocked: 'rec.state.blocked',
+        'pending-retest': 'rec.state.pendingRetest',
+        informational: 'severity.info',
+      };
+      const stateLabel = t(stateKeyMap[item.state] ?? 'severity.info');
+      const stateClass = `rec-state-${item.state}`;
+      stateHtml = `<span class="rec-state-badge ${stateClass}">${escapeHtml(stateLabel)}</span>`;
+    }
+
+    let stageHtml = '';
+    if (item.stage !== undefined) {
+      stageHtml = `<span class="rec-stage-badge">${escapeHtml(t('rec.stage.label', { stage: String(item.stage) }))}</span>`;
+    }
+
+    let depsHtml = '';
+    if (item.dependencies && item.dependencies.length > 0) {
+      const depItems = item.dependencies.map((d) =>
+        `<li>${escapeHtml(t(d.explanationKey))}</li>`,
+      ).join('');
+      depsHtml = `<div class="rec-dependencies"><strong>${escapeHtml(t('rec.dependencies.title'))}</strong><ul>${depItems}</ul></div>`;
+    }
+
     // "Mark as performed" button for actionable recommendations
     const performBtnHtml = this.renderPerformButton(item);
 
@@ -276,6 +322,9 @@ export class RecommendationsPanel {
         ${nameHtml}
         ${amountHtml}
         ${personalizationHtml}
+        ${stageHtml}
+        ${stateHtml}
+        ${depsHtml}
         ${summaryHtml}
         ${reasonHtml}
         ${equipHtml}
@@ -455,6 +504,94 @@ export class RecommendationsPanel {
       });
     });
   }
+
+  /**
+   * Render the estimated unmeasured parameters section.
+   */
+  private renderLatentEstimates(): string {
+    const settings = this.settings;
+    if (!settings) return '';
+
+    const alkEstimate = estimateAlkalinityState(this.measurements, this.actions, settings);
+    const cyaEstimate = estimateCyanuricAcidState(this.measurements, this.actions, settings);
+
+    const alkStateKey = stateToKey(alkEstimate.parameter, alkEstimate.state);
+    const cyaStateKey = stateToKey(cyaEstimate.parameter, cyaEstimate.state);
+    const alkConfidenceKey = confidenceToKey(alkEstimate.confidence);
+    const cyaConfidenceKey = confidenceToKey(cyaEstimate.confidence);
+
+    const parts: string[] = [
+      `<div class="as-estimates">`,
+      `<h3 class="as-subtitle">${escapeHtml(t('estimate.section.title'))}</h3>`,
+      `<div class="estimate-disclaimer">${escapeHtml(t('estimate.section.disclaimer'))}</div>`,
+    ];
+
+    parts.push(this.renderAlkalinityCard(alkEstimate, alkStateKey, alkConfidenceKey));
+    parts.push(this.renderCyaCard(cyaEstimate, cyaStateKey, cyaConfidenceKey));
+
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  private renderAlkalinityCard(
+    est: LatentParameterEstimate<EstimatedAlkalinityState>,
+    stateKey: TranslationKey,
+    confidenceKey: TranslationKey,
+  ): string {
+    const tState = t(stateKey);
+    const tConfidence = t(confidenceKey);
+    const confidenceClass = `confidence-${est.confidence}`;
+    const evidenceHtml = est.evidence.map((ev) =>
+      `<li>${escapeHtml(t(ev.messageKey, ev.params))}</li>`,
+    ).join('');
+    const altHtml = est.alternativeExplanations.map((alt) =>
+      `<li>${escapeHtml(t(alt.messageKey, alt.params))}</li>`,
+    ).join('');
+
+    return `
+      <div class="estimate-card">
+        <h4>${escapeHtml(t('estimate.alkalinity.title'))}</h4>
+        <div class="estimate-state">
+          <strong>${escapeHtml(tState)}</strong>
+          <span class="${confidenceClass}"> — ${escapeHtml(t('estimate.confidence.label', { level: tConfidence }))}</span>
+        </div>
+        <div class="estimate-count">${escapeHtml(t('estimate.evidence.count', { count: String(est.evidenceCount) }))}</div>
+        ${evidenceHtml ? `<div class="estimate-evidence"><strong>${escapeHtml(t('estimate.evidence.title'))}:</strong><ul>${evidenceHtml}</ul></div>` : ''}
+        ${altHtml ? `<div class="estimate-alternatives"><strong>${escapeHtml(t('estimate.alternatives.title'))}:</strong><ul>${altHtml}</ul></div>` : ''}
+        <div class="estimate-footer">${escapeHtml(t('estimate.disclaimer'))}</div>
+      </div>
+    `;
+  }
+
+  private renderCyaCard(
+    est: LatentParameterEstimate<EstimatedCyanuricAcidState>,
+    stateKey: TranslationKey,
+    confidenceKey: TranslationKey,
+  ): string {
+    const tState = t(stateKey);
+    const tConfidence = t(confidenceKey);
+    const confidenceClass = `confidence-${est.confidence}`;
+    const evidenceHtml = est.evidence.map((ev) =>
+      `<li>${escapeHtml(t(ev.messageKey, ev.params))}</li>`,
+    ).join('');
+    const altHtml = est.alternativeExplanations.map((alt) =>
+      `<li>${escapeHtml(t(alt.messageKey, alt.params))}</li>`,
+    ).join('');
+
+    return `
+      <div class="estimate-card">
+        <h4>${escapeHtml(t('estimate.cya.title'))}</h4>
+        <div class="estimate-state">
+          <strong>${escapeHtml(tState)}</strong>
+          <span class="${confidenceClass}"> — ${escapeHtml(t('estimate.confidence.label', { level: tConfidence }))}</span>
+        </div>
+        <div class="estimate-count">${escapeHtml(t('estimate.evidence.count', { count: String(est.evidenceCount) }))}</div>
+        ${evidenceHtml ? `<div class="estimate-evidence"><strong>${escapeHtml(t('estimate.evidence.title'))}:</strong><ul>${evidenceHtml}</ul></div>` : ''}
+        ${altHtml ? `<div class="estimate-alternatives"><strong>${escapeHtml(t('estimate.alternatives.title'))}:</strong><ul>${altHtml}</ul></div>` : ''}
+        <div class="estimate-footer">${escapeHtml(t('estimate.disclaimer'))}</div>
+      </div>
+    `;
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -543,4 +680,39 @@ function recommendationToActionKind(
     default:
       return undefined;
   }
+}
+
+/**
+ * Map an estimated parameter state to a translation key.
+ */
+function stateToKey(parameter: string, state: string): TranslationKey {
+  if (parameter === 'total-alkalinity') {
+    const keyMap: Record<string, TranslationKey> = {
+      'likely-low': 'estimate.state.likelyLow',
+      'probably-normal': 'estimate.state.probablyNormal',
+      'likely-high': 'estimate.state.likelyHigh',
+      unknown: 'estimate.state.unknown',
+    };
+    return keyMap[state] ?? 'estimate.state.unknown';
+  }
+  const keyMap: Record<string, TranslationKey> = {
+    'likely-insufficient': 'estimate.state.likelyInsufficient',
+    'probably-adequate': 'estimate.state.probablyAdequate',
+    'possibly-excessive': 'estimate.state.possiblyExcessive',
+    inconclusive: 'estimate.state.inconclusive',
+  };
+  return keyMap[state] ?? 'estimate.state.inconclusive';
+}
+
+/**
+ * Map a confidence level to a translation key.
+ */
+function confidenceToKey(confidence: string): TranslationKey {
+  const keyMap: Record<string, TranslationKey> = {
+    high: 'confidence.high',
+    medium: 'confidence.medium',
+    low: 'confidence.low',
+    none: 'confidence.none',
+  };
+  return keyMap[confidence] ?? 'confidence.none';
 }

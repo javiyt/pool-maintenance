@@ -16,6 +16,9 @@ import {
   mergeFollowUps,
   normalizeActionExclusionFlags,
   mergeActions,
+  loadExperiments,
+  saveExperiments,
+  mergeExperiments,
   EXPORT_SCHEMA_VERSION,
 } from '../src/domain/storage';
 import type { PoolSettings } from '../src/domain/settings';
@@ -549,10 +552,10 @@ describe('export includes follow-ups (v6)', () => {
     expect(data.followUps[0].id).toBe('fu-1');
   });
 
-  it('sets schemaVersion to 6', () => {
+  it('sets schemaVersion to 7', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(6);
+    expect(data.schemaVersion).toBe(7);
   });
 
   it('imports v6 data with followUps', () => {
@@ -919,5 +922,130 @@ describe('follow-up edge cases', () => {
     const result = parseImportData(json);
     expect(result.followUps).toEqual([]);
     expect(result.actions).toHaveLength(1);
+  });
+});
+
+// ── Experiment persistence tests ──────────────────────────────────
+
+describe('experiment persistence', () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it('round-trips experiments', () => {
+    const exp = createTestExperiment();
+    saveExperiments([exp]);
+    const loaded = loadExperiments();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe(exp.id);
+    expect(loaded[0].kind).toBe('ph-buffer-response');
+  });
+
+  it('includes experiments in v7 export', () => {
+    const exp = createTestExperiment();
+    saveExperiments([exp]);
+    saveSettings(SAMPLE_POOL_CONFIG);
+    const data = exportData(FIXED_NOW);
+    expect(data.schemaVersion).toBe(7);
+    expect(data.experiments).toBeDefined();
+    expect(data.experiments!.length).toBe(1);
+    expect(data.experiments![0].kind).toBe('ph-buffer-response');
+  });
+
+  it('imports v7 data with experiments', () => {
+    const json = JSON.stringify({
+      schemaVersion: 7,
+      exportedAt: '2026-07-09T10:35:00.000Z',
+      poolConfig: SAMPLE_POOL_CONFIG,
+      measurements: [],
+      actions: [],
+      followUps: [],
+      experiments: [{ id: 'exp-1', kind: 'chlorine-retention', status: 'proposed', createdAt: '2026-07-09T10:00:00.000Z', steps: [], relatedMeasurementIds: [] }],
+    });
+    const result = parseImportData(json);
+    expect(result.experiments).toHaveLength(1);
+    expect(result.experiments[0].kind).toBe('chlorine-retention');
+  });
+
+  it('handles v6 import without experiments', () => {
+    const json = JSON.stringify({
+      schemaVersion: 6,
+      exportedAt: '2026-07-09T10:35:00.000Z',
+      poolConfig: SAMPLE_POOL_CONFIG,
+      measurements: [],
+      actions: [],
+      followUps: [],
+    });
+    const result = parseImportData(json);
+    expect(result.experiments).toEqual([]);
+  });
+
+  it('merges experiments by id without duplicates', () => {
+    const exp1 = createTestExperiment();
+    const exp2 = { ...createTestExperiment(), id: 'exp-2' };
+    const existing = [exp1];
+    const incoming = [exp1, exp2]; // exp1 is duplicate
+    const merged = mergeExperiments(existing, incoming as any);
+    expect(merged).toHaveLength(2);
+  });
+});
+
+function createTestExperiment() {
+  return {
+    id: 'exp-test-1',
+    kind: 'ph-buffer-response' as const,
+    status: 'proposed' as const,
+    createdAt: '2026-07-09T10:00:00.000Z',
+    proposedAt: '2026-07-09T10:00:00.000Z',
+    steps: [
+      { order: 1, instructionKey: 'experiment.phBuffer.step1' as any, requiredMeasurement: false },
+    ],
+    relatedMeasurementIds: [],
+  };
+}
+
+// ── Measurement context persistence ───────────────────────────────
+
+describe('measurement context persistence', () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it('saves and loads measurement with context', () => {
+    const m: Measurement = {
+      ...SAMPLE_MEASUREMENT,
+      context: {
+        sunlight: 'high',
+        poolCovered: false,
+        batherLoad: 'medium',
+        rainSincePreviousMeasurement: true,
+        chlorinatorOutputPercent: 60,
+      },
+    };
+    saveMeasurements([m]);
+    const loaded = loadMeasurements();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].context).toBeDefined();
+    expect(loaded[0].context!.sunlight).toBe('high');
+    expect(loaded[0].context!.batherLoad).toBe('medium');
+    expect(loaded[0].context!.rainSincePreviousMeasurement).toBe(true);
+    expect(loaded[0].context!.chlorinatorOutputPercent).toBe(60);
+  });
+
+  it('includes context in export/import', () => {
+    const m: Measurement = {
+      ...SAMPLE_MEASUREMENT,
+      context: { sunlight: 'low', waterClarity: 'slightly-cloudy' },
+    };
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveMeasurements([m]);
+    const data = exportData(FIXED_NOW);
+    expect(data.measurements[0].context).toBeDefined();
+    expect(data.measurements[0].context!.sunlight).toBe('low');
+
+    const json = JSON.stringify(data);
+    const result = parseImportData(json);
+    expect(result.measurements[0].context).toBeDefined();
+    expect(result.measurements[0].context!.waterClarity).toBe('slightly-cloudy');
   });
 });

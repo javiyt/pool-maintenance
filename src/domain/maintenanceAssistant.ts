@@ -31,6 +31,22 @@ export type RecommendationSeverity =
   | 'high'
   | 'danger';
 
+export type RecommendationState =
+  | 'actionable'
+  | 'blocked'
+  | 'pending-retest'
+  | 'informational';
+
+export interface RecommendationDependency {
+  recommendationId?: string;
+  condition:
+    | 'ph-in-range'
+    | 'salt-in-range'
+    | 'retest-completed'
+    | 'manual-value-available';
+  explanationKey: TranslationKey;
+}
+
 export interface MaintenanceRecommendation {
   id: string;
   kind: MaintenanceActionKind;
@@ -77,6 +93,12 @@ export interface MaintenanceRecommendation {
   followUpActions: string[];
   retestAfterHours?: number;
   personalization?: RecommendationPersonalization;
+  /** Recommendation state for staged plans. */
+  state?: RecommendationState;
+  /** Dependencies that must be resolved before this rec is actionable. */
+  dependencies?: RecommendationDependency[];
+  /** Stage number for staged maintenance plans (1-based). */
+  stage?: number;
 }
 
 export interface RecommendationPersonalization {
@@ -526,6 +548,8 @@ export function runAssistant(
         'Repetir la dosis si el pH sigue bajo.',
       ],
       retestAfterHours: 6,
+      state: 'actionable',
+      stage: 1,
     });
   } else if (latest.ph > phRange.max) {
     updateStatus('needs-correction');
@@ -570,6 +594,8 @@ export function runAssistant(
         'Repetir la dosis si el pH sigue alto.',
       ],
       retestAfterHours: 6,
+      state: 'actionable',
+      stage: 1,
     });
   }
 
@@ -584,20 +610,77 @@ export function runAssistant(
 
       // Check if we should recommend pH correction first
       if (!phAcceptable) {
-        recommendations.push({
-          id: nextId(),
-          kind: 'monitor',
-          severity: 'medium',
-          title: 'Corregir pH antes de ajustar cloro',
-          summary: 'El pH debe estar dentro del rango antes de ajustar el cloro.',
-          reason: `El pH (${latest.ph.toFixed(1)}) está fuera del rango. El cloro es menos eficaz con pH desajustado.`,
-          priority: 2,
-          relatedFields: ['ph', 'fac'],
-          calculationNotes: ['Corregir el pH primero para que el cloro sea eficaz.'],
-          safetyNotes: [],
-          followUpActions: ['Aplicar corrección de pH.', 'Esperar 4–6 horas.', 'Reevaluar FAC.'],
-          retestAfterHours: 6,
-        });
+        // Stage 1: pH correction (duplicate of the pH rec above, with stage marker)
+        // Stage 2: blocked sanitation recommendation
+        const isVeryLowFac = latest.fac < facRange.min * 0.5;
+        const isLowOrp = latest.orp !== undefined && latest.orp !== null && latest.orp < 650;
+
+        // Add a sanitation warning that's visible but labeled as blocked
+        if (isVeryLowFac || isLowOrp) {
+          const sanitSev: RecommendationSeverity = isLowOrp ? 'high' : (isVeryLowFac ? 'high' : 'medium');
+          recommendations.push({
+            id: nextId(),
+            kind: 'warning',
+            severity: sanitSev,
+            title: isVeryLowFac ? 'FAC críticamente bajo — corregir pH primero' : 'ORP bajo — corregir pH primero',
+            summary: isVeryLowFac
+              ? `El FAC (${latest.fac.toFixed(1)} ppm) está críticamente bajo. Ajustar el clorador después de corregir el pH.`
+              : `El ORP (${latest.orp} mV) está bajo y el FAC (${latest.fac.toFixed(1)} ppm) necesita atención. Corregir pH primero.`,
+            reason: `El pH (${latest.ph.toFixed(1)}) está fuera de rango. La desinfección está comprometida, pero el cloro es ineficaz con pH desajustado.`,
+            priority: 2,
+            relatedFields: ['ph', 'fac', 'orp'],
+            state: 'blocked',
+            stage: 2,
+            dependencies: [
+              {
+                condition: 'ph-in-range',
+                explanationKey: 'rec.dependency.phInRange',
+              },
+              {
+                condition: 'retest-completed',
+                explanationKey: 'rec.dependency.retestPh',
+              },
+            ],
+            calculationNotes: [
+              'Corregir el pH primero (Stage 1) para que el cloro sea eficaz.',
+              'El cloro es menos eficaz con pH desajustado.',
+              'No aplicar una dosis agresiva de cloro mientras el pH esté fuera de rango.',
+            ],
+            safetyNotes: isVeryLowFac
+              ? ['Evitar bañarse hasta que el FAC esté dentro del rango seguro.', 'Corregir pH primero.']
+              : ['Evitar bañarse hasta que el ORP mejore.', 'Corregir pH primero.'],
+            followUpActions: [
+              'Stage 1: Aplicar corrección de pH.',
+              'Esperar 4–6 horas.',
+              'Stage 2: Retestear pH, luego ajustar clorador si FAC/ORP siguen bajos.',
+            ],
+            retestAfterHours: 6,
+          });
+        } else {
+          // FAC slightly low but NOT critical — still block it behind pH correction
+          recommendations.push({
+            id: nextId(),
+            kind: 'monitor',
+            severity: 'medium',
+            title: 'Corregir pH antes de ajustar cloro — plan por etapas',
+            summary: 'El pH debe estar dentro del rango antes de ajustar el cloro.',
+            reason: `El pH (${latest.ph.toFixed(1)}) está fuera del rango. El cloro es menos eficaz con pH desajustado.`,
+            priority: 2,
+            relatedFields: ['ph', 'fac'],
+            state: 'blocked',
+            stage: 2,
+            dependencies: [
+              {
+                condition: 'ph-in-range',
+                explanationKey: 'rec.dependency.phInRange',
+              },
+            ],
+            calculationNotes: ['Corregir el pH primero para que el cloro sea eficaz.'],
+            safetyNotes: [],
+            followUpActions: ['Aplicar corrección de pH.', 'Esperar 4–6 horas.', 'Reevaluar FAC.'],
+            retestAfterHours: 6,
+          });
+        }
       } else {
         // pH is acceptable → proceed with saltwater-specific logic for low FAC
         const chlorinatorConfig: SaltChlorinatorConfig | undefined = settings.saltChlorinator;
@@ -770,20 +853,74 @@ export function runAssistant(
     } else {
       // ── Chlorine pool with low FAC ──
       if (!phAcceptable) {
-        recommendations.push({
-          id: nextId(),
-          kind: 'monitor',
-          severity: 'medium',
-          title: 'Corregir pH antes de ajustar cloro',
-          summary: 'El pH debe estar dentro del rango antes de añadir cloro.',
-          reason: `El pH (${latest.ph.toFixed(1)}) está fuera del rango. El cloro es menos eficaz con pH desajustado.`,
-          priority: 2,
-          relatedFields: ['ph', 'fac'],
-          calculationNotes: ['Corregir el pH primero para que el cloro sea eficaz.'],
-          safetyNotes: [],
-          followUpActions: ['Aplicar corrección de pH.', 'Esperar 4–6 horas.', 'Reevaluar FAC.'],
-          retestAfterHours: 6,
-        });
+        // Stage 2: blocked sanitation recommendation behind pH correction
+        const isVeryLow = latest.fac < facRange.min * 0.5;
+        const isLowOrp = latest.orp !== undefined && latest.orp !== null && latest.orp < 650;
+
+        if (isVeryLow || isLowOrp) {
+          const sanitSev: RecommendationSeverity = isLowOrp ? 'high' : (isVeryLow ? 'high' : 'medium');
+          recommendations.push({
+            id: nextId(),
+            kind: 'warning',
+            severity: sanitSev,
+            title: isVeryLow ? 'FAC críticamente bajo — corregir pH primero' : 'ORP bajo — corregir pH primero',
+            summary: isVeryLow
+              ? `El FAC (${latest.fac.toFixed(1)} ppm) está críticamente bajo. Añadir cloro después de corregir el pH.`
+              : `El ORP (${latest.orp} mV) está bajo y el FAC (${latest.fac.toFixed(1)} ppm) necesita atención. Corregir pH primero.`,
+            reason: `El pH (${latest.ph.toFixed(1)}) está fuera de rango. La desinfección está comprometida, pero el cloro es ineficaz con pH desajustado.`,
+            priority: 2,
+            relatedFields: ['ph', 'fac', 'orp'],
+            state: 'blocked',
+            stage: 2,
+            dependencies: [
+              {
+                condition: 'ph-in-range',
+                explanationKey: 'rec.dependency.phInRange',
+              },
+              {
+                condition: 'retest-completed',
+                explanationKey: 'rec.dependency.retestPh',
+              },
+            ],
+            calculationNotes: [
+              'Corregir el pH primero (Stage 1) para que el cloro sea eficaz.',
+              'El cloro es menos eficaz con pH desajustado.',
+              'No aplicar una dosis agresiva de cloro mientras el pH esté fuera de rango.',
+            ],
+            safetyNotes: isVeryLow
+              ? ['Evitar bañarse hasta que el FAC esté dentro del rango seguro.', 'Corregir pH primero.']
+              : ['Evitar bañarse hasta que el ORP mejore.', 'Corregir pH primero.'],
+            followUpActions: [
+              'Stage 1: Aplicar corrección de pH.',
+              'Esperar 4–6 horas.',
+              'Stage 2: Retestear pH, luego aplicar cloro si FAC/ORP siguen bajos.',
+            ],
+            retestAfterHours: 6,
+          });
+        } else {
+          recommendations.push({
+            id: nextId(),
+            kind: 'monitor',
+            severity: 'medium',
+            title: 'Corregir pH antes de ajustar cloro — plan por etapas',
+            summary: 'El pH debe estar dentro del rango antes de añadir cloro.',
+            reason: `El pH (${latest.ph.toFixed(1)}) está fuera del rango. El cloro es menos eficaz con pH desajustado.`,
+            priority: 2,
+            relatedFields: ['ph', 'fac'],
+            state: 'blocked',
+            stage: 2,
+            dependencies: [
+              {
+                condition: 'ph-in-range',
+                explanationKey: 'rec.dependency.phInRange',
+              },
+            ],
+            calculationNotes: ['Corregir el pH primero para que el cloro sea eficaz.'],
+            safetyNotes: [],
+            followUpActions: ['Aplicar corrección de pH.', 'Esperar 4–6 horas.', 'Reevaluar FAC.'],
+            retestAfterHours: 6,
+          });
+        }
       } else {
         const targetCl = facRange.ideal;
         const isLowOrp = latest.orp !== undefined && latest.orp !== null && latest.orp < 650;

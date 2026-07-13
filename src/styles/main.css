@@ -1258,3 +1258,172 @@ body {
     padding: 0.6rem 0.75rem;
   }
 }
+
+/* ═══ Measurement Context Section ════════════════════════════════ */
+.context-section {
+  margin-top: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  background: var(--color-bg-secondary);
+}
+
+.context-section summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--color-text-secondary);
+}
+
+.context-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.75rem 0.5rem 0.25rem;
+}
+
+.context-grid .field {
+  margin-bottom: 0.25rem;
+}
+
+.context-grid .field label {
+  font-size: 0.8rem;
+}
+
+.context-grid select,
+.context-grid input[type="number"] {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+}
+
+/* ═══ Estimated Parameters Section ═══════════════════════════════ */
+.as-estimates {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.estimate-disclaimer {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 0.75rem;
+  color: #92400e;
+}
+
+.estimate-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-bg-secondary);
+}
+
+.estimate-card h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.estimate-state {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.estimate-count {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.estimate-evidence,
+.estimate-alternatives {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.estimate-evidence ul,
+.estimate-alternatives ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.estimate-evidence li,
+.estimate-alternatives li {
+  margin-bottom: 0.15rem;
+  line-height: 1.4;
+}
+
+.estimate-footer {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+/* Confidence badges */
+.confidence-high { color: var(--color-success); }
+.confidence-medium { color: var(--color-primary); }
+.confidence-low { color: var(--color-warning); }
+.confidence-none { color: var(--color-text-secondary); }
+
+/* ═══ Staged Recommendation Badges ════════════════════════════════ */
+.rec-stage-badge {
+  display: inline-block;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-right: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.rec-state-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-right: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.rec-state-actionable {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+.rec-state-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.rec-state-pending-retest {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.rec-dependencies {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin: 0.25rem 0;
+}
+
+.rec-dependencies ul {
+  margin: 0.15rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.rec-dependencies li {
+  margin-bottom: 0.1rem;
+}
