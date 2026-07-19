@@ -137,6 +137,10 @@ function init(): void {
     actionForm.open(prefill);
   });
 
+  document.getElementById('recordActionBtn')?.addEventListener('click', () => {
+    actionForm.open();
+  });
+
   // Action form save → update history and create follow-up
   actionForm.onSave((action, followUpInfo) => {
     actionHistory.render();
