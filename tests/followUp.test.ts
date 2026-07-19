@@ -179,14 +179,14 @@ describe('updateFollowUpStatuses', () => {
 });
 
 describe('getEligibleFollowUps', () => {
-  it('returns follow-ups with awaiting-retest or retest-due status', () => {
+  it('returns follow-ups with awaiting-retest, retest-due, or expired status', () => {
     const fu1 = makeFollowUp({ status: 'awaiting-retest' });
     const fu2 = makeFollowUp({ id: 'fu-2', status: 'retest-due' });
     const fu3 = makeFollowUp({ id: 'fu-3', status: 'completed' });
     const fu4 = makeFollowUp({ id: 'fu-4', status: 'expired' });
     const eligible = getEligibleFollowUps([fu1, fu2, fu3, fu4]);
-    expect(eligible).toHaveLength(2);
-    expect(eligible.map((f) => f.id)).toEqual(['fu-test-1', 'fu-2']);
+    expect(eligible).toHaveLength(3);
+    expect(eligible.map((f) => f.id)).toEqual(['fu-test-1', 'fu-2', 'fu-4']);
   });
 
   it('excludes follow-ups with excludedFromLearning flag', () => {
@@ -231,11 +231,11 @@ describe('markFollowUpEvaluated', () => {
     // Should not be overwritten
   });
 
-  it('does not modify expired follow-ups', () => {
+  it('marks expired follow-ups as completed-late when a valid outcome appears', () => {
     const fu = makeFollowUp({ status: 'expired' });
     const outcome = makeOutcome();
     const result = markFollowUpEvaluated([fu], 'act-test-1', outcome);
-    expect(result[0].status).toBe('expired');
+    expect(result[0].status).toBe('completed-late');
   });
 });
 

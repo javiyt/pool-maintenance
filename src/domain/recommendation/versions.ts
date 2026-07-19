@@ -1,0 +1,5 @@
+export const APPLICATION_VERSION = '2.0.0';
+export const RECOMMENDATION_ENGINE_VERSION = '2.1.0';
+export const OUTCOME_EVALUATOR_VERSION = '2.0.0';
+export const CHEMICAL_CATALOG_VERSION = '2.0.0';
+

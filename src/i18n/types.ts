@@ -379,6 +379,7 @@ export type TranslationKey =
   | 'outcome.partiallyEffective'
   | 'outcome.ineffective'
   | 'outcome.unexpected'
+  | 'outcome.inconclusive'
   | 'outcome.unknown'
   | 'outcome.confidence'
   | 'outcome.noChanges'

@@ -463,7 +463,7 @@ describe('comparable observations are grouped', () => {
         makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.5, salt: 3400 }, `ma${i}`),
       );
       actions.push(
-        makeSaltAction({ performedAt: `${prefix}T11:00:00.000Z` }, `act-cl-${i}`),
+        makePhReducerAction({ performedAt: `${prefix}T11:00:00.000Z` }, `act-cl-${i}`),
       );
     }
 
@@ -475,7 +475,7 @@ describe('comparable observations are grouped', () => {
         makeMeasurement({ measuredAt: `${prefix}T16:00:00.000Z`, ph: 7.3, salt: 3300 }, `ma-sw-${i}`),
       );
       actions.push(
-        makeSaltAction({ performedAt: `${prefix}T11:00:00.000Z` }, `act-sw-${i}`),
+        makePhReducerAction({ performedAt: `${prefix}T11:00:00.000Z` }, `act-sw-${i}`),
       );
     }
 

@@ -19,6 +19,7 @@ const OUTCOME_LABELS: Record<OutcomeEffectiveness, { label: string; cssClass: st
   'partially-effective': { label: t('outcome.partiallyEffective'), cssClass: 'outcome-partial' },
   ineffective: { label: t('outcome.ineffective'), cssClass: 'outcome-ineffective' },
   unexpected: { label: t('outcome.unexpected'), cssClass: 'outcome-unexpected' },
+  inconclusive: { label: t('outcome.inconclusive'), cssClass: 'outcome-unknown' },
   unknown: { label: t('outcome.unknown'), cssClass: 'outcome-unknown' },
 };
 

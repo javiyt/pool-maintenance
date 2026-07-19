@@ -8,6 +8,7 @@ export type MaintenanceActionKind =
   | 'other';
 
 import type { ActionExclusionFlags, ActionNote } from './followUp';
+import type { RecommendationSnapshot } from './recommendation/recommendationSnapshot';
 export type { ActionExclusionFlags, ActionNote, UnusualEventType } from './followUp';
 export { UNUSUAL_EVENT_LABELS } from './followUp';
 
@@ -51,12 +52,17 @@ export interface MaintenanceAction {
   notes?: string;
   relatedMeasurementId?: string;
   relatedRecommendationId?: string;
+  recommendationSnapshot?: RecommendationSnapshot;
   chemical?: MaintenanceActionChemical;
   chlorinator?: MaintenanceActionChlorinator;
   filtration?: MaintenanceActionFiltration;
   waterReplacement?: MaintenanceActionWaterReplacement;
   exclusionFlags?: ActionExclusionFlags;
   unusualEventNotes?: ActionNote[];
+  applicationVersion?: string;
+  recommendationEngineVersion?: string;
+  outcomeEvaluatorVersion?: string;
+  chemicalCatalogVersion?: string;
 }
 
 let _actionCounter = 0;

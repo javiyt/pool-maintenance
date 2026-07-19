@@ -552,10 +552,14 @@ describe('export includes follow-ups (v6)', () => {
     expect(data.followUps[0].id).toBe('fu-1');
   });
 
-  it('sets schemaVersion to 7', () => {
+  it('sets schemaVersion to 8 and separates algorithm versions', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(7);
+    expect(data.schemaVersion).toBe(8);
+    expect(data.applicationVersion).toBeDefined();
+    expect(data.recommendationEngineVersion).toBeDefined();
+    expect(data.outcomeEvaluatorVersion).toBeDefined();
+    expect(data.chemicalCatalogVersion).toBeDefined();
   });
 
   it('imports v6 data with followUps', () => {
@@ -941,12 +945,12 @@ describe('experiment persistence', () => {
     expect(loaded[0].kind).toBe('ph-buffer-response');
   });
 
-  it('includes experiments in v7 export', () => {
+  it('includes experiments in current export', () => {
     const exp = createTestExperiment();
     saveExperiments([exp]);
     saveSettings(SAMPLE_POOL_CONFIG);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(7);
+    expect(data.schemaVersion).toBe(EXPORT_SCHEMA_VERSION);
     expect(data.experiments).toBeDefined();
     expect(data.experiments!.length).toBe(1);
     expect(data.experiments![0].kind).toBe('ph-buffer-response');

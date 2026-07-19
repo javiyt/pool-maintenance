@@ -3,7 +3,7 @@ import type { ActionOutcome } from './actionOutcomeEvaluator';
 
 // ── Types ─────────────────────────────────────────────────────────
 
-export type FollowUpStatus = 'awaiting-retest' | 'retest-due' | 'completed' | 'expired';
+export type FollowUpStatus = 'awaiting-retest' | 'retest-due' | 'completed' | 'completed-late' | 'expired';
 
 export type UnusualEventType =
   | 'rain'
@@ -119,7 +119,7 @@ export function createFollowUp(
  */
 export function updateFollowUpStatuses(followUps: FollowUp[], now: Date = new Date()): FollowUp[] {
   return followUps.map((fu) => {
-    if (fu.status === 'completed' || fu.status === 'expired') return fu;
+    if (fu.status === 'completed' || fu.status === 'completed-late' || fu.status === 'expired') return fu;
 
     const elapsed = (now.getTime() - new Date(fu.createdAt).getTime()) / 3_600_000;
 
@@ -147,7 +147,7 @@ export function updateFollowUpStatuses(followUps: FollowUp[], now: Date = new Da
 export function getEligibleFollowUps(followUps: FollowUp[]): FollowUp[] {
   return followUps.filter(
     (fu) =>
-      (fu.status === 'awaiting-retest' || fu.status === 'retest-due') &&
+      (fu.status === 'awaiting-retest' || fu.status === 'retest-due' || fu.status === 'expired') &&
       fu.suggestedRetestDelay > 0 &&
       !fu.excludedFromLearning,
   );
@@ -162,12 +162,13 @@ export function markFollowUpEvaluated(
   outcome: ActionOutcome,
 ): FollowUp[] {
   return followUps.map((fu) => {
-    if (fu.actionId !== actionId || fu.status === 'completed' || fu.status === 'expired') {
+    if (fu.actionId !== actionId || fu.status === 'completed' || fu.status === 'completed-late') {
       return fu;
     }
+    const completedLate = fu.status === 'expired' || outcome.timing === 'late';
     return {
       ...fu,
-      status: 'completed' as const,
+      status: completedLate ? 'completed-late' as const : 'completed' as const,
       evaluationMeasurementId: outcome.afterMeasurementId,
       evaluatedAt: outcome.evaluatedAt,
       effectiveness: outcome.effectiveness,
@@ -219,21 +220,21 @@ export function getRecentlyEvaluated(
   count: number = 10,
 ): FollowUp[] {
   return followUps
-    .filter((fu) => fu.status === 'completed' && fu.evaluatedAt)
+    .filter((fu) => (fu.status === 'completed' || fu.status === 'completed-late') && fu.evaluatedAt)
     .sort((a, b) => (b.evaluatedAt ?? '').localeCompare(a.evaluatedAt ?? ''))
     .slice(0, count);
 }
 
 export function getEffectiveActions(followUps: FollowUp[]): FollowUp[] {
   return followUps.filter(
-    (fu) => fu.status === 'completed' && fu.effectiveness === 'effective' && !fu.excludedFromLearning,
+    (fu) => (fu.status === 'completed' || fu.status === 'completed-late') && fu.effectiveness === 'effective' && !fu.excludedFromLearning,
   );
 }
 
 export function getIneffectiveOrUnexpectedActions(followUps: FollowUp[]): FollowUp[] {
   return followUps.filter(
     (fu) =>
-      fu.status === 'completed' &&
+      (fu.status === 'completed' || fu.status === 'completed-late') &&
       (fu.effectiveness === 'ineffective' || fu.effectiveness === 'unexpected') &&
       !fu.excludedFromLearning,
   );
