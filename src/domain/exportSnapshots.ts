@@ -2,6 +2,8 @@ import type { MaintenanceAction } from './actions';
 import { CATALOG, CHEMICAL_CATALOG_VERSION } from './chemicalCatalog';
 import { getTargetRangeSnapshot, type TargetRangeSnapshot } from './chemistry';
 import { evaluateActionOutcomes, type ActionOutcome, type AssessmentSnapshot } from './actionOutcomeEvaluator';
+import type { Diagnosis } from './diagnosis/diagnosis';
+import { runDiagnosisEngine } from './diagnosis/diagnosisEngine';
 import { computeLearning, type LearnedAdjustment } from './historicalLearning';
 import { estimateAlkalinityState, estimateCyanuricAcidState, ALGORITHM_VERSION, type LatentParameterEstimate } from './latentStateEstimator';
 import type { FollowUp, ActionNote } from './followUp';
@@ -9,10 +11,15 @@ import type { Measurement, MeasurementContext } from './measurement';
 import { runAssistant, type MaintenanceAssistantResult } from './maintenanceAssistant';
 import type { PoolSettings } from './settings';
 import { buildRecommendationSnapshot, type RecommendationSnapshot } from './recommendation/recommendationSnapshot';
+import type { Recommendation } from './recommendation/recommendation';
+import { runRecommendationEngine } from './recommendation/recommendationEngine';
+import type { RecommendationPlan } from './recommendation/recommendationPlan';
 import {
   APPLICATION_VERSION,
+  DIAGNOSIS_ENGINE_VERSION,
   OUTCOME_EVALUATOR_VERSION,
   RECOMMENDATION_ENGINE_VERSION,
+  STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
 } from './recommendation/versions';
 
 export interface VersionedSnapshot {
@@ -98,13 +105,21 @@ export interface AssessmentExportSnapshot extends VersionedSnapshot {
   targetRanges: TargetRangeSnapshot[];
   engineVersions: {
     application: string;
+    diagnosisEngine: string;
     recommendationEngine: string;
+    structuredRecommendationEngine: string;
     outcomeEvaluator: string;
     chemicalCatalog: string;
   };
 }
 
 export interface ExportSnapshots {
+  maintenanceActions: MaintenanceAction[];
+  actionOutcomes: ActionOutcomeSnapshot[];
+  diagnoses: Diagnosis[];
+  recommendations: Recommendation[];
+  recommendationPlans: RecommendationPlan[];
+  historicalLearningState: LearningStateSnapshot;
   measurementContexts: MeasurementContextSnapshot[];
   assessmentSnapshots: AssessmentExportSnapshot[];
   diagnosisSnapshots: DiagnosisSnapshot[];
@@ -127,6 +142,17 @@ export function buildExportSnapshots(input: {
   const latest = [...input.measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
   const assistant = runAssistant(input.measurements, input.settings, input.actions);
   const outcomes = evaluateActionOutcomes(input.measurements, input.actions);
+  const diagnosis = runDiagnosisEngine({
+    settings: input.settings,
+    measurements: input.measurements,
+    actions: input.actions,
+    outcomes,
+  });
+  const structuredRecommendation = runRecommendationEngine({
+    settings: input.settings,
+    diagnoses: diagnosis.diagnoses,
+    generatedAt: diagnosis.evaluatedAt,
+  });
   const learning = computeLearning(
     input.measurements,
     input.actions,
@@ -134,7 +160,28 @@ export function buildExportSnapshots(input: {
     input.settings.historicalLearning,
   );
 
+  const actionOutcomeSnapshots = outcomes.map((outcome) => ({
+    schemaVersion: 1,
+    capturedAt: input.capturedAt,
+    outcome,
+    evaluatorVersion: outcome.evaluatorVersion,
+  }));
+  const historicalLearningState = {
+    schemaVersion: 1,
+    capturedAt: input.capturedAt,
+    learningEngineVersion: '1.0.0',
+    adjustments: learning,
+    inputMeasurementIds: input.measurements.map((m) => m.id),
+    inputActionIds: input.actions.map((a) => a.id),
+  };
+
   return {
+    maintenanceActions: input.actions,
+    actionOutcomes: actionOutcomeSnapshots,
+    diagnoses: diagnosis.diagnoses,
+    recommendations: structuredRecommendation.recommendations,
+    recommendationPlans: structuredRecommendation.plans,
+    historicalLearningState,
     measurementContexts: buildMeasurementContextSnapshots(input.measurements, input.capturedAt),
     assessmentSnapshots: latest
       ? [{
@@ -152,26 +199,32 @@ export function buildExportSnapshots(input: {
           ],
           engineVersions: {
             application: APPLICATION_VERSION,
+            diagnosisEngine: DIAGNOSIS_ENGINE_VERSION,
             recommendationEngine: RECOMMENDATION_ENGINE_VERSION,
+            structuredRecommendationEngine: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
             outcomeEvaluator: OUTCOME_EVALUATOR_VERSION,
             chemicalCatalog: CHEMICAL_CATALOG_VERSION,
           },
         }]
       : [],
-    diagnosisSnapshots: assistant.recommendations.map((rec) => ({
+    diagnosisSnapshots: diagnosis.diagnoses.map((diagnosis) => ({
       schemaVersion: 1,
       capturedAt: input.capturedAt,
-      diagnosisId: `diag-${rec.id}`,
-      diagnosisCode: rec.diagnosisCode,
-      recommendationId: rec.id,
+      diagnosisId: diagnosis.id,
+      diagnosisCode: diagnosis.code,
+      recommendationId: '',
       classification: {
-        severity: rec.severity,
-        status: rec.state,
-        relatedFields: rec.relatedFields.map(String),
+        severity: diagnosis.severity,
+        status: diagnosis.status,
+        relatedFields: diagnosis.relatedFields.map(String),
       },
-      sourceMeasurementId: latest?.id,
-      targetRanges: rec.rangePolicy?.configured ? [rec.rangePolicy.configured] : [],
-      engineVersion: RECOMMENDATION_ENGINE_VERSION,
+      sourceMeasurementId: diagnosis.measurementId,
+      targetRanges: diagnosis.relatedFields
+        .map((field) => field === 'ph' || field === 'fac' || field === 'salt' || field === 'orp'
+          ? getTargetRangeSnapshot(field, input.settings.poolType)
+          : undefined)
+        .filter((range): range is TargetRangeSnapshot => Boolean(range)),
+      engineVersion: DIAGNOSIS_ENGINE_VERSION,
     })),
     recommendationSnapshots: assistant.recommendations.map((rec) =>
       buildRecommendationSnapshot({
@@ -188,21 +241,9 @@ export function buildExportSnapshots(input: {
         ]
       : [],
     followUpSnapshots: input.followUps.map((fu) => buildFollowUpSnapshot(fu, input.capturedAt)),
-    actionOutcomeSnapshots: outcomes.map((outcome) => ({
-      schemaVersion: 1,
-      capturedAt: input.capturedAt,
-      outcome,
-      evaluatorVersion: outcome.evaluatorVersion,
-    })),
+    actionOutcomeSnapshots,
     unusualEvents: buildUnusualEventSnapshots(input.actions, input.followUps, input.capturedAt),
-    learningStateSnapshots: [{
-      schemaVersion: 1,
-      capturedAt: input.capturedAt,
-      learningEngineVersion: '1.0.0',
-      adjustments: learning,
-      inputMeasurementIds: input.measurements.map((m) => m.id),
-      inputActionIds: input.actions.map((a) => a.id),
-    }],
+    learningStateSnapshots: [historicalLearningState],
     productSnapshots: CATALOG.map((product) => ({
       schemaVersion: 1,
       capturedAt: input.capturedAt,

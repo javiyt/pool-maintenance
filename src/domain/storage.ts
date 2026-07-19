@@ -8,8 +8,10 @@ import { buildExportSnapshots, type ExportSnapshots } from './exportSnapshots';
 import {
   APPLICATION_VERSION,
   CHEMICAL_CATALOG_VERSION,
+  DIAGNOSIS_ENGINE_VERSION,
   OUTCOME_EVALUATOR_VERSION,
   RECOMMENDATION_ENGINE_VERSION,
+  STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
 } from './recommendation/versions';
 
 const KEY_PREFIX = 'pool-maintenance:';
@@ -227,7 +229,9 @@ export const EXPORT_SCHEMA_VERSION = 9;
 export interface ExportData extends ExportSnapshots {
   schemaVersion: number;
   applicationVersion: string;
+  diagnosisEngineVersion: string;
   recommendationEngineVersion: string;
+  structuredRecommendationEngineVersion: string;
   outcomeEvaluatorVersion: string;
   chemicalCatalogVersion: string;
   exportedAt: string;
@@ -271,7 +275,9 @@ export function exportData(now?: Date): ExportData {
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     applicationVersion: APPLICATION_VERSION,
+    diagnosisEngineVersion: DIAGNOSIS_ENGINE_VERSION,
     recommendationEngineVersion: RECOMMENDATION_ENGINE_VERSION,
+    structuredRecommendationEngineVersion: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
     outcomeEvaluatorVersion: OUTCOME_EVALUATOR_VERSION,
     chemicalCatalogVersion: CHEMICAL_CATALOG_VERSION,
     exportedAt,

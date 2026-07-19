@@ -6,6 +6,7 @@ import {
   saveMeasurements,
   addMeasurement,
   deleteMeasurement,
+  saveActions,
   exportData,
   parseImportData,
   mergeMeasurements,
@@ -617,6 +618,50 @@ describe('export includes follow-ups (v6)', () => {
     expect((data as unknown as Record<string, unknown>).effectiveActions).toBeUndefined();
     expect((data as unknown as Record<string, unknown>).visualTrends).toBeUndefined();
     expect((data as unknown as Record<string, unknown>).cardGroups).toBeUndefined();
+  });
+
+  it('exports separated diagnosis and structured recommendation engine artifacts', () => {
+    saveSettings({
+      ...SAMPLE_POOL_CONFIG,
+      volume: 3000,
+      poolType: 'saltwater',
+      saltChlorinator: {
+        enabled: true,
+        productionGramsPerHour: 20,
+        currentOutputPercent: 90,
+        filtrationHoursPerDay: 8,
+        maxRecommendedOutputPercent: 100,
+        maxRecommendedHoursPerDay: 12,
+      },
+    });
+    saveMeasurements([
+      { ...SAMPLE_MEASUREMENT, id: 'm1', measuredAt: '2026-07-01T10:00:00.000Z', fac: 0.5, orp: 610 },
+      { ...SAMPLE_MEASUREMENT, id: 'm2', measuredAt: '2026-07-02T10:00:00.000Z', fac: 0.5, orp: 610 },
+      { ...SAMPLE_MEASUREMENT, id: 'm3', measuredAt: '2026-07-03T10:00:00.000Z', fac: 0.4, orp: 575 },
+      { ...SAMPLE_MEASUREMENT, id: 'm4', measuredAt: '2026-07-04T10:00:00.000Z', fac: 0.2, orp: 524, context: { batherLoad: 'high', chlorinatorOutputPercent: 90 } },
+    ]);
+    saveActions([{
+      id: 'chlorinator-failed',
+      performedAt: '2026-07-03T12:00:00.000Z',
+      kind: 'chlorinator',
+      description: 'High chlorinator output',
+      chlorinator: { previousOutputPercent: 80, newOutputPercent: 100, additionalHours: 2 },
+    }]);
+
+    const data = exportData(FIXED_NOW);
+
+    expect(data.diagnosisEngineVersion).toBeDefined();
+    expect(data.structuredRecommendationEngineVersion).toBeDefined();
+    expect(data.maintenanceActions).toHaveLength(1);
+    expect(data.actionOutcomes).toHaveLength(1);
+    expect(data.diagnoses.map((diagnosis) => diagnosis.code)).toEqual(expect.arrayContaining([
+      'FAC_CRITICALLY_LOW',
+      'SANITATION_COMPROMISED',
+    ]));
+    expect(data.recommendations.every((recommendation) => recommendation.sourceDiagnosisIds.length > 0)).toBe(true);
+    expect(data.recommendations.every((recommendation) => recommendation.generatedByRuleIds.length > 0)).toBe(true);
+    expect(data.recommendationPlans[0].code).toBe('RECOVER_SANITIZATION');
+    expect(data.historicalLearningState.schemaVersion).toBe(1);
   });
 
   it('imports v6 data with followUps', () => {
