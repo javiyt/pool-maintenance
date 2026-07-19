@@ -69,10 +69,39 @@
           </label>
         </div>
         <div class="field sc-field">
+          <label for="scPreset">Modelo o preset</label>
+          <select id="scPreset">
+            <option value="custom">Personalizado</option>
+            <option value="intex-qs500-26668">INTEX QS500 / 26668</option>
+            <option value="unknown">No lo sé / desconocido</option>
+          </select>
+        </div>
+        <div class="field sc-field">
+          <label for="scControlKind">¿Cómo se controla la producción?</label>
+          <select id="scControlKind">
+            <option value="runtime-only">No se regula; potencia fija por horas</option>
+            <option value="continuous-percentage">Se regula mediante porcentaje</option>
+            <option value="discrete-levels">Se regula mediante niveles</option>
+            <option value="automatic-orp">Automático mediante ORP</option>
+            <option value="automatic-free-chlorine">Automático mediante cloro libre</option>
+            <option value="externally-controlled">Mediante dispositivo externo</option>
+            <option value="unknown">No lo sé</option>
+            <option value="fixed">Otro / potencia fija</option>
+          </select>
+        </div>
+        <div class="field sc-field sc-model-field">
+          <label for="scManufacturer">Fabricante</label>
+          <input type="text" id="scManufacturer" />
+        </div>
+        <div class="field sc-field sc-model-field">
+          <label for="scModel">Modelo</label>
+          <input type="text" id="scModel" />
+        </div>
+        <div class="field sc-field sc-production-field">
           <label for="scProduction" data-i18n="settings.chlorinator.production">Producción (g/h)</label>
           <input type="number" id="scProduction" min="0" step="1" />
         </div>
-        <div class="field sc-field">
+        <div class="field sc-field sc-percent-field">
           <label for="scOutput" data-i18n="settings.chlorinator.output">Producción actual (%)</label>
           <input type="number" id="scOutput" min="0" max="100" step="1" />
         </div>
@@ -80,13 +109,23 @@
           <label for="scHours" data-i18n="settings.chlorinator.hours">Horas de filtración al día</label>
           <input type="number" id="scHours" min="0" step="1" />
         </div>
-        <div class="field sc-field">
+        <div class="field sc-field sc-percent-field">
           <label for="scMaxOutput" data-i18n="settings.chlorinator.maxOutput">Producción máxima recomendada (%)</label>
           <input type="number" id="scMaxOutput" min="0" max="100" step="1" />
         </div>
         <div class="field sc-field">
           <label for="scMaxHours" data-i18n="settings.chlorinator.maxHours">Máx. horas al día</label>
           <input type="number" id="scMaxHours" min="0" step="1" />
+        </div>
+        <div class="field sc-field sc-boost-field">
+          <label>
+            <input type="checkbox" id="scBoostSupported" />
+            Modo boost disponible
+          </label>
+        </div>
+        <div class="field sc-field sc-boost-field">
+          <label for="scBoostDuration">Duración boost conocida (h)</label>
+          <input type="number" id="scBoostDuration" min="0" step="0.5" />
         </div>
         <hr class="settings-divider" />
         <h3 class="settings-subtitle" data-i18n="settings.learning.title">Aprendizaje histórico</h3>
@@ -222,13 +261,62 @@
                 Backwash performed
               </label>
             </div>
-            <div class="field">
+            <div class="field ctx-chlorinator-percent-field">
               <label for="ctxChlorOutput" data-i18n="context.chlorinatorOutput">Producción del clorador (%)</label>
               <input type="number" id="ctxChlorOutput" min="0" max="100" step="1" />
             </div>
             <div class="field">
               <label for="ctxChlorHours" data-i18n="context.chlorinatorHours">Horas del clorador</label>
               <input type="number" id="ctxChlorHours" min="0" step="0.5" />
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorConfiguredHours">Ciclo programado diario (h)</label>
+              <input type="number" id="ctxChlorConfiguredHours" min="0" step="0.5" />
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorCompleted">Ciclo completado</label>
+              <select id="ctxChlorCompleted">
+                <option value="">—</option>
+                <option value="true">Sí</option>
+                <option value="false">No / interrumpido</option>
+              </select>
+            </div>
+            <div class="field ctx-chlorinator-boost-field">
+              <label for="ctxChlorBoostStatus">Se utilizó boost</label>
+              <select id="ctxChlorBoostStatus">
+                <option value="">—</option>
+                <option value="used">Sí</option>
+                <option value="not-used">No</option>
+                <option value="unknown">No se sabe</option>
+              </select>
+            </div>
+            <div class="field ctx-chlorinator-boost-field">
+              <label for="ctxChlorBoostHours">Duración boost (h)</label>
+              <input type="number" id="ctxChlorBoostHours" min="0" step="0.5" />
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorFlowConfirmed">Caudal/bomba correctos</label>
+              <select id="ctxChlorFlowConfirmed">
+                <option value="">—</option>
+                <option value="true">Sí</option>
+                <option value="false">No / no confirmado</option>
+              </select>
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorPumpActive">Depuradora activa durante el ciclo</label>
+              <select id="ctxChlorPumpActive">
+                <option value="">—</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorAlarms">Alarmas del clorador</label>
+              <input type="text" id="ctxChlorAlarms" />
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorInterruptions">Interrupciones</label>
+              <input type="text" id="ctxChlorInterruptions" />
             </div>
             <div class="field">
               <label for="ctxFiltHours" data-i18n="context.filtrationHours">Horas de filtración</label>

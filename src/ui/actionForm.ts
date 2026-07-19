@@ -335,7 +335,7 @@ export class ActionForm {
       const newOutput = getNum('actionChlorinatorNewOutput');
       const addHours = getNum('actionChlorinatorAddHours');
       const totalHours = getNum('actionChlorinatorTotalHours');
-      if (newOutput !== undefined) {
+      if (newOutput !== undefined || addHours !== undefined || totalHours !== undefined) {
         chlorinator = { previousOutputPercent: prevOutput, newOutputPercent: newOutput, additionalHours: addHours, totalHours };
       }
     } else if (kind === 'filtration' || kind === 'filter-backwash') {

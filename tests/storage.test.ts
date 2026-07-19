@@ -84,6 +84,31 @@ describe('settings persistence', () => {
     expect(s.volume).toBe(5000);
     expect(s.poolType).toBe('chlorine');
   });
+
+  it('migrates legacy salt chlorinator settings into a v2 chlorinator snapshot', () => {
+    store.set('pool-maintenance:settings', JSON.stringify({
+      volume: 50000,
+      volumeUnit: 'liters',
+      poolType: 'saltwater',
+      unitSystem: 'metric',
+      saltChlorinator: {
+        enabled: true,
+        productionGramsPerHour: 20,
+        currentOutputPercent: 60,
+        filtrationHoursPerDay: 6,
+        maxRecommendedOutputPercent: 100,
+        maxRecommendedHoursPerDay: 12,
+      },
+    }));
+
+    const settings = loadSettings();
+
+    expect(settings.saltChlorinator?.chlorinatorSchemaVersion).toBe('2.0.0');
+    expect(settings.saltChlorinator?.chlorinatorCatalogVersion).toBe('1.0.0');
+    expect(settings.saltChlorinator?.chlorinatorCalculationVersion).toBe('1.0.0');
+    expect(settings.saltChlorinator?.chlorinator?.controlType).toBe('continuous-percentage');
+    expect(settings.saltChlorinator?.chlorinator?.dataProvenance.legacyProvenance).toBe('legacy-percentage-control');
+  });
 });
 
 // ── Measurements ───────────────────────────────────────────────────
@@ -236,6 +261,27 @@ describe('exportData', () => {
     saveMeasurements([SAMPLE_MEASUREMENT]);
     const data = exportData(FIXED_NOW);
     expect(data.schemaVersion).toBe(EXPORT_SCHEMA_VERSION);
+  });
+
+  it('includes independent chlorinator versions in the export', () => {
+    saveSettings({
+      ...SAMPLE_POOL_CONFIG,
+      poolType: 'saltwater',
+      saltChlorinator: {
+        enabled: true,
+        productionGramsPerHour: 20,
+        currentOutputPercent: 60,
+        filtrationHoursPerDay: 6,
+        maxRecommendedOutputPercent: 100,
+        maxRecommendedHoursPerDay: 12,
+      },
+    });
+    const data = exportData(FIXED_NOW);
+
+    expect(data.chlorinatorSchemaVersion).toBe('2.0.0');
+    expect(data.chlorinatorCatalogVersion).toBe('1.0.0');
+    expect(data.chlorinatorCalculationVersion).toBe('1.0.0');
+    expect(data.poolConfig.saltChlorinator?.chlorinator?.schemaVersion).toBe('2.0.0');
   });
 
   it('includes exportedAt timestamp', () => {

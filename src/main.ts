@@ -109,6 +109,7 @@ function init(): void {
 
   // Re-render history when settings change (e.g. pool type affects display)
   settingsPanel.onChange(() => {
+    measurementForm.refreshChlorinatorContextFields();
     historyPanel.render();
     historicalInsights.render();
   });

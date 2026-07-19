@@ -1,3 +1,7 @@
+import {
+  describeChlorinatorProduction,
+  getCurrentProductionGramsPerHour,
+} from '../saltChlorinator';
 import type { SaltChlorinatorConfig } from '../saltChlorinator';
 
 export interface ChlorineProductionModel {
@@ -23,8 +27,8 @@ export function estimateChlorinatorFacModel(input: {
   sunlight?: 'none' | 'low' | 'medium' | 'high';
 }): ChlorineProductionModel {
   const volumeM3 = input.poolVolumeLiters / 1000;
-  const outputFactor = input.config.currentOutputPercent / 100;
-  const theoreticalProductionGrams = input.config.productionGramsPerHour * outputFactor * input.hours;
+  const productionGramsPerHour = getCurrentProductionGramsPerHour(input.config);
+  const theoreticalProductionGrams = productionGramsPerHour * input.hours;
   const grossFacIncreasePpm = volumeM3 > 0 ? theoreticalProductionGrams / volumeM3 : 0;
 
   let demandReservePpm = 0.2;
@@ -42,6 +46,7 @@ export function estimateChlorinatorFacModel(input: {
     demandReservePpm: round(demandReservePpm),
     expectedObservableFacIncreasePpm: round(expectedObservableFacIncreasePpm),
     notes: [
+      describeChlorinatorProduction(input.config),
       `Producción teórica: ${round(theoreticalProductionGrams)} g de cloro.`,
       `Incremento bruto de FAC: ${round(grossFacIncreasePpm)} ppm.`,
       `Reserva por demanda estimada: ${round(demandReservePpm)} ppm.`,
@@ -49,4 +54,3 @@ export function estimateChlorinatorFacModel(input: {
     ],
   };
 }
-

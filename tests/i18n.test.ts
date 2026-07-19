@@ -10,6 +10,11 @@ import {
   formatNumber,
   formatDateTime,
   formatAmount,
+  formatPercent,
+  formatDelta,
+  formatDurationHours,
+  formatRange,
+  getLocaleForLanguage,
 } from '../src/i18n/index';
 import type { TranslationKey } from '../src/i18n/types';
 
@@ -256,6 +261,30 @@ describe('formatAmount()', () => {
   it('returns — for zero or negative values', () => {
     expect(formatAmount(0, 'ml', 'en')).toBe('—');
     expect(formatAmount(-1, 'g', 'en')).toBe('—');
+  });
+});
+
+describe('additional formatters', () => {
+  it('formats percent values with integer and decimal precision', () => {
+    expect(formatPercent(50, 'en')).toBe('50%');
+    expect(formatPercent(12.5, 'en')).toContain('12.5');
+  });
+
+  it('formats positive, negative, and zero deltas', () => {
+    expect(formatDelta(1.2, 'en')).toBe('+1.2');
+    expect(formatDelta(-1.2, 'en')).toBe('-1.2');
+    expect(formatDelta(0, 'en')).toBe('0');
+  });
+
+  it('formats short durations as hours or days', () => {
+    expect(formatDurationHours(2, 'en')).toContain('2');
+    expect(formatDurationHours(48, 'en')).toContain('2');
+  });
+
+  it('formats ranges with optional units and exposes locale mapping', () => {
+    expect(formatRange(1, 3, 'ppm', 'en')).toBe('1–3 ppm');
+    expect(formatRange(1, 3, undefined, 'en')).toBe('1–3');
+    expect(getLocaleForLanguage('es')).toBe('es-ES');
   });
 });
 

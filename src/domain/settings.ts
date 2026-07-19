@@ -3,15 +3,25 @@ export type VolumeUnit = 'liters' | 'cubicMeters';
 export type UnitSystem = 'metric' | 'imperial';
 export type AppLanguage = 'en' | 'es';
 
-export interface SaltChlorinatorConfig {
-  enabled: boolean;
-  productionGramsPerHour: number;
-  currentOutputPercent: number;
-  filtrationHoursPerDay: number;
-  maxRecommendedOutputPercent: number;
-  maxRecommendedHoursPerDay: number;
-  minProgrammableHourIncrement?: number;
-}
+export type {
+  ChlorinatorOutputControl,
+  ChlorinatorOperatingMode,
+  ChlorinatorModeDefinition,
+  ChlorinatorControlType,
+  ChlorinatorRuntimeControl,
+  RuntimeCalculation,
+  ChlorinatorPresetId,
+  SaltChlorinator,
+  SaltChlorinatorV2,
+  SaltChlorinatorConfig,
+} from './saltChlorinator';
+
+import type { SaltChlorinatorConfig } from './saltChlorinator';
+import {
+  CHLORINATOR_CALCULATION_VERSION,
+  CHLORINATOR_CATALOG_VERSION,
+  CHLORINATOR_SCHEMA_VERSION,
+} from './saltChlorinator';
 
 export interface HistoricalLearningConfig {
   enabled: boolean;
@@ -54,6 +64,30 @@ export const DEFAULT_SALT_CHLORINATOR: SaltChlorinatorConfig = {
   maxRecommendedOutputPercent: 100,
   maxRecommendedHoursPerDay: 12,
   minProgrammableHourIncrement: 1,
+  presetId: 'custom',
+  outputControl: {
+    kind: 'continuous-percentage',
+    minimumPercent: 0,
+    maximumPercent: 100,
+    incrementPercent: 1,
+  },
+  runtimeControl: {
+    supported: true,
+    maximumHours: 12,
+    incrementMinutes: 60,
+    schedulingType: 'unknown',
+  },
+  supportedModes: [
+    {
+      code: 'normal',
+      supported: true,
+      durationControl: 'configurable',
+      outputModel: 'same-as-normal',
+    },
+  ],
+  chlorinatorSchemaVersion: CHLORINATOR_SCHEMA_VERSION,
+  chlorinatorCatalogVersion: CHLORINATOR_CATALOG_VERSION,
+  chlorinatorCalculationVersion: CHLORINATOR_CALCULATION_VERSION,
 };
 
 export function volumeInLiters(settings: PoolSettings): number {

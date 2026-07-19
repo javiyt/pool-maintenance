@@ -5,8 +5,12 @@ import { getTargetRange, getTargetRangeSnapshot, classifyLevel, TARGET_RANGES } 
 import type { TargetRange, TargetRangeSnapshot } from './chemistry';
 import { analyzeTrends } from './trendAnalysis';
 import type { MeasurementTrend } from './trendAnalysis';
-import { calculateChlorinatorAdjustment } from './saltChlorinator';
-import type { SaltChlorinatorConfig } from './saltChlorinator';
+import {
+  calculateChlorinatorAdjustment,
+  describeChlorinatorProduction,
+  getChlorinatorCapabilities,
+} from './saltChlorinator';
+import type { ChlorinatorCapabilities, SaltChlorinatorConfig } from './saltChlorinator';
 import type { MaintenanceAction } from './actions';
 import { evaluateActionOutcomes } from './actionOutcomeEvaluator';
 import { computeLearning, getTemperatureBand, getOutputPercentBand } from './historicalLearning';
@@ -102,6 +106,14 @@ export interface MaintenanceRecommendation {
   equipmentNameKey?: TranslationKey;
   suggestedOutputPercent?: number;
   suggestedAdditionalHours?: number;
+  suggestedOutputLevelId?: string;
+  recommendedChlorinatorAction?:
+    | 'increase-runtime'
+    | 'increase-output-percent'
+    | 'set-output-level'
+    | 'review-setpoint'
+    | 'calibrate-sensor'
+    | 'identify-capabilities';
   suggestedFiltrationHours?: number;
   targetRange?: {
     min: number;
@@ -191,6 +203,156 @@ function buildChlorineDose(input: {
     targetFac: input.targetFac,
     correctionType: input.correctionType,
   });
+}
+
+function buildCapabilityBasedChlorinatorRecommendation(input: {
+  severity: RecommendationSeverity;
+  priority: number;
+  latest: Measurement;
+  facRange: TargetRange;
+  capabilities: ChlorinatorCapabilities;
+  calculationNotes: string[];
+  preventive: boolean;
+}): MaintenanceRecommendation {
+  const base = {
+    id: nextId(),
+    kind: 'equipment' as const,
+    severity: input.severity,
+    title: input.preventive ? 'Optimizar clorador salino' : 'Ajustar clorador salino',
+    summary: input.preventive
+      ? `Revisar el clorador para llevar el FAC de ${input.latest.fac.toFixed(1)} ppm a ${input.facRange.ideal.toFixed(1)} ppm.`
+      : `Revisar el clorador salino para aumentar el FAC de ${input.latest.fac.toFixed(1)} ppm a ${input.facRange.ideal.toFixed(1)} ppm.`,
+    reason: input.preventive
+      ? `El FAC (${input.latest.fac.toFixed(1)} ppm) está dentro del rango pero por debajo del valor ideal.`
+      : `El FAC (${input.latest.fac.toFixed(1)} ppm) está por debajo del rango (${input.facRange.min}–${input.facRange.max} ppm).`,
+    priority: input.priority,
+    relatedFields: ['fac'] as Array<keyof Measurement>,
+    equipmentName: 'Clorador salino',
+    targetRange: makeRange(input.facRange.min, input.facRange.max, 'ppm'),
+    currentValue: input.latest.fac,
+    calculationNotes: input.calculationNotes,
+    safetyNotes: [] as string[],
+    followUpActions: [] as string[],
+    retestAfterHours: 24,
+  };
+
+  if (input.capabilities.supportsDiscreteLevels) {
+    const nextLevel = input.capabilities.availableLevels?.[1] ?? input.capabilities.availableLevels?.[0];
+    return {
+      ...base,
+      recommendedChlorinatorAction: 'set-output-level',
+      suggestedOutputLevelId: nextLevel?.id,
+      calculationNotes: [
+        ...input.calculationNotes,
+        nextLevel
+          ? `Cambiar al nivel ${nextLevel.id}; no se inventa equivalencia porcentual si el fabricante no la declara.`
+          : 'El equipo usa niveles, pero no hay niveles configurados para calcular un cambio exacto.',
+      ],
+      followUpActions: [
+        nextLevel ? `Configurar el nivel ${nextLevel.id}.` : 'Configurar los niveles disponibles del clorador.',
+        'Medir FAC después del ciclo de filtración.',
+      ],
+    };
+  }
+
+  if (input.capabilities.supportsAutomaticControl) {
+    return {
+      ...base,
+      recommendedChlorinatorAction: 'review-setpoint',
+      calculationNotes: [
+        ...input.calculationNotes,
+        'El equipo declara control automático; no se recomienda porcentaje ni horas manuales no soportadas.',
+      ],
+      followUpActions: [
+        'Revisar la consigna del clorador automático.',
+        'Inspeccionar o calibrar el sensor si el valor no responde.',
+        'Medir FAC después del ciclo de control.',
+      ],
+    };
+  }
+
+  return {
+    ...base,
+    recommendedChlorinatorAction: 'identify-capabilities',
+    severity: input.severity === 'low' ? 'info' : input.severity,
+    calculationNotes: [
+      ...input.calculationNotes,
+      'Faltan capacidades del clorador; no se calcula una duración ni porcentaje operativo.',
+    ],
+    followUpActions: [
+      'Identificar fabricante, modelo y forma de control del clorador.',
+      'Revisar manualmente caudal, sal, célula y alarmas.',
+      'Medir FAC después de cualquier intervención.',
+    ],
+  };
+}
+
+function buildTemporaryChlorineCorrectionRecommendation(input: {
+  latest: Measurement;
+  settings: PoolSettings;
+  facRange: TargetRange;
+  severity: RecommendationSeverity;
+  isLowOrp: boolean;
+  escalation: EscalationAnalysis;
+}): MaintenanceRecommendation {
+  const correctionType = classifyChlorineCorrection({
+    fac: input.latest.fac,
+    targetFac: input.facRange.ideal,
+    orp: input.latest.orp,
+    visibleAlgae: input.latest.context?.visibleAlgae,
+    waterClarity: input.latest.context?.waterClarity,
+    batherLoad: input.latest.context?.batherLoad,
+    persistentLowFac: input.escalation.level !== 'NORMAL',
+  });
+  const dose = buildChlorineDose({
+    latest: input.latest,
+    settings: input.settings,
+    targetFac: input.facRange.ideal,
+    correctionType,
+  });
+  return {
+    id: nextId(),
+    kind: 'chemical',
+    severity: input.severity,
+    title: 'Cloro granulado — acción correctiva temporal',
+    summary: 'Aplicar cloro granulado como acción temporal mientras se revisa el clorador.',
+    reason: `El FAC está muy bajo${input.isLowOrp ? ` y el ORP (${input.latest.orp} mV) también está bajo` : ''}. Se necesita una acción correctiva inmediata.`,
+    priority: 4,
+    relatedFields: ['fac', 'orp'],
+    chemicalProductId: 'chlorine-granules',
+    genericProductName: 'Cloro granulado',
+    mainComponent: 'Cloro de disolución rápida',
+    estimatedAmount: dose.theoreticalAmount,
+    unit: dose.unit,
+    targetRange: makeRange(input.facRange.min, input.facRange.max, 'ppm'),
+    currentValue: input.latest.fac,
+    chlorineCorrectionType: correctionType,
+    escalationLevel: input.escalation.level,
+    calculationNotes: [
+      ...dose.notes,
+      `Tipo de corrección: ${correctionType}.`,
+      'Usar solo como medida temporal mientras se revisa el clorador.',
+    ],
+    safetyNotes: [
+      'Manejar con guantes y gafas de protección.',
+      'No mezclar con ácidos u otros productos químicos.',
+      'Añadir en horas de baja radiación solar.',
+      'Esperar al menos 30 minutos antes de bañarse.',
+    ],
+    followUpActions: [
+      'Aplicar el cloro granulado.',
+      'Revisar el clorador salino.',
+      'Medir FAC y ORP después de 4–6 horas.',
+    ],
+    retestAfterHours: 6,
+  };
+}
+
+function shouldUseCapabilityOnlyChlorinatorRecommendation(capabilities: ChlorinatorCapabilities): boolean {
+  return capabilities.supportsDiscreteLevels ||
+    capabilities.supportsAutomaticControl ||
+    capabilities.controlType === 'unknown' ||
+    !capabilities.hasKnownNormalProduction;
 }
 
 function attachRecommendationAuditMetadata(
@@ -906,137 +1068,190 @@ export function runAssistant(
 
         if (chlorinatorConfig && chlorinatorConfig.enabled && hasVolume) {
           const deltaPpm = facRange.ideal - latest.fac;
-          const adjustment = calculateChlorinatorAdjustment(deltaPpm, volLiters, chlorinatorConfig);
-          const canAdjustFully = adjustment.hoursNeeded <= chlorinatorConfig.maxRecommendedHoursPerDay;
-          const isTooLarge = adjustment.hoursNeeded > chlorinatorConfig.maxRecommendedHoursPerDay * 2;
-
-          const calcNotes: string[] = [
-            `Déficit de cloro: ${deltaPpm.toFixed(1)} ppm.`,
-            `Volumen: ${volLiters.toLocaleString()} L.`,
-            `Producción del clorador: ${chlorinatorConfig.productionGramsPerHour} g/h al ${chlorinatorConfig.currentOutputPercent}%.`,
-            `Horas necesarias: ${adjustment.hoursNeeded.toFixed(1)} h.`,
-          ];
-          const chlorineModel = estimateChlorinatorFacModel({
-            deltaPpm,
-            poolVolumeLiters: volLiters,
-            config: chlorinatorConfig,
-            hours: Math.min(adjustment.hoursNeeded, chlorinatorConfig.maxRecommendedHoursPerDay),
-            temperature: latest.temperature,
-            batherLoad: latest.context?.batherLoad,
-            sunlight: latest.context?.sunlight,
-          });
-          calcNotes.push(...chlorineModel.notes);
-
-          const sev: RecommendationSeverity =
-            isVeryLowFac || isLowOrp ? 'high' : (isTooLarge ? 'high' : 'medium');
-
-          if (adjustment.suggestedOutputPercent !== undefined || adjustment.suggestedAdditionalHours !== undefined) {
-            if (adjustment.suggestedOutputPercent !== undefined) {
-              calcNotes.push(`Aumentar la producción del clorador al ${adjustment.suggestedOutputPercent}%.`);
-            }
-            if (adjustment.suggestedAdditionalHours !== undefined && adjustment.suggestedAdditionalHours > 0) {
-              calcNotes.push(`Añadir ${adjustment.suggestedAdditionalHours} hora(s) adicional(es) de filtración/cloración.`);
-            }
-
-            recommendations.push({
-              id: nextId(),
-              kind: 'equipment',
+          const chlorinatorCapabilities = getChlorinatorCapabilities(chlorinatorConfig);
+          if (shouldUseCapabilityOnlyChlorinatorRecommendation(chlorinatorCapabilities)) {
+            const sev: RecommendationSeverity = isVeryLowFac || isLowOrp ? 'high' : 'medium';
+            recommendations.push(buildCapabilityBasedChlorinatorRecommendation({
               severity: sev,
-              title: 'Ajustar clorador salino',
-              summary: `Ajustar el clorador salino para aumentar el FAC de ${latest.fac.toFixed(1)} ppm a ${facRange.ideal.toFixed(1)} ppm.`,
-              reason: `El FAC (${latest.fac.toFixed(1)} ppm) está por debajo del rango (${facRange.min}–${facRange.max} ppm). El pH está en rango.`,
               priority: 3,
-              relatedFields: ['fac'],
-              equipmentName: 'Clorador salino',
-              suggestedOutputPercent: adjustment.suggestedOutputPercent,
-              suggestedAdditionalHours: adjustment.suggestedAdditionalHours,
-              targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
-              currentValue: latest.fac,
-              calculationNotes: calcNotes,
-              safetyNotes: [],
-              followUpActions: [
-                'Aplicar los ajustes recomendados al clorador.',
-                'Medir FAC después del ciclo de filtración.',
-              ],
-              retestAfterHours: 24,
-            });
-          }
-
-          if (isTooLarge || !canAdjustFully) {
-            recommendations.push({
-              id: nextId(),
-              kind: 'warning',
-              severity: 'medium',
-              title: 'Corrección grande — verificar equipo',
-              summary: 'La corrección necesaria es grande. Verificar el estado del clorador y las celdas electrolíticas.',
-              reason: `Se necesitan ${adjustment.hoursNeeded.toFixed(0)} horas de cloración para alcanzar el nivel objetivo.`,
-              priority: 6,
-              relatedFields: ['fac'],
+              latest,
+              facRange,
+              capabilities: chlorinatorCapabilities,
+              preventive: false,
               calculationNotes: [
-                'Un déficit grande puede indicar un problema con el clorador o las celdas.',
-                'Verificar que las celdas no estén calcificadas o desgastadas.',
+                `Déficit de cloro: ${deltaPpm.toFixed(1)} ppm.`,
+                `Volumen: ${volLiters.toLocaleString()} L.`,
+                describeChlorinatorProduction(chlorinatorConfig),
               ],
-              safetyNotes: [],
-              followUpActions: [
-                'Inspeccionar el clorador salino y las celdas electrolíticas.',
-                'Limpiar las celdas si están calcificadas.',
-                'Como acción temporal, aplicar cloro granulado.',
-              ],
-              retestAfterHours: 24,
-            });
-
+            }));
             if (isVeryLowFac || isLowOrp) {
-              const correctionType = classifyChlorineCorrection({
-                fac: latest.fac,
-                targetFac: facRange.ideal,
-                orp: latest.orp,
-                visibleAlgae: latest.context?.visibleAlgae,
-                waterClarity: latest.context?.waterClarity,
-                batherLoad: latest.context?.batherLoad,
-                persistentLowFac: escalation.level !== 'NORMAL',
-              });
-              const dose = buildChlorineDose({
+              recommendations.push(buildTemporaryChlorineCorrectionRecommendation({
                 latest,
                 settings,
-                targetFac: facRange.ideal,
-                correctionType,
-              });
+                facRange,
+                severity: sev,
+                isLowOrp,
+                escalation,
+              }));
+            }
+          } else {
+            const adjustment = calculateChlorinatorAdjustment(deltaPpm, volLiters, chlorinatorConfig);
+            const canAdjustFully = adjustment.hoursNeeded <= chlorinatorConfig.maxRecommendedHoursPerDay;
+            const isTooLarge = adjustment.hoursNeeded > chlorinatorConfig.maxRecommendedHoursPerDay * 2;
+
+            const calcNotes: string[] = [
+              `Déficit de cloro: ${deltaPpm.toFixed(1)} ppm.`,
+              `Volumen: ${volLiters.toLocaleString()} L.`,
+              describeChlorinatorProduction(chlorinatorConfig),
+              `Horas necesarias: ${adjustment.hoursNeeded.toFixed(1)} h.`,
+            ];
+            const chlorineModel = estimateChlorinatorFacModel({
+              deltaPpm,
+              poolVolumeLiters: volLiters,
+              config: chlorinatorConfig,
+              hours: Math.min(adjustment.hoursNeeded, chlorinatorConfig.maxRecommendedHoursPerDay),
+              temperature: latest.temperature,
+              batherLoad: latest.context?.batherLoad,
+              sunlight: latest.context?.sunlight,
+            });
+            calcNotes.push(...chlorineModel.notes);
+
+            const sev: RecommendationSeverity =
+              isVeryLowFac || isLowOrp ? 'high' : (isTooLarge ? 'high' : 'medium');
+
+            if (adjustment.suggestedOutputPercent !== undefined || adjustment.suggestedAdditionalHours !== undefined) {
+              if (adjustment.suggestedOutputPercent !== undefined) {
+                calcNotes.push(`Aumentar la producción del clorador al ${adjustment.suggestedOutputPercent}%.`);
+              }
+              if (adjustment.suggestedAdditionalHours !== undefined && adjustment.suggestedAdditionalHours > 0) {
+                calcNotes.push(`Añadir ${adjustment.suggestedAdditionalHours} hora(s) adicional(es) de filtración/cloración.`);
+                if (adjustment.runtimeCalculation && adjustment.runtimeCalculation.roundingPolicy === 'ceil-to-supported-increment') {
+                  calcNotes.push(`Cálculo teórico: ${Math.round(adjustment.runtimeCalculation.theoreticalAdditionalMinutes)} minutos.`);
+                  calcNotes.push(`Ajuste operativo: ${adjustment.runtimeCalculation.operationalAdditionalMinutes} minutos.`);
+                  calcNotes.push(`Redondeo: incremento soportado de ${adjustment.runtimeCalculation.supportedIncrementMinutes} minutos.`);
+                }
+              }
+              if (!chlorinatorCapabilities.canAdjustPercentage && chlorinatorCapabilities.supportsBoost) {
+                calcNotes.push('El equipo no declara ajuste porcentual; usar horas y modo boost solo si el fabricante lo permite.');
+              }
+
               recommendations.push({
                 id: nextId(),
-                kind: 'chemical',
+                kind: 'equipment',
                 severity: sev,
-                title: 'Cloro granulado — acción correctiva temporal',
-                summary: 'Aplicar cloro granulado como acción temporal mientras se revisa el clorador.',
-                reason: `El FAC está muy bajo${isLowOrp ? ` y el ORP (${latest.orp} mV) también está bajo` : ''}. Se necesita una acción correctiva inmediata.`,
-                priority: 4,
-                relatedFields: ['fac', 'orp'],
-                chemicalProductId: 'chlorine-granules',
-                genericProductName: 'Cloro granulado',
-                mainComponent: 'Cloro de disolución rápida',
-                estimatedAmount: dose.theoreticalAmount,
-                unit: dose.unit,
+                title: 'Ajustar clorador salino',
+                summary: `Ajustar el clorador salino para aumentar el FAC de ${latest.fac.toFixed(1)} ppm a ${facRange.ideal.toFixed(1)} ppm.`,
+                reason: `El FAC (${latest.fac.toFixed(1)} ppm) está por debajo del rango (${facRange.min}–${facRange.max} ppm). El pH está en rango.`,
+                priority: 3,
+                relatedFields: ['fac'],
+                equipmentName: 'Clorador salino',
+                suggestedOutputPercent: adjustment.suggestedOutputPercent,
+                suggestedAdditionalHours: adjustment.suggestedAdditionalHours,
                 targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
                 currentValue: latest.fac,
-                chlorineCorrectionType: correctionType,
-                escalationLevel: escalation.level,
-                calculationNotes: [
-                  ...dose.notes,
-                  `Tipo de corrección: ${correctionType}.`,
-                  'Usar solo como medida temporal mientras se revisa el clorador.',
-                ],
-                safetyNotes: [
-                  'Manejar con guantes y gafas de protección.',
-                  'No mezclar con ácidos u otros productos químicos.',
-                  'Añadir en horas de baja radiación solar.',
-                  'Esperar al menos 30 minutos antes de bañarse.',
-                ],
+                calculationNotes: calcNotes,
+                safetyNotes: [],
                 followUpActions: [
-                  'Aplicar el cloro granulado.',
-                  'Revisar el clorador salino.',
-                  'Medir FAC y ORP después de 4–6 horas.',
+                  chlorinatorCapabilities.canAdjustPercentage
+                    ? 'Aplicar los ajustes recomendados al clorador.'
+                    : 'Ajustar el ciclo diario o activar boost siguiendo las instrucciones del fabricante.',
+                  'Medir FAC después del ciclo de filtración.',
                 ],
-                retestAfterHours: 6,
+                retestAfterHours: 24,
               });
+            }
+
+            if (isTooLarge || !canAdjustFully) {
+              recommendations.push({
+                id: nextId(),
+                kind: 'warning',
+                severity: 'medium',
+                title: 'Corrección grande — verificar equipo',
+                summary: 'La corrección necesaria es grande. Verificar el estado del clorador y las celdas electrolíticas.',
+                reason: `Se necesitan ${adjustment.hoursNeeded.toFixed(0)} horas de cloración para alcanzar el nivel objetivo.`,
+                priority: 6,
+                relatedFields: ['fac'],
+                calculationNotes: [
+                  'Un déficit grande puede indicar un problema con el clorador o las celdas.',
+                  'Verificar que las celdas no estén calcificadas o desgastadas.',
+                ],
+                safetyNotes: [],
+                followUpActions: [
+                  'Inspeccionar el clorador salino y las celdas electrolíticas.',
+                  'Limpiar las celdas si están calcificadas.',
+                  'Como acción temporal, aplicar cloro granulado.',
+                ],
+                retestAfterHours: 24,
+              });
+
+              if (isVeryLowFac || isLowOrp) {
+                const correctionType = classifyChlorineCorrection({
+                  fac: latest.fac,
+                  targetFac: facRange.ideal,
+                  orp: latest.orp,
+                  visibleAlgae: latest.context?.visibleAlgae,
+                  waterClarity: latest.context?.waterClarity,
+                  batherLoad: latest.context?.batherLoad,
+                  persistentLowFac: escalation.level !== 'NORMAL',
+                });
+                const dose = buildChlorineDose({
+                  latest,
+                  settings,
+                  targetFac: facRange.ideal,
+                  correctionType,
+                });
+                recommendations.push({
+                  id: nextId(),
+                  kind: 'chemical',
+                  severity: sev,
+                  title: 'Cloro granulado — acción correctiva temporal',
+                  summary: 'Aplicar cloro granulado como acción temporal mientras se revisa el clorador.',
+                  reason: `El FAC está muy bajo${isLowOrp ? ` y el ORP (${latest.orp} mV) también está bajo` : ''}. Se necesita una acción correctiva inmediata.`,
+                  priority: 4,
+                  relatedFields: ['fac', 'orp'],
+                  chemicalProductId: 'chlorine-granules',
+                  genericProductName: 'Cloro granulado',
+                  mainComponent: 'Cloro de disolución rápida',
+                  estimatedAmount: dose.theoreticalAmount,
+                  unit: dose.unit,
+                  targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
+                  currentValue: latest.fac,
+                  chlorineCorrectionType: correctionType,
+                  escalationLevel: escalation.level,
+                  calculationNotes: [
+                    ...dose.notes,
+                    `Tipo de corrección: ${correctionType}.`,
+                    'Usar solo como medida temporal mientras se revisa el clorador.',
+                  ],
+                  safetyNotes: [
+                    'Manejar con guantes y gafas de protección.',
+                    'No mezclar con ácidos u otros productos químicos.',
+                    'Añadir en horas de baja radiación solar.',
+                    'Esperar al menos 30 minutos antes de bañarse.',
+                  ],
+                  followUpActions: [
+                    'Aplicar el cloro granulado.',
+                    'Revisar el clorador salino.',
+                    'Medir FAC y ORP después de 4–6 horas.',
+                  ],
+                  retestAfterHours: 6,
+                });
+              }
+            }
+
+            if (
+              escalation.level !== 'NORMAL' &&
+              (isVeryLowFac || isLowOrp) &&
+              !recommendations.some((rec) => rec.chemicalProductId === 'chlorine-granules')
+            ) {
+              recommendations.push(buildTemporaryChlorineCorrectionRecommendation({
+                latest,
+                settings,
+                facRange,
+                severity: sev,
+                isLowOrp,
+                escalation,
+              }));
             }
           }
         } else if (isVeryLowFac || isLowOrp) {
@@ -1372,13 +1587,31 @@ export function runAssistant(
     const chlorinatorConfig = settings.saltChlorinator;
     const deltaPpm = facRange.ideal - latest.fac;
     if (deltaPpm > 0.2) {
-      const adjustment = calculateChlorinatorAdjustment(deltaPpm, volLiters, chlorinatorConfig);
+      const chlorinatorCapabilities = getChlorinatorCapabilities(chlorinatorConfig);
+      if (shouldUseCapabilityOnlyChlorinatorRecommendation(chlorinatorCapabilities)) {
+        recommendations.push(buildCapabilityBasedChlorinatorRecommendation({
+          severity: 'low',
+          priority: 12,
+          latest,
+          facRange,
+          capabilities: chlorinatorCapabilities,
+          preventive: true,
+          calculationNotes: [
+            `FAC actual: ${latest.fac.toFixed(1)} ppm. Objetivo: ${facRange.ideal.toFixed(1)} ppm.`,
+            `Déficit: ${deltaPpm.toFixed(1)} ppm.`,
+            `Volumen: ${volLiters.toLocaleString()} L.`,
+            describeChlorinatorProduction(chlorinatorConfig),
+          ],
+        }));
+      } else {
+        const adjustment = calculateChlorinatorAdjustment(deltaPpm, volLiters, chlorinatorConfig);
 
       if (adjustment.suggestedOutputPercent !== undefined || adjustment.suggestedAdditionalHours !== undefined) {
         const calcNotes: string[] = [
           `FAC actual: ${latest.fac.toFixed(1)} ppm. Objetivo: ${facRange.ideal.toFixed(1)} ppm.`,
           `Déficit: ${deltaPpm.toFixed(1)} ppm.`,
           `Volumen: ${volLiters.toLocaleString()} L.`,
+          describeChlorinatorProduction(chlorinatorConfig),
         ];
 
         if (adjustment.suggestedOutputPercent !== undefined) {
@@ -1386,6 +1619,14 @@ export function runAssistant(
         }
         if (adjustment.suggestedAdditionalHours !== undefined && adjustment.suggestedAdditionalHours > 0) {
           calcNotes.push(`Añadir ${adjustment.suggestedAdditionalHours} hora(s) adicional(es).`);
+          if (adjustment.runtimeCalculation && adjustment.runtimeCalculation.roundingPolicy === 'ceil-to-supported-increment') {
+            calcNotes.push(`Cálculo teórico: ${Math.round(adjustment.runtimeCalculation.theoreticalAdditionalMinutes)} minutos.`);
+            calcNotes.push(`Ajuste operativo: ${adjustment.runtimeCalculation.operationalAdditionalMinutes} minutos.`);
+            calcNotes.push(`Redondeo: incremento soportado de ${adjustment.runtimeCalculation.supportedIncrementMinutes} minutos.`);
+          }
+        }
+        if (!chlorinatorCapabilities.canAdjustPercentage && chlorinatorCapabilities.supportsBoost) {
+          calcNotes.push('El equipo no declara ajuste porcentual; usar horas o boost solo si corresponde a su ficha.');
         }
 
         recommendations.push({
@@ -1405,11 +1646,14 @@ export function runAssistant(
           calculationNotes: calcNotes,
           safetyNotes: [],
           followUpActions: [
-            'Aplicar los ajustes recomendados.',
+            chlorinatorCapabilities.canAdjustPercentage
+              ? 'Aplicar los ajustes recomendados.'
+              : 'Ajustar horas o programa diario segun la ficha del clorador.',
             'Medir FAC después del ciclo de filtración.',
           ],
           retestAfterHours: 24,
         });
+      }
       }
     }
   }

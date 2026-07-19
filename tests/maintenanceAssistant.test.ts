@@ -4,6 +4,7 @@ import type { MaintenanceRecommendation } from '../src/domain/maintenanceAssista
 import { analyzeTrends } from '../src/domain/trendAnalysis';
 import type { Measurement } from '../src/domain/measurement';
 import type { PoolSettings, SaltChlorinatorConfig } from '../src/domain/settings';
+import { createChlorinatorConfigFromPreset } from '../src/domain/saltChlorinator';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -1010,6 +1011,188 @@ describe('proactive chlorinator adjustment', () => {
       (r) => r.title.includes('Optimizar clorador'),
     );
     expect(optRec).toBeUndefined();
+  });
+});
+
+describe('chlorinator capability-aware recommendation integration', () => {
+  it('INTEX QS500 fixed-output recommendation uses runtime, rounds 48 minutes to 60, and does not invent boost output', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.7, orp: 680 })],
+      makeSettings({
+        volume: 5000,
+        poolType: 'saltwater',
+        saltChlorinator: {
+          ...createChlorinatorConfigFromPreset('intex-qs500-26668'),
+          filtrationHoursPerDay: 1,
+        },
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.kind === 'equipment' && item.equipmentName === 'Clorador salino');
+    expect(rec).toBeDefined();
+    expect(rec?.suggestedOutputPercent).toBeUndefined();
+    expect(rec?.suggestedAdditionalHours).toBe(1);
+    expect(rec?.calculationNotes.join(' ')).toContain('Cálculo teórico: 48 minutos');
+    expect(rec?.calculationNotes.join(' ')).toContain('Ajuste operativo: 60 minutos');
+    expect(rec?.calculationNotes.join(' ')).not.toMatch(/boost.*g/i);
+  });
+
+  it('INTEX QS500 runtime recommendation respects the 12 hour daily maximum', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.7, orp: 680 })],
+      makeSettings({
+        volume: 5000,
+        poolType: 'saltwater',
+        saltChlorinator: {
+          ...createChlorinatorConfigFromPreset('intex-qs500-26668'),
+          filtrationHoursPerDay: 11.5,
+        },
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.kind === 'equipment' && item.equipmentName === 'Clorador salino');
+    expect(rec?.suggestedAdditionalHours).toBe(0.5);
+    expect(rec?.suggestedOutputPercent).toBeUndefined();
+  });
+
+  it('persistent low FAC still escalates to chlorinator diagnostics and fast chemical correction', () => {
+    const measurements = [
+      makeMeasurement({ fac: 0.4, orp: 560, measuredAt: '2026-07-01T10:00:00.000Z' }, 'm1'),
+      makeMeasurement({ fac: 0.4, orp: 555, measuredAt: '2026-07-03T10:00:00.000Z' }, 'm2'),
+      makeMeasurement({ fac: 0.3, orp: 540, measuredAt: '2026-07-05T10:00:00.000Z' }, 'm3'),
+    ];
+    const result = runAssistant(
+      measurements,
+      makeSettings({
+        volume: 5000,
+        poolType: 'saltwater',
+        saltChlorinator: createChlorinatorConfigFromPreset('intex-qs500-26668'),
+      }),
+      [
+        {
+          id: 'c1',
+          performedAt: '2026-07-02T10:00:00.000Z',
+          kind: 'chlorinator',
+          description: 'Extra runtime',
+          chlorinator: { additionalHours: 1 },
+        },
+        {
+          id: 'c2',
+          performedAt: '2026-07-04T10:00:00.000Z',
+          kind: 'chlorinator',
+          description: 'Extra runtime',
+          chlorinator: { additionalHours: 1 },
+        },
+      ],
+    );
+
+    expect(result.recommendations.some((rec) =>
+      rec.kind === 'equipment' &&
+      rec.equipmentName === 'Clorador salino' &&
+      rec.title.includes('clorador') &&
+      rec.escalationLevel !== undefined,
+    )).toBe(true);
+    expect(result.recommendations.some((rec) => rec.chemicalProductId === 'chlorine-granules')).toBe(true);
+  });
+
+  it('percentage chlorinator recommendations keep percentage adjustment behavior', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.7, orp: 680 })],
+      makeSettings({
+        volume: 50000,
+        poolType: 'saltwater',
+        saltChlorinator: makeChlorinatorConfig({
+          productionGramsPerHour: 20,
+          currentOutputPercent: 40,
+          filtrationHoursPerDay: 8,
+          maxRecommendedOutputPercent: 100,
+        }),
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.kind === 'equipment' && item.equipmentName === 'Clorador salino');
+    expect(rec?.suggestedOutputPercent).toBeDefined();
+  });
+
+  it('discrete-level chlorinator produces a level change without invented percentages', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.7, orp: 680 })],
+      makeSettings({
+        volume: 50000,
+        poolType: 'saltwater',
+        saltChlorinator: makeChlorinatorConfig({
+          outputControl: {
+            kind: 'discrete-levels',
+            levels: [{ id: 'low', labelKey: 'Bajo' }, { id: 'high', labelKey: 'Alto' }],
+          },
+          currentOutputLevelId: 'low',
+        }),
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.recommendedChlorinatorAction === 'set-output-level');
+    expect(rec).toBeDefined();
+    expect(rec?.suggestedOutputLevelId).toBe('high');
+    expect(rec?.suggestedOutputPercent).toBeUndefined();
+  });
+
+  it('automatic chlorinator recommends setpoint or sensor actions without manual hours or percentage', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.7, orp: 680 })],
+      makeSettings({
+        volume: 50000,
+        poolType: 'saltwater',
+        saltChlorinator: makeChlorinatorConfig({
+          outputControl: { kind: 'automatic', controlBasis: 'orp' },
+        }),
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.recommendedChlorinatorAction === 'review-setpoint');
+    expect(rec).toBeDefined();
+    expect(rec?.suggestedOutputPercent).toBeUndefined();
+    expect(rec?.suggestedAdditionalHours).toBeUndefined();
+  });
+
+  it('unknown chlorinator does not generate false operational dose and asks for capabilities', () => {
+    const result = runAssistant(
+      [makeMeasurement({ fac: 0.7, orp: 680 })],
+      makeSettings({
+        volume: 50000,
+        poolType: 'saltwater',
+        saltChlorinator: createChlorinatorConfigFromPreset('unknown'),
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.recommendedChlorinatorAction === 'identify-capabilities');
+    expect(rec).toBeDefined();
+    expect(rec?.suggestedOutputPercent).toBeUndefined();
+    expect(rec?.suggestedAdditionalHours).toBeUndefined();
+    expect(rec?.calculationNotes.join(' ')).not.toContain('Infinity');
+  });
+
+  it('legacy outputPercent 100 on fixed equipment is preserved as non-regulable nominal output', () => {
+    const config = createChlorinatorConfigFromPreset('intex-qs500-26668');
+    const measurement = makeMeasurement({
+      fac: 0.7,
+      context: {
+        chlorinatorOutputPercent: 100,
+        chlorinatorHoursSincePreviousMeasurement: 1,
+      },
+    });
+
+    const result = runAssistant(
+      [measurement],
+      makeSettings({
+        volume: 5000,
+        poolType: 'saltwater',
+        saltChlorinator: config,
+      }),
+    );
+
+    const rec = result.recommendations.find((item) => item.kind === 'equipment' && item.equipmentName === 'Clorador salino');
+    expect(rec?.suggestedOutputPercent).toBeUndefined();
+    expect(config.chlorinator?.dataProvenance.source).toBe('manufacturer-preset');
   });
 });
 

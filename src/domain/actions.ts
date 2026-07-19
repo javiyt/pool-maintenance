@@ -260,9 +260,22 @@ export interface MaintenanceActionChemical {
 
 export interface MaintenanceActionChlorinator {
   previousOutputPercent?: number;
-  newOutputPercent: number;
+  newOutputPercent?: number;
   additionalHours?: number;
   totalHours?: number;
+  previousRuntimeHours?: number;
+  newRuntimeHours?: number;
+  previousOutputLevelId?: string;
+  newOutputLevelId?: string;
+  operatingMode?: 'normal' | 'boost' | 'superchlorination' | 'low-output' | 'winter' | 'cover' | 'automatic' | 'manual' | 'off' | 'unknown' | 'custom';
+  boostActivated?: boolean;
+  boostDurationHours?: number;
+  setpoint?: {
+    basis: 'orp' | 'free-chlorine';
+    value: number;
+    unit: 'mv' | 'ppm';
+  };
+  maintenanceTask?: 'inspect-cell' | 'clean-cell' | 'check-flow' | 'check-salt' | 'check-errors' | 'inspect-sensor' | 'calibrate-sensor' | 'review-automation';
 }
 
 export interface MaintenanceActionFiltration {

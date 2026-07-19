@@ -1,4 +1,5 @@
 import { getTargetRange } from '../../chemistry';
+import { getChlorinatorCapabilities } from '../../saltChlorinator';
 import { calculateFacDose } from '../chemicalDoseCalculator';
 import { STRUCTURED_RECOMMENDATION_ENGINE_VERSION } from '../../shared/version';
 import type { Recommendation } from '../recommendation';
@@ -260,17 +261,36 @@ export const moderateChlorinatorRule: RecommendationRule = {
     !context.hasDiagnosis('SANITATION_COMPROMISED') &&
     !context.hasDiagnosis('FAC_NOT_RESPONDING_TO_CHLORINATION') &&
     context.settings.poolType === 'saltwater',
-  generate: (context) => [baseRecommendation(context, {
-    code: 'INCREASE_CHLORINATOR_RUNTIME',
-    sourceCodes: ['FAC_LOW'],
-    ruleId: moderateChlorinatorRule.id,
-    category: 'equipment',
-    severity: 'medium',
-    priority: 20,
-    relatedFields: ['fac'],
-    explanationCodes: ['MILD_LOW_FAC_CAN_USE_MODERATE_CHLORINATOR_ADJUSTMENT'],
-  })],
+  generate: (context) => {
+    const capabilities = context.settings.saltChlorinator
+      ? getChlorinatorCapabilities(context.settings.saltChlorinator)
+      : undefined;
+    return chlorinatorRecommendationCodesForCapabilities(capabilities)
+      .map((code, index) => baseRecommendation(context, {
+        code,
+        sourceCodes: ['FAC_LOW'],
+        ruleId: moderateChlorinatorRule.id,
+        category: 'equipment',
+        severity: 'medium',
+        priority: 20 + index,
+        relatedFields: ['fac'],
+        explanationCodes: ['MILD_LOW_FAC_CAN_USE_MODERATE_CHLORINATOR_ADJUSTMENT'],
+      }));
+  },
 };
+
+function chlorinatorRecommendationCodesForCapabilities(
+  capabilities: ReturnType<typeof getChlorinatorCapabilities> | undefined,
+): RecommendationCode[] {
+  if (!capabilities) return ['IDENTIFY_CHLORINATOR_CAPABILITIES'];
+  if (capabilities.supportsPercentageAdjustment) return ['ADJUST_CHLORINATOR_OUTPUT'];
+  if (capabilities.supportsDiscreteLevels) return ['SET_CHLORINATOR_LEVEL'];
+  if (capabilities.supportsAutomaticControl) {
+    return ['REVIEW_CHLORINATOR_SETPOINT', 'CALIBRATE_CHLORINATOR_SENSOR'];
+  }
+  if (capabilities.supportsRuntimeAdjustment) return ['INCREASE_CHLORINATOR_RUNTIME'];
+  return ['IDENTIFY_CHLORINATOR_CAPABILITIES'];
+}
 
 export const CORE_RECOMMENDATION_RULES: RecommendationRule[] = [
   restrictSwimmingRule,
@@ -283,4 +303,3 @@ export const CORE_RECOMMENDATION_RULES: RecommendationRule[] = [
   alkalinityManualTestRule,
   moderateChlorinatorRule,
 ];
-

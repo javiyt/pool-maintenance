@@ -1,6 +1,12 @@
 import type { Measurement } from './measurement';
 import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
+import {
+  CHLORINATOR_CALCULATION_VERSION,
+  CHLORINATOR_CATALOG_VERSION,
+  CHLORINATOR_SCHEMA_VERSION,
+  migrateSaltChlorinatorConfig,
+} from './saltChlorinator';
 import type {
   ChemicalProductSnapshot,
   MaintenanceAction,
@@ -37,14 +43,22 @@ export function loadSettings(): PoolSettings {
   try {
     const raw = localStorage.getItem(key('settings'));
     if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    return migrateSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 
 export function saveSettings(settings: PoolSettings): void {
-  localStorage.setItem(key('settings'), JSON.stringify(settings));
+  localStorage.setItem(key('settings'), JSON.stringify(migrateSettings(settings)));
+}
+
+function migrateSettings(settings: PoolSettings): PoolSettings {
+  if (!settings.saltChlorinator) return settings;
+  return {
+    ...settings,
+    saltChlorinator: migrateSaltChlorinatorConfig(settings.saltChlorinator),
+  };
 }
 
 // ── Measurements ───────────────────────────────────────────────────
@@ -388,6 +402,9 @@ export const EXPORT_SCHEMA_VERSION = 10;
 export interface ExportData extends ExportSnapshots {
   schemaVersion: number;
   applicationVersion: string;
+  chlorinatorSchemaVersion: string;
+  chlorinatorCatalogVersion: string;
+  chlorinatorCalculationVersion: string;
   diagnosisEngineVersion: string;
   recommendationEngineVersion: string;
   structuredRecommendationEngineVersion: string;
@@ -437,6 +454,9 @@ export function exportData(now?: Date): ExportData {
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     applicationVersion: APPLICATION_VERSION,
+    chlorinatorSchemaVersion: CHLORINATOR_SCHEMA_VERSION,
+    chlorinatorCatalogVersion: CHLORINATOR_CATALOG_VERSION,
+    chlorinatorCalculationVersion: CHLORINATOR_CALCULATION_VERSION,
     diagnosisEngineVersion: DIAGNOSIS_ENGINE_VERSION,
     recommendationEngineVersion: RECOMMENDATION_ENGINE_VERSION,
     structuredRecommendationEngineVersion: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
@@ -583,7 +603,7 @@ export function parseImportData(jsonString: string): ImportResult {
 
     let poolConfig: PoolSettings | null = null;
     if (obj.poolConfig && typeof obj.poolConfig === 'object') {
-      poolConfig = { ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings;
+      poolConfig = migrateSettings({ ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings);
     }
 
     return { measurements, actions, followUps, experiments, userChemicalProducts, poolConfig, count: measurements.length };
