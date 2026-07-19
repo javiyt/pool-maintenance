@@ -8,8 +8,12 @@ import type { MeasurementTrend } from './trendAnalysis';
 import { calculateChlorinatorAdjustment } from './saltChlorinator';
 import type { SaltChlorinatorConfig } from './saltChlorinator';
 import type { MaintenanceAction } from './actions';
+import { evaluateActionOutcomes } from './actionOutcomeEvaluator';
 import { computeLearning, getTemperatureBand, getOutputPercentBand } from './historicalLearning';
 import type { LearnedAdjustment, LearningConfidence } from './historicalLearning';
+import { calculateFacDose, classifyChlorineCorrection, type ChlorineCorrectionType } from './recommendation/chemicalDoseCalculator';
+import { estimateChlorinatorFacModel } from './recommendation/chlorineModel';
+import { analyzeRecommendationEscalation, type EscalationAnalysis } from './recommendation/recommendationEscalationEngine';
 import type { TranslationKey, TranslationParams } from '../i18n/types';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -93,6 +97,8 @@ export interface MaintenanceRecommendation {
   followUpActions: string[];
   retestAfterHours?: number;
   personalization?: RecommendationPersonalization;
+  chlorineCorrectionType?: ChlorineCorrectionType;
+  escalationLevel?: EscalationAnalysis['level'];
   /** Recommendation state for staged plans. */
   state?: RecommendationState;
   /** Dependencies that must be resolved before this rec is actionable. */
@@ -143,6 +149,142 @@ function makeRange(min: number, max: number, unit: string) {
 function sortBySeverity(a: MaintenanceRecommendation, b: MaintenanceRecommendation): number {
   const order: Record<string, number> = { danger: 0, high: 1, medium: 2, low: 3, info: 4 };
   return (order[a.severity] ?? 5) - (order[b.severity] ?? 5);
+}
+
+function buildChlorineDose(input: {
+  latest: Measurement;
+  settings: PoolSettings;
+  targetFac: number;
+  correctionType: ChlorineCorrectionType;
+}): ReturnType<typeof calculateFacDose> {
+  return calculateFacDose({
+    productId: 'chlorine-granules',
+    settings: input.settings,
+    currentFac: input.latest.fac,
+    targetFac: input.targetFac,
+    correctionType: input.correctionType,
+  });
+}
+
+function addEscalationRecommendations(
+  recommendations: MaintenanceRecommendation[],
+  escalation: EscalationAnalysis,
+  latest: Measurement,
+  facRange: TargetRange,
+  settings: PoolSettings,
+): void {
+  if (escalation.level === 'NORMAL') return;
+
+  recommendations.push({
+    id: nextId(),
+    kind: 'equipment',
+    severity: escalation.level === 'DIAGNOSTIC' || escalation.level === 'CRITICAL' ? 'high' : 'medium',
+    title: 'Revisar clorador salino',
+    summary: 'El FAC bajo es persistente y los intentos recientes no muestran recuperación suficiente.',
+    reason: escalation.reasons.join(' '),
+    priority: 2,
+    relatedFields: ['fac', 'orp'],
+    equipmentName: 'Clorador salino',
+    targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
+    currentValue: latest.fac,
+    escalationLevel: escalation.level,
+    calculationNotes: [
+      ...escalation.reasons,
+      'El motor escala porque el comportamiento observado de esta piscina no confirma recuperación con ajustes del clorador.',
+    ],
+    safetyNotes: latest.fac < facRange.min * 0.5
+      ? ['Evitar bañarse hasta recuperar el FAC dentro del rango.']
+      : [],
+    followUpActions: [
+      'Comprobar que el clorador produce cloro.',
+      'Comprobar célula electrolítica y posibles incrustaciones.',
+      'Comprobar caudal y alarmas del equipo.',
+      'Limpiar la célula si hay cal visible siguiendo el manual del fabricante.',
+    ],
+    retestAfterHours: 24,
+  });
+
+  recommendations.push({
+    id: nextId(),
+    kind: 'manual-test',
+    severity: escalation.level === 'PERSISTENT' ? 'medium' : 'high',
+    title: 'Diagnóstico manual de cloro',
+    summary: 'Confirmar FAC con prueba manual y medir cloro total y ácido cianúrico.',
+    reason: 'Cuando el FAC no recupera tras varios intentos, hay que separar error de medición, cloro combinado, estabilizador insuficiente y fallo de producción.',
+    priority: 3,
+    relatedFields: ['fac', 'orp'],
+    targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
+    currentValue: latest.fac,
+    escalationLevel: escalation.level,
+    calculationNotes: [
+      'Medición manual de FAC para validar el sensor o fotómetro habitual.',
+      'Medición de cloro total para detectar cloro combinado.',
+      'Medición de ácido cianúrico para estimar pérdida por radiación solar.',
+    ],
+    safetyNotes: [],
+    followUpActions: [
+      'Medir FAC manualmente.',
+      'Medir cloro total.',
+      'Medir ácido cianúrico.',
+      'Registrar los resultados como notas o nueva medición.',
+    ],
+    retestAfterHours: 6,
+  });
+
+  if (escalation.level === 'CRITICAL' || escalation.level === 'DIAGNOSTIC') {
+    const correctionType = classifyChlorineCorrection({
+      fac: latest.fac,
+      targetFac: facRange.ideal,
+      orp: latest.orp,
+      visibleAlgae: latest.context?.visibleAlgae,
+      waterClarity: latest.context?.waterClarity,
+      batherLoad: latest.context?.batherLoad,
+      persistentLowFac: true,
+    });
+    const dose = buildChlorineDose({
+      latest,
+      settings,
+      targetFac: facRange.ideal,
+      correctionType,
+    });
+
+    recommendations.push({
+      id: nextId(),
+      kind: 'chemical',
+      severity: 'high',
+      title: 'Cloro rápido temporal',
+      summary: 'Aplicar cloro de disolución rápida como corrección temporal mientras se diagnostica el clorador.',
+      reason: 'El historial indica FAC bajo persistente sin recuperación observable suficiente tras varios intentos.',
+      priority: 4,
+      relatedFields: ['fac', 'orp'],
+      chemicalProductId: 'chlorine-granules',
+      genericProductName: 'Cloro granulado',
+      mainComponent: 'Cloro de disolución rápida',
+      estimatedAmount: dose.theoreticalAmount,
+      unit: dose.unit,
+      targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
+      currentValue: latest.fac,
+      chlorineCorrectionType: correctionType,
+      escalationLevel: escalation.level,
+      calculationNotes: [
+        ...dose.notes,
+        `Tipo de corrección: ${correctionType}.`,
+        'No es una dosis fija de choque; se calcula desde volumen, FAC actual, FAC objetivo y concentración del producto.',
+      ],
+      safetyNotes: [
+        'Manejar con guantes y gafas de protección.',
+        'No mezclar con ácidos u otros productos químicos.',
+        'Añadir en horas de baja radiación solar.',
+        'Esperar al menos 30 minutos antes de bañarse y volver a medir antes de usar la piscina.',
+      ],
+      followUpActions: [
+        'Aplicar el cloro rápido temporal.',
+        'Medir FAC y ORP después de 4–6 horas.',
+        'Completar la revisión del clorador.',
+      ],
+      retestAfterHours: 6,
+    });
+  }
 }
 
 // ── Translation key enrichment ──────────────────────────────────
@@ -343,6 +485,7 @@ function enrichRecommendationKeys(
 export function runAssistant(
   measurements: Measurement[],
   settings: PoolSettings,
+  actions: MaintenanceAction[] = [],
 ): MaintenanceAssistantResult {
   if (measurements.length === 0) {
     return {
@@ -386,6 +529,13 @@ export function runAssistant(
   const phRange = TARGET_RANGES.ph;
   const facRange = getTargetRange('fac', settings.poolType);
   const saltRange = TARGET_RANGES.salt;
+  const outcomes = actions.length > 0 ? evaluateActionOutcomes(measurements, actions) : [];
+  const escalation = analyzeRecommendationEscalation({
+    measurements,
+    actions,
+    outcomes,
+    facRange,
+  });
 
   const phClass = classifyLevel(latest.ph, phRange);
   const facClass = classifyLevel(latest.fac, facRange);
@@ -697,6 +847,16 @@ export function runAssistant(
             `Producción del clorador: ${chlorinatorConfig.productionGramsPerHour} g/h al ${chlorinatorConfig.currentOutputPercent}%.`,
             `Horas necesarias: ${adjustment.hoursNeeded.toFixed(1)} h.`,
           ];
+          const chlorineModel = estimateChlorinatorFacModel({
+            deltaPpm,
+            poolVolumeLiters: volLiters,
+            config: chlorinatorConfig,
+            hours: Math.min(adjustment.hoursNeeded, chlorinatorConfig.maxRecommendedHoursPerDay),
+            temperature: latest.temperature,
+            batherLoad: latest.context?.batherLoad,
+            sunlight: latest.context?.sunlight,
+          });
+          calcNotes.push(...chlorineModel.notes);
 
           const sev: RecommendationSeverity =
             isVeryLowFac || isLowOrp ? 'high' : (isTooLarge ? 'high' : 'medium');
@@ -734,7 +894,6 @@ export function runAssistant(
           }
 
           if (isTooLarge || !canAdjustFully) {
-            const shockG = hasVolume ? Math.round(25 * volM3) : 0;
             recommendations.push({
               id: nextId(),
               kind: 'warning',
@@ -758,6 +917,21 @@ export function runAssistant(
             });
 
             if (isVeryLowFac || isLowOrp) {
+              const correctionType = classifyChlorineCorrection({
+                fac: latest.fac,
+                targetFac: facRange.ideal,
+                orp: latest.orp,
+                visibleAlgae: latest.context?.visibleAlgae,
+                waterClarity: latest.context?.waterClarity,
+                batherLoad: latest.context?.batherLoad,
+                persistentLowFac: escalation.level !== 'NORMAL',
+              });
+              const dose = buildChlorineDose({
+                latest,
+                settings,
+                targetFac: facRange.ideal,
+                correctionType,
+              });
               recommendations.push({
                 id: nextId(),
                 kind: 'chemical',
@@ -770,12 +944,15 @@ export function runAssistant(
                 chemicalProductId: 'chlorine-granules',
                 genericProductName: 'Cloro granulado',
                 mainComponent: 'Cloro de disolución rápida',
-                estimatedAmount: hasVolume ? shockG : undefined,
-                unit: hasVolume ? 'g' : undefined,
+                estimatedAmount: dose.theoreticalAmount,
+                unit: dose.unit,
                 targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
                 currentValue: latest.fac,
+                chlorineCorrectionType: correctionType,
+                escalationLevel: escalation.level,
                 calculationNotes: [
-                  `Dosis de choque: ${shockG} g para ${volM3} m³.`,
+                  ...dose.notes,
+                  `Tipo de corrección: ${correctionType}.`,
                   'Usar solo como medida temporal mientras se revisa el clorador.',
                 ],
                 safetyNotes: [
@@ -794,7 +971,21 @@ export function runAssistant(
             }
           }
         } else if (isVeryLowFac || isLowOrp) {
-          const shockG = hasVolume ? Math.round(25 * volM3) : 0;
+          const correctionType = classifyChlorineCorrection({
+            fac: latest.fac,
+            targetFac: facRange.ideal,
+            orp: latest.orp,
+            visibleAlgae: latest.context?.visibleAlgae,
+            waterClarity: latest.context?.waterClarity,
+            batherLoad: latest.context?.batherLoad,
+            persistentLowFac: escalation.level !== 'NORMAL',
+          });
+          const dose = buildChlorineDose({
+            latest,
+            settings,
+            targetFac: facRange.ideal,
+            correctionType,
+          });
           recommendations.push({
             id: nextId(),
             kind: 'chemical',
@@ -807,12 +998,15 @@ export function runAssistant(
             chemicalProductId: 'chlorine-granules',
             genericProductName: 'Cloro granulado',
             mainComponent: 'Cloro de disolución rápida',
-            estimatedAmount: hasVolume ? shockG : undefined,
-            unit: hasVolume ? 'g' : undefined,
+            estimatedAmount: dose.theoreticalAmount,
+            unit: dose.unit,
             targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
             currentValue: latest.fac,
+            chlorineCorrectionType: correctionType,
+            escalationLevel: escalation.level,
             calculationNotes: [
-              hasVolume ? `Dosis estimada: ${shockG} g para ${volM3} m³.` : 'Ingresa el volumen para obtener dosis.',
+              ...dose.notes,
+              `Tipo de corrección: ${correctionType}.`,
               isLowOrp ? 'ORP bajo — aumentar la severidad de la recomendación.' : '',
             ].filter(Boolean),
             safetyNotes: [
@@ -925,14 +1119,26 @@ export function runAssistant(
         const targetCl = facRange.ideal;
         const isLowOrp = latest.orp !== undefined && latest.orp !== null && latest.orp < 650;
         const isVeryLow = latest.fac < facRange.min * 0.5;
-        const maintG = hasVolume ? Math.round(3 * volM3) : 0;
-        const shockG = hasVolume ? Math.round(25 * volM3) : 0;
-        const g = isVeryLow || isLowOrp ? shockG : maintG;
-        const isShock = isVeryLow || isLowOrp;
+        const correctionType = classifyChlorineCorrection({
+          fac: latest.fac,
+          targetFac: targetCl,
+          orp: latest.orp,
+          visibleAlgae: latest.context?.visibleAlgae,
+          waterClarity: latest.context?.waterClarity,
+          batherLoad: latest.context?.batherLoad,
+          persistentLowFac: escalation.level !== 'NORMAL',
+        });
+        const dose = buildChlorineDose({
+          latest,
+          settings,
+          targetFac: targetCl,
+          correctionType,
+        });
         const sev: RecommendationSeverity = isLowOrp ? 'high' : (isVeryLow ? 'high' : 'medium');
 
         const calcNotes: string[] = [
-          `Dosis estimada: ${isShock ? 'choque' : 'mantenimiento'} — ${g > 0 ? `${g} g` : 'calcular con el volumen'} para subir de ${latest.fac.toFixed(1)} ppm a ${targetCl.toFixed(1)} ppm.`,
+          ...dose.notes,
+          `Tipo de corrección: ${correctionType}.`,
         ];
         if (isLowOrp) {
           calcNotes.push(`ORP bajo (${latest.orp} mV) — aumentar la severidad de la recomendación.`);
@@ -953,10 +1159,12 @@ export function runAssistant(
           chemicalProductId: 'chlorine-granules',
           genericProductName: 'Cloro granulado',
           mainComponent: 'Cloro de disolución rápida',
-          estimatedAmount: hasVolume ? g : undefined,
-          unit: hasVolume ? 'g' : undefined,
+          estimatedAmount: dose.theoreticalAmount,
+          unit: dose.unit,
           targetRange: makeRange(facRange.min, facRange.max, 'ppm'),
           currentValue: latest.fac,
+          chlorineCorrectionType: correctionType,
+          escalationLevel: escalation.level,
           calculationNotes: calcNotes,
           safetyNotes: [
             'Manejar con guantes y gafas de protección.',
@@ -999,6 +1207,15 @@ export function runAssistant(
       ],
       retestAfterHours: 24,
     });
+  }
+
+  if (isSaltwater && latest.fac < facRange.min && phAcceptable) {
+    if (escalation.level === 'CRITICAL' || escalation.level === 'DIAGNOSTIC') {
+      updateStatus('unsafe');
+    } else if (escalation.level === 'PERSISTENT') {
+      updateStatus('needs-correction');
+    }
+    addEscalationRecommendations(recommendations, escalation, latest, facRange, settings);
   }
 
   // ── 3. Salt correction (saltwater pools only, independent of FAC) ──
@@ -1573,9 +1790,8 @@ export function applyPersonalization(
     const theoreticalValue = rec.estimatedAmount;
     const cf = adj.correctionFactor ?? 1;
     const rawPersonalized = theoreticalValue / cf;
-    // Preserve per-treatment cap: never exceed shock level (25 g/m³)
-    const volM3 = volumeInLiters(settings) / 1000;
-    const maxG = volM3 > 0 ? Math.round(25 * volM3) : theoreticalValue * 2;
+    // Preserve a conservative personalization cap without using a fixed shock dose.
+    const maxG = theoreticalValue * 1.5;
     const personalizedValue = Math.round(Math.min(rawPersonalized, maxG));
     const adjusted = personalizedValue !== theoreticalValue;
 
@@ -1609,7 +1825,7 @@ export function runPersonalizedAssistant(
   actions: MaintenanceAction[],
   settings: PoolSettings,
 ): MaintenanceAssistantResult {
-  const result = runAssistant(measurements, settings);
+  const result = runAssistant(measurements, settings, actions);
 
   const config: HistoricalLearningConfig = {
     ...DEFAULT_HISTORICAL_LEARNING,

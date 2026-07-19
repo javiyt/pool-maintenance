@@ -4,6 +4,12 @@ import { DEFAULT_SETTINGS } from './settings';
 import type { MaintenanceAction } from './actions';
 import type { FollowUp } from './followUp';
 import type { DiagnosticExperiment } from './latentStateEstimator';
+import {
+  APPLICATION_VERSION,
+  CHEMICAL_CATALOG_VERSION,
+  OUTCOME_EVALUATOR_VERSION,
+  RECOMMENDATION_ENGINE_VERSION,
+} from './recommendation/versions';
 
 const KEY_PREFIX = 'pool-maintenance:';
 
@@ -215,10 +221,14 @@ export function mergeExperiments(
   return [...existing, ...deduped];
 }
 
-export const EXPORT_SCHEMA_VERSION = 7;
+export const EXPORT_SCHEMA_VERSION = 8;
 
 export interface ExportData {
   schemaVersion: number;
+  applicationVersion: string;
+  recommendationEngineVersion: string;
+  outcomeEvaluatorVersion: string;
+  chemicalCatalogVersion: string;
   exportedAt: string;
   poolConfig: PoolSettings;
   measurements: Measurement[];
@@ -245,6 +255,10 @@ export interface ImportResult {
 export function exportData(now?: Date): ExportData {
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
+    applicationVersion: APPLICATION_VERSION,
+    recommendationEngineVersion: RECOMMENDATION_ENGINE_VERSION,
+    outcomeEvaluatorVersion: OUTCOME_EVALUATOR_VERSION,
+    chemicalCatalogVersion: CHEMICAL_CATALOG_VERSION,
     exportedAt: (now ?? new Date()).toISOString(),
     poolConfig: loadSettings(),
     measurements: loadMeasurements(),
@@ -258,6 +272,7 @@ export function exportData(now?: Date): ExportData {
  * Parse and validate an import JSON string.
  *
  * Supports:
+ * - v8: `{ schemaVersion: 8, applicationVersion, recommendationEngineVersion, outcomeEvaluatorVersion, chemicalCatalogVersion, poolConfig, measurements, actions, followUps, experiments }`
  * - v7: `{ schemaVersion: 7, poolConfig, measurements, actions, followUps, experiments }` — adds diagnostic experiments
  * - v6: `{ schemaVersion: 6, poolConfig, measurements, actions, followUps }` — adds follow-ups
  * - v5: `{ schemaVersion: 5, poolConfig, measurements, actions }` — adds historicalLearning config to poolConfig

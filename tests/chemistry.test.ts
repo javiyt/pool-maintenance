@@ -49,13 +49,13 @@ describe('chemical catalog', () => {
     expect(product.dosageRule!.amountUnit).toBe('ml');
   });
 
-  it('chlorine granules have maintenance and shock assumptions', () => {
+  it('chlorine granules define available chlorine concentration instead of fixed shock dose', () => {
     const product = getProductById('chlorine-granules')!;
     expect(product.genericName).toBe('Cloro granulado');
     expect(product.mainComponent).toBe('Cloro de disolución rápida');
-    // Dosage rule exists (3 g/m³ for maintenance)
     expect(product.dosageRule).toBeDefined();
-    expect(product.dosageRule!.amount).toBe(3);
+    expect(product.availableChlorinePercent).toBe(55);
+    expect(product.dosageRule!.changesValueBy).toBe(1);
   });
 
   it('stabilizer has limitation requiring cyanuric acid', () => {

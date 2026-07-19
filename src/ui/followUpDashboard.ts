@@ -231,6 +231,7 @@ export class FollowUpDashboard {
         : outcome.effectiveness === 'partially-effective' ? 'outcome.partiallyEffective'
         : outcome.effectiveness === 'ineffective' ? 'outcome.ineffective'
         : outcome.effectiveness === 'unexpected' ? 'outcome.unexpected'
+        : outcome.effectiveness === 'inconclusive' ? 'outcome.inconclusive'
         : 'outcome.unknown';
 
       const effectivenessEmoji: Record<string, string> = {
@@ -238,6 +239,7 @@ export class FollowUpDashboard {
         'partially-effective': '🟡',
         'ineffective': '❌',
         'unexpected': '🔮',
+        'inconclusive': '❔',
       };
       const emoji = effectivenessEmoji[outcome.effectiveness] ?? '❓';
       const effectivenessLabel = `${emoji} ${t(effectivenessKey)}`;

@@ -8,6 +8,7 @@ import { estimateAlkalinityState, estimateCyanuricAcidState } from '../domain/la
 import type { Measurement } from '../domain/measurement';
 import type { MaintenanceAction } from '../domain/actions';
 import type { PoolSettings } from '../domain/settings';
+import { buildRecommendationSnapshot } from '../domain/recommendation/recommendationSnapshot';
 
 export class RecommendationsPanel {
   private section: HTMLElement;
@@ -441,6 +442,17 @@ export class RecommendationsPanel {
       recommendationId: item.id,
       retestAfterHours: item.retestAfterHours,
     };
+
+    if (this.settings) {
+      const latestMeasurement = [...this.measurements].sort((a, b) =>
+        b.measuredAt.localeCompare(a.measuredAt),
+      )[0];
+      prefill.recommendationSnapshot = buildRecommendationSnapshot({
+        recommendation: item,
+        latestMeasurement,
+        settings: this.settings,
+      });
+    }
 
     if (item.relatedFields.length > 0 && item.relatedFields[0]) {
       // We'll set relatedMeasurementId when the user clicks — we use the latest measurement

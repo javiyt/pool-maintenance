@@ -254,11 +254,11 @@ describe('action export', () => {
     store.clear();
   });
 
-  it('includes actions in v4 export', () => {
+  it('includes actions in current export', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     saveActions([SAMPLE_ACTION, SAMPLE_ACTION_CHLORINATOR]);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(7);
+    expect(data.schemaVersion).toBe(EXPORT_SCHEMA_VERSION);
     expect(data.actions).toHaveLength(2);
     expect(data.actions[0].kind).toBe('chemical');
     expect(data.actions[1].kind).toBe('chlorinator');
@@ -403,8 +403,8 @@ describe('action sorting', () => {
 // ── Schema version ────────────────────────────────────────────────
 
 describe('schema version', () => {
-  it('is version 7', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(7);
+  it('is version 8', () => {
+    expect(EXPORT_SCHEMA_VERSION).toBe(8);
   });
 });
 

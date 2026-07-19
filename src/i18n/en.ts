@@ -370,6 +370,7 @@ export const en: Record<TranslationKey, string> = {
   'outcome.partiallyEffective': 'Partial',
   'outcome.ineffective': 'Ineffective',
   'outcome.unexpected': 'Unexpected',
+  'outcome.inconclusive': 'Inconclusive',
   'outcome.unknown': 'Unknown',
   'outcome.confidence': '{pct}% confidence',
   'outcome.noChanges': 'No changes measured.',

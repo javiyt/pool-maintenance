@@ -173,7 +173,7 @@ describe('measurement finding', () => {
     expect(outcomes).toEqual([]);
   });
 
-  it('rejects measurement taken too late (beyond maxHours)', () => {
+  it('keeps late measurements as late inconclusive observations', () => {
     const measurements = [
       makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z' }, 'm1'),
       // After measurement 72 hours later — chemical max is 48h
@@ -181,7 +181,9 @@ describe('measurement finding', () => {
     ];
     const action = makeChemicalAction({ performedAt: '2026-07-09T11:00:00.000Z' });
     const outcomes = evaluateActionOutcomes(measurements, [action]);
-    expect(outcomes).toEqual([]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].timing).toBe('late');
+    expect(outcomes[0].effectiveness).toBe('inconclusive');
   });
 
   it('uses closest valid measurement when multiple exist', () => {
@@ -313,7 +315,7 @@ describe('effectiveness evaluation', () => {
     expect(outcomes[0].effectiveness).toBe('unexpected');
   });
 
-  it('tiny/noisy change is partially-effective or unknown', () => {
+  it('tiny/noisy change is inconclusive', () => {
     const measurements = [
       makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 1.9 }, 'm1'),
       // FAC change of 0.1 is below significance threshold of 0.2
@@ -325,8 +327,7 @@ describe('effectiveness evaluation', () => {
     });
     const outcomes = evaluateActionOutcomes(measurements, [action]);
     expect(outcomes).toHaveLength(1);
-    // Small change that's below threshold
-    expect(outcomes[0].effectiveness).toBe('partially-effective');
+    expect(outcomes[0].effectiveness).toBe('inconclusive');
   });
 });
 
@@ -363,7 +364,7 @@ describe('confidence', () => {
     // With 2 intervening actions (0.3 each = 0.6 reduction) + no linked meas (0.2 reduction)
     // Base 0.8 - 0.2 (no link) - 0.6 (intervening) = 0.0, minimum clamped to 0.1
     expect(mainOutcome!.confidence).toBeLessThan(0.5);
-    expect(mainOutcome!.confidenceReasons.some((r) => r.includes('other action'))).toBe(true);
+    expect(mainOutcome!.confidenceReasons.some((r) => r.includes('acción(es)'))).toBe(true);
   });
 
   it('higher confidence with explicitly linked measurement', () => {
@@ -378,8 +379,8 @@ describe('confidence', () => {
     });
     const outcomes = evaluateActionOutcomes(measurements, [action]);
     expect(outcomes).toHaveLength(1);
-    // With linked measurement: base 0.8, no reductions = 0.8
-    expect(outcomes[0].confidence).toBe(0.8);
+    // With linked measurement and no context reductions: base confidence is 0.85
+    expect(outcomes[0].confidence).toBe(0.85);
   });
 });
 
@@ -436,7 +437,7 @@ describe('expectedFields for action types', () => {
 // ── Fields already in range ─────────────────────────────────────
 
 describe('fields already in range before action', () => {
-  it('partially-effective when fields were already in range and stayed', () => {
+  it('is inconclusive when fields were already in range and stayed', () => {
     const measurements = [
       makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.4, fac: 1.5 }, 'm1'),
       makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', ph: 7.4, fac: 1.5 }, 'm2'), // No change at all
@@ -447,13 +448,11 @@ describe('fields already in range before action', () => {
     });
     const outcomes = evaluateActionOutcomes(measurements, [action]);
     expect(outcomes).toHaveLength(1);
-    // pH was already 7.4 (in range), changed 0 (below significance threshold of 0.1)
-    // → partially-effective with "maintained status" reason
-    expect(outcomes[0].effectiveness).toBe('partially-effective');
-    expect(outcomes[0].confidenceReasons.some((r) => r.includes('already in range'))).toBe(true);
+    expect(outcomes[0].effectiveness).toBe('inconclusive');
+    expect(outcomes[0].confidenceReasons.some((r) => r.includes('ya estaban en rango'))).toBe(true);
   });
 
-  it('partially-effective when chlorine applied but FAC already in range', () => {
+  it('is inconclusive when chlorine applied but FAC already in range', () => {
     const measurements = [
       makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 2.0 }, 'm1'),
       makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', fac: 2.1 }, 'm2'),
@@ -464,7 +463,7 @@ describe('fields already in range before action', () => {
     });
     const outcomes = evaluateActionOutcomes(measurements, [action]);
     expect(outcomes).toHaveLength(1);
-    expect(outcomes[0].effectiveness).toBe('partially-effective');
+    expect(outcomes[0].effectiveness).toBe('inconclusive');
   });
 });
 
@@ -489,7 +488,7 @@ describe('linked after measurement', () => {
     expect(outcomes[0].afterMeasurementId).toBe('m3');
   });
 
-  it('linked measurement after action but outside window is rejected', () => {
+  it('linked measurement after action can be used inside the maximum window', () => {
     const measurements = [
       makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
       makeMeasurement({ measuredAt: '2026-07-11T10:00:00.000Z', ph: 7.5 }, 'm2'), // 47h later — still within window
@@ -505,7 +504,7 @@ describe('linked after measurement', () => {
     expect(outcomes[0].elapsedHours).toBe(47);
   });
 
-  it('linked measurement after action reject when outside window', () => {
+  it('linked measurement after action is kept as late when outside maximum window', () => {
     const measurements = [
       makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', ph: 7.8 }, 'm1'),
       makeMeasurement({ measuredAt: '2026-07-11T12:00:00.000Z', ph: 7.5 }, 'm2'), // 49h later — above max 48h
@@ -516,7 +515,8 @@ describe('linked after measurement', () => {
       chemical: { productType: 'ph-reducer', mainComponent: 'Ácido', amount: 750, unit: 'ml' },
     });
     const outcomes = evaluateActionOutcomes(measurements, [action]);
-    expect(outcomes).toEqual([]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].timing).toBe('late');
   });
 });
 
@@ -587,12 +587,12 @@ describe('edge cases', () => {
     // c1 should see 2 intervening (c2 and c3) between its before (m1, 10:00) and after (m2, 20:00)
     const o1 = findOutcome(outcomes, 'c1');
     expect(o1).toBeDefined();
-    expect(o1!.confidenceReasons.some((r) => r.includes('2 other action'))).toBe(true);
+    expect(o1!.confidenceReasons.some((r) => r.includes('2 acción(es)'))).toBe(true);
 
     // c2 should see 2 intervening (c1 and c3) since all share the same before/after pair
     const o2 = findOutcome(outcomes, 'c2');
     expect(o2).toBeDefined();
-    expect(o2!.confidenceReasons.some((r) => r.includes('2 other action'))).toBe(true);
+    expect(o2!.confidenceReasons.some((r) => r.includes('2 acción(es)'))).toBe(true);
   });
 });
 

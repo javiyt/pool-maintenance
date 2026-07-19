@@ -6,6 +6,13 @@ import type {
 import { generateActionId } from '../domain/actions';
 import { addAction } from '../domain/storage';
 import { loadMeasurements } from '../domain/storage';
+import type { RecommendationSnapshot } from '../domain/recommendation/recommendationSnapshot';
+import {
+  APPLICATION_VERSION,
+  CHEMICAL_CATALOG_VERSION,
+  OUTCOME_EVALUATOR_VERSION,
+  RECOMMENDATION_ENGINE_VERSION,
+} from '../domain/recommendation/versions';
 import { t } from '../i18n/index';
 
 function localDatetimeToISO(localValue: string): string {
@@ -42,6 +49,7 @@ export interface ActionFormPrefill {
   kind: MaintenanceActionKind;
   description: string;
   recommendationId?: string;
+  recommendationSnapshot?: RecommendationSnapshot;
   retestAfterHours?: number;
   chemicalProductType?: ChemicalProductType;
   chemicalComponent?: string;
@@ -279,10 +287,15 @@ export class ActionForm {
       notes,
       relatedMeasurementId,
       relatedRecommendationId: this.currentPrefill?.recommendationId,
+      recommendationSnapshot: this.currentPrefill?.recommendationSnapshot,
       chemical,
       chlorinator,
       filtration,
       waterReplacement,
+      applicationVersion: APPLICATION_VERSION,
+      recommendationEngineVersion: this.currentPrefill?.recommendationSnapshot?.recommendationEngineVersion ?? RECOMMENDATION_ENGINE_VERSION,
+      outcomeEvaluatorVersion: OUTCOME_EVALUATOR_VERSION,
+      chemicalCatalogVersion: this.currentPrefill?.recommendationSnapshot?.chemicalCatalogVersion ?? CHEMICAL_CATALOG_VERSION,
     };
 
     addAction(action);

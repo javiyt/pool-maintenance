@@ -1,5 +1,7 @@
 import type { Measurement } from './measurement';
 import type { MaintenanceAction } from './actions';
+import { calculateOutcomeConfidence } from './recommendation/confidenceCalculator';
+import { OUTCOME_EVALUATOR_VERSION } from './recommendation/versions';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -8,6 +10,7 @@ export type OutcomeEffectiveness =
   | 'partially-effective'
   | 'ineffective'
   | 'unexpected'
+  | 'inconclusive'
   | 'unknown';
 
 export interface FieldChanges {
@@ -25,34 +28,53 @@ export interface ActionOutcome {
   beforeMeasurementId: string;
   afterMeasurementId: string;
   elapsedHours: number;
+  timing: EvaluationTiming;
   changes: FieldChanges;
   effectiveness: OutcomeEffectiveness;
   confidence: number;
   confidenceReasons: string[];
+  observations: ActionOutcomeObservation[];
   evaluatedAt: string;
+  evaluatorVersion: string;
+}
+
+export type EvaluationTiming = 'early-observation' | 'preferred' | 'maximum' | 'late';
+
+export interface ActionOutcomeObservation {
+  afterMeasurementId: string;
+  elapsedHours: number;
+  timing: EvaluationTiming;
+  changes: FieldChanges;
 }
 
 // ── Evaluation windows (hours after action) ───────────────────────
 
 interface Window {
-  minHours: number;
+  earlyMinHours: number;
+  earlyMaxHours: number;
+  preferredMinHours: number;
+  preferredMaxHours: number;
   maxHours: number;
+  lateMaxHours: number;
 }
 
 const EVALUATION_WINDOWS: Record<string, Window> = {
-  chemical: { minHours: 4, maxHours: 48 },
-  chlorinator: { minHours: 6, maxHours: 72 },
-  filtration: { minHours: 12, maxHours: 72 },
-  'water-replacement': { minHours: 6, maxHours: 72 },
-  cleaning: { minHours: 2, maxHours: 48 },
-  'manual-test': { minHours: 0, maxHours: 0 },
-  other: { minHours: 0, maxHours: 0 },
+  'chemical:ph-reducer': { earlyMinHours: 2, earlyMaxHours: 4, preferredMinHours: 4, preferredMaxHours: 12, maxHours: 48, lateMaxHours: 168 },
+  'chemical:ph-increaser': { earlyMinHours: 2, earlyMaxHours: 4, preferredMinHours: 4, preferredMaxHours: 12, maxHours: 48, lateMaxHours: 168 },
+  'chemical:chlorine-granules': { earlyMinHours: 1, earlyMaxHours: 4, preferredMinHours: 4, preferredMaxHours: 8, maxHours: 24, lateMaxHours: 72 },
+  'chemical:pool-salt': { earlyMinHours: 4, earlyMaxHours: 12, preferredMinHours: 12, preferredMaxHours: 48, maxHours: 96, lateMaxHours: 240 },
+  chemical: { earlyMinHours: 2, earlyMaxHours: 4, preferredMinHours: 4, preferredMaxHours: 24, maxHours: 48, lateMaxHours: 168 },
+  chlorinator: { earlyMinHours: 2, earlyMaxHours: 8, preferredMinHours: 8, preferredMaxHours: 36, maxHours: 72, lateMaxHours: 168 },
+  filtration: { earlyMinHours: 6, earlyMaxHours: 12, preferredMinHours: 12, preferredMaxHours: 36, maxHours: 72, lateMaxHours: 168 },
+  'water-replacement': { earlyMinHours: 4, earlyMaxHours: 12, preferredMinHours: 12, preferredMaxHours: 36, maxHours: 72, lateMaxHours: 168 },
+  cleaning: { earlyMinHours: 1, earlyMaxHours: 6, preferredMinHours: 6, preferredMaxHours: 24, maxHours: 48, lateMaxHours: 120 },
 };
 
-function getWindow(kind: string): Window | null {
-  const w = EVALUATION_WINDOWS[kind];
-  if (!w || (w.minHours === 0 && w.maxHours === 0)) return null;
-  return w;
+function getWindow(action: MaintenanceAction): Window | null {
+  if (action.kind === 'chemical' && action.chemical) {
+    return EVALUATION_WINDOWS[`chemical:${action.chemical.productType}`] ?? EVALUATION_WINDOWS.chemical;
+  }
+  return EVALUATION_WINDOWS[action.kind] ?? null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -150,7 +172,7 @@ export function evaluateActionOutcomes(
   const outcomes: ActionOutcome[] = [];
 
   for (const action of actions) {
-    const window = getWindow(action.kind);
+    const window = getWindow(action);
     if (!window) continue; // non-evaluable action kind
 
     const outcome = evaluateSingleAction(action, sortedMeas, sortedActions, window, now);
@@ -170,10 +192,22 @@ function evaluateSingleAction(
   const before = findBeforeMeasurement(action, sortedMeas);
   if (!before) return null;
 
-  const after = findAfterMeasurement(action, sortedMeas, window);
+  const observations = findAfterMeasurements(action, sortedMeas, window)
+    .map((measurement) => {
+      const elapsedHours = hoursBetween(action.performedAt, measurement.measuredAt);
+      return {
+        afterMeasurementId: measurement.id,
+        elapsedHours: Math.round(elapsedHours * 10) / 10,
+        timing: classifyTiming(elapsedHours, window),
+        changes: computeChanges(before, measurement),
+      };
+    });
+  const selected = selectBestObservation(observations, window);
+  if (!selected) return null;
+  const after = sortedMeas.find((m) => m.id === selected.afterMeasurementId);
   if (!after) return null;
 
-  const elapsedHours = hoursBetween(action.performedAt, after.measuredAt);
+  const elapsedHours = selected.elapsedHours;
 
   // Compute field deltas
   const changes = computeChanges(before, after);
@@ -189,6 +223,7 @@ function evaluateSingleAction(
     intervening,
     before,
     after,
+    window,
   );
 
   return {
@@ -196,11 +231,14 @@ function evaluateSingleAction(
     beforeMeasurementId: before.id,
     afterMeasurementId: after.id,
     elapsedHours: Math.round(elapsedHours * 10) / 10,
+    timing: selected.timing,
     changes,
     effectiveness,
     confidence: Math.round(confidence * 100) / 100,
     confidenceReasons: reasons,
+    observations,
     evaluatedAt: now,
+    evaluatorVersion: OUTCOME_EVALUATOR_VERSION,
   };
 }
 
@@ -234,37 +272,59 @@ function findBeforeMeasurement(
   return best;
 }
 
-function findAfterMeasurement(
+function findAfterMeasurements(
   action: MaintenanceAction,
   sortedMeas: Measurement[],
   window: Window,
-): Measurement | null {
-  // Prefer explicitly linked measurement if it's after the action
-  if (action.relatedMeasurementId) {
-    const linked = sortedMeas.find((m) => m.id === action.relatedMeasurementId);
-    if (linked && linked.measuredAt > action.performedAt) {
-      const h = hoursBetween(action.performedAt, linked.measuredAt);
-      if (h >= window.minHours && h <= window.maxHours) return linked;
-    }
-  }
-
-  // Fall back to closest measurement after the action within window
+): Measurement[] {
   const actionTime = new Date(action.performedAt).getTime();
-  const minMs = window.minHours * 3_600_000;
-  const maxMs = window.maxHours * 3_600_000;
-  let best: Measurement | null = null;
-  let bestDelta = Infinity;
+  const minMs = window.earlyMinHours * 3_600_000;
+  const lateMaxMs = window.lateMaxHours * 3_600_000;
 
-  for (const m of sortedMeas) {
-    const mTime = new Date(m.measuredAt).getTime();
-    const delta = mTime - actionTime;
-    if (delta >= minMs && delta <= maxMs && delta < bestDelta) {
-      best = m;
-      bestDelta = delta;
-    }
+  return sortedMeas.filter((m) => {
+    const delta = new Date(m.measuredAt).getTime() - actionTime;
+    return delta >= minMs && delta <= lateMaxMs;
+  });
+}
+
+function classifyTiming(elapsedHours: number, window: Window): EvaluationTiming {
+  if (elapsedHours >= window.preferredMinHours && elapsedHours <= window.preferredMaxHours) {
+    return 'preferred';
+  }
+  if (elapsedHours >= window.earlyMinHours && elapsedHours < window.preferredMinHours) {
+    return 'early-observation';
+  }
+  if (elapsedHours > window.preferredMaxHours && elapsedHours <= window.maxHours) {
+    return 'maximum';
+  }
+  return 'late';
+}
+
+function selectBestObservation(
+  observations: ActionOutcomeObservation[],
+  _window: Window,
+): ActionOutcomeObservation | null {
+  const preferred = observations.filter((o) => o.timing === 'preferred');
+  if (preferred.length > 0) {
+    return preferred.sort((a, b) => a.elapsedHours - b.elapsedHours)[0];
   }
 
-  return best;
+  const maximum = observations.filter((o) => o.timing === 'maximum');
+  if (maximum.length > 0) {
+    return maximum.sort((a, b) => a.elapsedHours - b.elapsedHours)[0];
+  }
+
+  const early = observations.filter((o) => o.timing === 'early-observation');
+  if (early.length > 0) {
+    return early.sort((a, b) => b.elapsedHours - a.elapsedHours)[0];
+  }
+
+  const late = observations.filter((o) => o.timing === 'late');
+  if (late.length > 0) {
+    return late.sort((a, b) => a.elapsedHours - b.elapsedHours)[0];
+  }
+
+  return null;
 }
 
 // ── Delta computation ─────────────────────────────────────────────
@@ -273,7 +333,10 @@ function computeChanges(before: Measurement, after: Measurement): FieldChanges {
   const changes: FieldChanges = {};
   const fields: Array<keyof FieldChanges> = ['ph', 'ec', 'tds', 'salt', 'orp', 'fac', 'temperature'];
   for (const f of fields) {
-    const diff = (after as any)[f] - (before as any)[f];
+    const beforeValue = before[f];
+    const afterValue = after[f];
+    if (beforeValue === undefined || afterValue === undefined || beforeValue === null || afterValue === null) continue;
+    const diff = afterValue - beforeValue;
     if (f === 'ph') {
       changes[f] = Math.round(diff * 100) / 100;
     } else if (f === 'fac' || f === 'temperature') {
@@ -308,10 +371,11 @@ function countInterveningActions(
 function evaluateEffectiveness(
   action: MaintenanceAction,
   changes: FieldChanges,
-  _elapsedHours: number,
+  elapsedHours: number,
   interveningActions: number,
   before: Measurement,
   after: Measurement,
+  window: Window,
 ): { effectiveness: OutcomeEffectiveness; confidence: number; reasons: string[] } {
   const reasons: string[] = [];
   const relevantFields = expectedFields(action);
@@ -372,35 +436,41 @@ function evaluateEffectiveness(
     reasons.push(`${d.field}: expected ${d.expected}, actual ${formatDelta(d.actual)}`);
   }
 
-  // Compute confidence
-  let confidence = 0.8;
+  const confidenceResult = calculateOutcomeConfidence({
+    action,
+    before,
+    after,
+    elapsedHours,
+    preferredMaxHours: window.preferredMaxHours,
+    interveningActions,
+    explicitlyLinkedMeasurement: action.relatedMeasurementId !== undefined,
+  });
+  let confidence = confidenceResult.confidence;
+  reasons.push(...confidenceResult.reasons);
 
-  if (!action.relatedMeasurementId) {
-    confidence -= 0.2;
-    reasons.push('No explicitly linked measurement — using nearest.');
-  }
-
-  if (interveningActions > 0) {
-    const reduction = Math.min(interveningActions * 0.3, 0.6);
-    confidence -= reduction;
-    reasons.push(`${interveningActions} other action(s) between before and after (confidence -${Math.round(reduction * 100)}%).`);
+  if (confidenceResult.externalVariableCount >= 4 || confidence < 0.3) {
+    return {
+      effectiveness: 'inconclusive',
+      confidence,
+      reasons: [...reasons, 'Demasiadas variables externas para atribuir el resultado a una sola acción.'],
+    };
   }
 
   // If all relevant fields show no significant change
   if (matched === 0 && opposed === 0 && noChange > 0) {
     if (allFieldsAlreadyInRange(action, before, after)) {
       return {
-        effectiveness: 'partially-effective',
-        confidence: Math.max(confidence, 0.3),
-        reasons: [...reasons, 'Fields already in range before action — maintained status.'],
+        effectiveness: 'inconclusive',
+        confidence: Math.max(confidence - 0.1, 0.2),
+        reasons: [...reasons, 'Los campos ya estaban en rango; no se puede atribuir mantenimiento de estado a esta acción.'],
       };
     }
     const tiny = deltas.every((d) => Math.abs(d.actual) < significanceThreshold(d.field));
     if (tiny) {
       return {
-        effectiveness: 'partially-effective',
+        effectiveness: 'inconclusive',
         confidence: Math.max(confidence - 0.1, 0.2),
-        reasons: [...reasons, 'Changes too small to be meaningful.'],
+        reasons: [...reasons, 'El cambio está dentro del error de medida.'],
       };
     }
   }
