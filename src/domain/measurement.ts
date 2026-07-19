@@ -1,3 +1,23 @@
+export type DataOrigin = 'user' | 'device' | 'inferred' | 'imported' | 'system';
+
+export type MeasurementContextDataField =
+  | 'sunlight'
+  | 'poolCovered'
+  | 'batherLoad'
+  | 'rainSincePreviousMeasurement'
+  | 'waterAddedLiters'
+  | 'backwashPerformed'
+  | 'chlorinatorOutputPercent'
+  | 'chlorinatorHoursSincePreviousMeasurement'
+  | 'filtrationHoursSincePreviousMeasurement'
+  | 'visibleAlgae'
+  | 'waterClarity';
+
+export interface MeasurementContextFieldOrigin {
+  field: MeasurementContextDataField | 'intervalStart' | 'intervalEnd';
+  origin: DataOrigin;
+}
+
 export interface MeasurementContext {
   sunlight?: 'none' | 'low' | 'medium' | 'high';
   poolCovered?: boolean;
@@ -10,6 +30,10 @@ export interface MeasurementContext {
   filtrationHoursSincePreviousMeasurement?: number;
   visibleAlgae?: boolean;
   waterClarity?: 'clear' | 'slightly-cloudy' | 'cloudy';
+  intervalStart?: string;
+  intervalEnd?: string;
+  source?: DataOrigin;
+  fieldOrigins?: MeasurementContextFieldOrigin[];
 }
 
 export interface Measurement {

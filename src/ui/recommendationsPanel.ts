@@ -104,7 +104,7 @@ export class RecommendationsPanel {
 
     if (nextCheckSuggestion.hoursFromNow !== undefined) {
       if (nextCheckSuggestion.hoursFromNow < 24) {
-        timeStr = t('nextCheck.hours', { hours: nextCheckSuggestion.hoursFromNow });
+        timeStr = t('nextCheck.hours', { hours: formatHoursValue(nextCheckSuggestion.hoursFromNow) });
       } else {
         const days = Math.round(nextCheckSuggestion.hoursFromNow / 24);
         timeStr = t('nextCheck.days', { days });
@@ -242,7 +242,7 @@ export class RecommendationsPanel {
       equipHtml += `<div class="rec-detail">${escapeHtml(t('empty.suggestedOutput', { output: String(item.suggestedOutputPercent) }))}</div>`;
     }
     if (item.suggestedAdditionalHours !== undefined) {
-      equipHtml += `<div class="rec-detail">${escapeHtml(t('empty.suggestedHours', { hours: String(item.suggestedAdditionalHours) }))}</div>`;
+      equipHtml += `<div class="rec-detail">${escapeHtml(t('empty.suggestedHours', { hours: formatHoursValue(item.suggestedAdditionalHours) }))}</div>`;
     }
 
     // Current value + target range
@@ -640,6 +640,13 @@ function getUnit(item: MaintenanceRecommendation): string {
   if (item.suggestedAdditionalHours !== undefined) return 'h';
   if (item.suggestedFiltrationHours !== undefined) return 'h';
   return '';
+}
+
+function formatHoursValue(hours: number): string {
+  return formatNumber(hours, undefined, {
+    minimumFractionDigits: Number.isInteger(hours) ? 0 : 1,
+    maximumFractionDigits: 1,
+  });
 }
 
 /**

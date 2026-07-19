@@ -1,8 +1,8 @@
 import type { Measurement } from './measurement';
 import type { PoolSettings, HistoricalLearningConfig } from './settings';
 import { volumeInLiters, DEFAULT_HISTORICAL_LEARNING } from './settings';
-import { getTargetRange, classifyLevel, TARGET_RANGES } from './chemistry';
-import type { TargetRange } from './chemistry';
+import { getTargetRange, getTargetRangeSnapshot, classifyLevel, TARGET_RANGES } from './chemistry';
+import type { TargetRange, TargetRangeSnapshot } from './chemistry';
 import { analyzeTrends } from './trendAnalysis';
 import type { MeasurementTrend } from './trendAnalysis';
 import { calculateChlorinatorAdjustment } from './saltChlorinator';
@@ -40,6 +40,23 @@ export type RecommendationState =
   | 'blocked'
   | 'pending-retest'
   | 'informational';
+
+export type DiagnosisCode =
+  | 'PH_CRITICAL'
+  | 'FAC_CRITICAL_LOW'
+  | 'ORP_VERY_LOW'
+  | 'ORP_BELOW_TARGET'
+  | 'PH_LOW'
+  | 'PH_HIGH'
+  | 'FAC_LOW'
+  | 'FAC_HIGH'
+  | 'SALT_LOW'
+  | 'SALT_HIGH'
+  | 'CHLORINATOR_ADJUST'
+  | 'CHLORINATOR_PREVENTIVE'
+  | 'MANUAL_TEST_REQUIRED'
+  | 'TREND_MONITOR'
+  | 'ALL_GOOD';
 
 export interface RecommendationDependency {
   recommendationId?: string;
@@ -105,6 +122,14 @@ export interface MaintenanceRecommendation {
   dependencies?: RecommendationDependency[];
   /** Stage number for staged maintenance plans (1-based). */
   stage?: number;
+  diagnosisCode?: DiagnosisCode;
+  rangePolicy?: {
+    general?: TargetRangeSnapshot;
+    configured?: TargetRangeSnapshot;
+    custom?: TargetRange;
+    selected: 'general' | 'configured' | 'custom';
+    origin: 'catalog' | 'settings' | 'user';
+  };
 }
 
 export interface RecommendationPersonalization {
@@ -164,6 +189,44 @@ function buildChlorineDose(input: {
     targetFac: input.targetFac,
     correctionType: input.correctionType,
   });
+}
+
+function attachRecommendationAuditMetadata(
+  recs: MaintenanceRecommendation[],
+  settings: PoolSettings,
+): void {
+  const generalFac = getTargetRangeSnapshot('fac', 'chlorine');
+  const configuredFac = getTargetRangeSnapshot('fac', settings.poolType);
+
+  for (const rec of recs) {
+    rec.diagnosisCode ??= inferDiagnosisCode(rec);
+
+    if (rec.targetRange && rec.relatedFields.includes('fac')) {
+      rec.rangePolicy = {
+        general: generalFac,
+        configured: configuredFac,
+        selected: settings.poolType === 'saltwater' ? 'configured' : 'general',
+        origin: 'catalog',
+      };
+    }
+  }
+}
+
+function inferDiagnosisCode(rec: MaintenanceRecommendation): DiagnosisCode | undefined {
+  if (rec.kind === 'no-action' && rec.severity === 'info') return 'ALL_GOOD';
+  if (rec.kind === 'manual-test') return 'MANUAL_TEST_REQUIRED';
+  if (rec.kind === 'equipment' && rec.severity === 'low') return 'CHLORINATOR_PREVENTIVE';
+  if (rec.kind === 'equipment') return 'CHLORINATOR_ADJUST';
+  if (rec.relatedFields.includes('ph') && rec.severity === 'danger') return 'PH_CRITICAL';
+  if (rec.relatedFields.includes('fac') && rec.severity === 'danger') return 'FAC_CRITICAL_LOW';
+  if (rec.relatedFields.includes('salt') && rec.chemicalProductId === 'pool-salt') return 'SALT_LOW';
+  if (rec.relatedFields.includes('salt') && rec.kind === 'warning') return 'SALT_HIGH';
+  if (rec.relatedFields.includes('fac') && rec.kind === 'no-action') return 'FAC_HIGH';
+  if (rec.relatedFields.includes('fac')) return 'FAC_LOW';
+  if (rec.relatedFields.includes('ph') && rec.chemicalProductId === 'ph-increaser-liquid') return 'PH_LOW';
+  if (rec.relatedFields.includes('ph') && rec.chemicalProductId === 'ph-reducer-liquid') return 'PH_HIGH';
+  if (rec.kind === 'monitor') return 'TREND_MONITOR';
+  return undefined;
 }
 
 function addEscalationRecommendations(
@@ -344,13 +407,13 @@ function enrichRecommendationKeys(
       rec.summaryParams = { value: facVal };
       rec.reasonKey = 'rec.fac.critical.reason';
       rec.reasonParams = { value: facVal, min: String(_facRange.min), max: String(_facRange.max) };
-    } else if (rec.kind === 'warning' && rec.severity === 'high' && rec.relatedFields.includes('orp')) {
+    } else if (rec.diagnosisCode === 'ORP_VERY_LOW') {
       rec.titleKey = 'rec.orp.veryLow.title';
       rec.summaryKey = 'rec.orp.veryLow.summary';
       rec.summaryParams = { value: String(orpVal) };
       rec.reasonKey = 'rec.orp.veryLow.reason';
       rec.reasonParams = { value: String(orpVal) };
-    } else if (rec.kind === 'monitor' && rec.severity === 'medium' && rec.title.includes('ORP')) {
+    } else if (rec.diagnosisCode === 'ORP_BELOW_TARGET') {
       rec.titleKey = 'rec.orp.below650.title';
       rec.summaryKey = 'rec.orp.below650.summary';
       rec.summaryParams = { value: String(orpVal) };
@@ -603,6 +666,7 @@ export function runAssistant(
         reason: `El ORP (${latest.orp} mV) está por debajo de 600 mV, lo que indica una capacidad de desinfección insuficiente.`,
         priority: 5,
         relatedFields: ['orp', 'fac'],
+        diagnosisCode: 'ORP_VERY_LOW',
         calculationNotes: [
           'Un ORP bajo indica que el agua no está suficientemente desinfectada.',
           'Verificar el nivel de FAC y el funcionamiento del sistema de cloración.',
@@ -622,6 +686,7 @@ export function runAssistant(
         reason: `El ORP (${latest.orp} mV) está entre 600 y 649 mV. La efectividad de la desinfección puede estar reducida.`,
         priority: 10,
         relatedFields: ['orp'],
+        diagnosisCode: 'ORP_BELOW_TARGET',
         calculationNotes: [
           'Valores de ORP entre 600–649 mV indican precaución.',
           'Monitorear y verificar que no siga bajando.',
@@ -1502,7 +1567,8 @@ export function runAssistant(
   // ── Sort recommendations by severity ──────────────────────────
   recommendations.sort(sortBySeverity);
 
-  // ── Enrich with translation keys ────────────────────────────
+  // ── Audit metadata and translation keys ─────────────────────
+  attachRecommendationAuditMetadata(recommendations, settings);
   enrichRecommendationKeys(recommendations, latest, phRange, facRange, saltRange, settings);
 
   // ── Build summary ─────────────────────────────────────────────

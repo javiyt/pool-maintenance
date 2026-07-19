@@ -688,6 +688,40 @@ describe('general edge cases (migrated)', () => {
     expect(orpRec).toBeDefined();
   });
 
+  it('generates ORP text from one diagnosis code and classification', () => {
+    const result = runAssistant(
+      [makeMeasurement({ orp: 524 })],
+      makeSettings(),
+    );
+
+    const orpRec = result.recommendations.find(
+      (r) => r.relatedFields.includes('orp') && r.diagnosisCode === 'ORP_VERY_LOW',
+    );
+
+    expect(orpRec).toBeDefined();
+    expect(orpRec!.severity).toBe('high');
+    expect(orpRec!.titleKey).toBe('rec.orp.veryLow.title');
+    expect(orpRec!.reasonKey).toBe('rec.orp.veryLow.reason');
+    expect(orpRec!.reasonKey).not.toBe('rec.orp.below650.reason');
+  });
+
+  it('exports FAC range policy with general and configured ranges for saltwater recommendations', () => {
+    const result = runAssistant(
+      [makeMeasurement({ ph: 7.4, fac: 1.0, salt: 3000 })],
+      makeSettings({
+        poolType: 'saltwater',
+        saltChlorinator: makeChlorinatorConfig(),
+      }),
+    );
+
+    const facRec = result.recommendations.find((r) => r.relatedFields.includes('fac') && r.rangePolicy);
+
+    expect(facRec).toBeDefined();
+    expect(facRec!.rangePolicy!.general).toMatchObject({ min: 1.0, max: 3.0, kind: 'general' });
+    expect(facRec!.rangePolicy!.configured).toMatchObject({ min: 0.8, max: 2.5, kind: 'configured' });
+    expect(facRec!.rangePolicy!.selected).toBe('configured');
+  });
+
   it('temperature above 30 adds temperature note', () => {
     const result = runAssistant(
       [makeMeasurement({ temperature: 33 })],

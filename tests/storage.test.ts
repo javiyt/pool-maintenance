@@ -552,14 +552,71 @@ describe('export includes follow-ups (v6)', () => {
     expect(data.followUps[0].id).toBe('fu-1');
   });
 
-  it('sets schemaVersion to 8 and separates algorithm versions', () => {
+  it('sets schemaVersion to 9 and separates algorithm versions', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(8);
+    expect(data.schemaVersion).toBe(9);
     expect(data.applicationVersion).toBeDefined();
     expect(data.recommendationEngineVersion).toBeDefined();
     expect(data.outcomeEvaluatorVersion).toBeDefined();
     expect(data.chemicalCatalogVersion).toBeDefined();
+  });
+
+  it('exports structured versioned audit snapshots without card grouping views', () => {
+    saveSettings({
+      ...SAMPLE_POOL_CONFIG,
+      poolType: 'saltwater',
+      saltChlorinator: {
+        enabled: true,
+        productionGramsPerHour: 20,
+        currentOutputPercent: 60,
+        filtrationHoursPerDay: 6,
+        maxRecommendedOutputPercent: 100,
+        maxRecommendedHoursPerDay: 12,
+      },
+    });
+    saveMeasurements([{
+      ...SAMPLE_MEASUREMENT,
+      context: {
+        sunlight: 'high',
+        poolCovered: false,
+        batherLoad: 'high',
+        rainSincePreviousMeasurement: true,
+        waterAddedLiters: 500,
+        backwashPerformed: true,
+        chlorinatorOutputPercent: 60,
+        chlorinatorHoursSincePreviousMeasurement: 6,
+        filtrationHoursSincePreviousMeasurement: 8,
+        visibleAlgae: false,
+        waterClarity: 'clear',
+        intervalStart: '2026-07-08T10:35:00.000Z',
+        intervalEnd: SAMPLE_MEASUREMENT.measuredAt,
+        source: 'user',
+      },
+    }]);
+    saveFollowUps([{
+      ...SAMPLE_FOLLOW_UP,
+      statusHistory: [{
+        to: 'awaiting-retest',
+        changedAt: SAMPLE_FOLLOW_UP.createdAt,
+        reasonCode: 'FOLLOW_UP_CREATED',
+      }],
+    }]);
+
+    const data = exportData(FIXED_NOW);
+
+    expect(data.measurementContexts[0].context.sunlight).toBe('high');
+    expect(data.measurementContexts[0].intervalStart).toBe('2026-07-08T10:35:00.000Z');
+    expect(data.assessmentSnapshots[0].schemaVersion).toBe(1);
+    expect(data.diagnosisSnapshots.every((s) => s.schemaVersion === 1)).toBe(true);
+    expect(data.recommendationSnapshots.every((s) => s.schemaVersion === 2)).toBe(true);
+    expect(data.derivedEstimateSnapshots).toHaveLength(2);
+    expect(data.followUpSnapshots[0].transitionHistory).toHaveLength(1);
+    expect(data.learningStateSnapshots[0].schemaVersion).toBe(1);
+    expect(data.productSnapshots.length).toBeGreaterThan(0);
+    expect((data as unknown as Record<string, unknown>).effectiveActions).toBeUndefined();
+    expect((data as unknown as Record<string, unknown>).visualTrends).toBeUndefined();
+    expect((data as unknown as Record<string, unknown>).cardGroups).toBeUndefined();
   });
 
   it('imports v6 data with followUps', () => {

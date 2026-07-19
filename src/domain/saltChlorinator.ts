@@ -7,6 +7,7 @@ export interface SaltChlorinatorConfig {
   filtrationHoursPerDay: number;
   maxRecommendedOutputPercent: number;
   maxRecommendedHoursPerDay: number;
+  minProgrammableHourIncrement?: number;
 }
 
 export interface ChlorinatorAdjustment {
@@ -15,6 +16,10 @@ export interface ChlorinatorAdjustment {
   hoursNeeded: number;
   canAdjustOutput: boolean;
   canExtendHours: boolean;
+  roundingPolicy: {
+    minProgrammableHourIncrement: number;
+    mode: 'ceil-to-increment';
+  };
 }
 
 /**
@@ -53,6 +58,7 @@ export function calculateChlorinatorAdjustment(
 
   let suggestedOutputPercent: number | undefined;
   let suggestedAdditionalHours: number | undefined;
+  const minProgrammableHourIncrement = normalizeHourIncrement(config.minProgrammableHourIncrement);
 
   // Strategy: prefer output adjustment, then hours, then both
   if (hoursAtMaxOutput <= config.filtrationHoursPerDay && canAdjustOutput) {
@@ -65,7 +71,10 @@ export function calculateChlorinatorAdjustment(
     suggestedOutputPercent = Math.min(neededOutput, maxOutput);
   } else if (hoursNeeded <= maxHours && canExtendHours) {
     // We can achieve by extending hours at current output
-    suggestedAdditionalHours = Math.ceil(hoursNeeded - config.filtrationHoursPerDay);
+    suggestedAdditionalHours = roundHoursUpToIncrement(
+      hoursNeeded - config.filtrationHoursPerDay,
+      minProgrammableHourIncrement,
+    );
     if (suggestedAdditionalHours < 0) suggestedAdditionalHours = 0;
     suggestedAdditionalHours = Math.min(suggestedAdditionalHours, remainingHours);
   } else if (canAdjustOutput && canExtendHours) {
@@ -81,7 +90,10 @@ export function calculateChlorinatorAdjustment(
       ? chlorineNeededGrams / effectiveWithIncrease - config.filtrationHoursPerDay
       : 0;
     if (hoursRemainingAfterOutput > 0) {
-      suggestedAdditionalHours = Math.min(Math.ceil(hoursRemainingAfterOutput), remainingHours);
+      suggestedAdditionalHours = Math.min(
+        roundHoursUpToIncrement(hoursRemainingAfterOutput, minProgrammableHourIncrement),
+        remainingHours,
+      );
     }
   }
 
@@ -100,5 +112,21 @@ export function calculateChlorinatorAdjustment(
     hoursNeeded,
     canAdjustOutput,
     canExtendHours,
+    roundingPolicy: {
+      minProgrammableHourIncrement,
+      mode: 'ceil-to-increment',
+    },
   };
+}
+
+function normalizeHourIncrement(value: number | undefined): number {
+  if (value === undefined || value <= 0 || !Number.isFinite(value)) return 1;
+  return value;
+}
+
+function roundHoursUpToIncrement(hours: number, increment: number): number {
+  if (!Number.isFinite(hours)) return hours;
+  if (hours <= 0) return 0;
+  const rounded = Math.ceil(hours / increment) * increment;
+  return Math.round(rounded * 100) / 100;
 }

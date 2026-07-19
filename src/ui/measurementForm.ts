@@ -1,6 +1,6 @@
 import { t } from '../i18n/index';
 import type { TranslationKey } from '../i18n/types';
-import type { Measurement, MeasurementContext } from '../domain/measurement';
+import type { Measurement, MeasurementContext, MeasurementContextFieldOrigin } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
 
 /**
@@ -75,7 +75,7 @@ export class MeasurementForm {
     const notes = (document.getElementById('mNotes') as HTMLTextAreaElement).value;
 
     // Read context
-    const context = readContext();
+    const context = readContext(measuredAt);
 
     const partial: Partial<Measurement> = {
       measuredAt,
@@ -146,7 +146,7 @@ function escapeHtml(s: string): string {
  * Read measurement context fields from the form.
  * Returns undefined if all fields are empty/default.
  */
-function readContext(): MeasurementContext | undefined {
+function readContext(measuredAt: string): MeasurementContext | undefined {
   const sunlight = (document.getElementById('ctxSunlight') as HTMLSelectElement).value;
   const poolCoveredRaw = (document.getElementById('ctxPoolCovered') as HTMLSelectElement).value;
   const batherLoad = (document.getElementById('ctxBatherLoad') as HTMLSelectElement).value;
@@ -182,5 +182,13 @@ function readContext(): MeasurementContext | undefined {
   }
 
   if (Object.keys(ctx).length === 0) return undefined;
+  ctx.intervalEnd = measuredAt;
+  ctx.source = 'user';
+  ctx.fieldOrigins = Object.keys(ctx)
+    .filter((field) => field !== 'fieldOrigins' && field !== 'source')
+    .map((field) => ({
+      field: field as MeasurementContextFieldOrigin['field'],
+      origin: 'user',
+    }));
   return ctx;
 }

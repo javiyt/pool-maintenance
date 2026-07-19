@@ -154,4 +154,21 @@ describe('calculateChlorinatorAdjustment', () => {
     // remaining hours = 12 - 10 = 2h
     expect(result.suggestedAdditionalHours!).toBeLessThanOrEqual(2);
   });
+
+  it('rounds additional hours up to the configured programmable increment without truncating decimals', () => {
+    const config = makeConfig({
+      productionGramsPerHour: 10,
+      currentOutputPercent: 100,
+      maxRecommendedOutputPercent: 100,
+      filtrationHoursPerDay: 6,
+      maxRecommendedHoursPerDay: 12,
+      minProgrammableHourIncrement: 0.1,
+    });
+
+    const result = calculateChlorinatorAdjustment(1.36, 50000, config);
+
+    expect(result.hoursNeeded).toBeCloseTo(6.8);
+    expect(result.suggestedAdditionalHours).toBe(0.8);
+    expect(result.roundingPolicy.minProgrammableHourIncrement).toBe(0.1);
+  });
 });

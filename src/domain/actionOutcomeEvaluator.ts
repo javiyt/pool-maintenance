@@ -13,6 +13,8 @@ export type OutcomeEffectiveness =
   | 'inconclusive'
   | 'unknown';
 
+export type ActionSuitability = 'appropriate' | 'unnecessary' | 'preventive' | 'maintained' | 'unknown';
+
 export interface FieldChanges {
   ph?: number;
   ec?: number;
@@ -31,9 +33,13 @@ export interface ActionOutcome {
   timing: EvaluationTiming;
   changes: FieldChanges;
   effectiveness: OutcomeEffectiveness;
+  actionSuitability: ActionSuitability;
   confidence: number;
   confidenceReasons: string[];
+  explanationCodes: string[];
   observations: ActionOutcomeObservation[];
+  assessmentSnapshot: AssessmentSnapshot;
+  recalculatedAssessment?: AssessmentSnapshot;
   evaluatedAt: string;
   evaluatorVersion: string;
 }
@@ -45,6 +51,42 @@ export interface ActionOutcomeObservation {
   elapsedHours: number;
   timing: EvaluationTiming;
   changes: FieldChanges;
+}
+
+export interface StructuredExpectedEffect {
+  field: keyof FieldChanges;
+  direction: 'increase' | 'decrease' | 'any' | 'unknown';
+  significanceThreshold: number;
+}
+
+export interface StructuredObservedChange {
+  field: keyof FieldChanges;
+  delta: number;
+  significant: boolean;
+}
+
+export interface AssessmentSnapshot {
+  schemaVersion: 1;
+  actionId: string;
+  previousMeasurement: Measurement;
+  observedMeasurements: Measurement[];
+  selectedEvaluationMeasurement: Measurement;
+  expectedEffects: StructuredExpectedEffect[];
+  observedChanges: StructuredObservedChange[];
+  intermediateContext: Array<Measurement['context']>;
+  intermediateActions: MaintenanceAction[];
+  result: {
+    effectiveness: OutcomeEffectiveness;
+    actionSuitability: ActionSuitability;
+  };
+  confidenceBreakdown: {
+    score: number;
+    reasons: string[];
+  };
+  explanationCodes: string[];
+  evaluatorVersion: string;
+  originalSnapshot?: AssessmentSnapshot;
+  recalculatedAssessment?: AssessmentSnapshot;
 }
 
 // ── Evaluation windows (hours after action) ───────────────────────
@@ -216,7 +258,7 @@ function evaluateSingleAction(
   const intervening = countInterveningActions(action, sortedActions, before.measuredAt, after.measuredAt);
 
   // Evaluate effectiveness
-  const { effectiveness, confidence, reasons } = evaluateEffectiveness(
+  const { effectiveness, actionSuitability, confidence, reasons, explanationCodes } = evaluateEffectiveness(
     action,
     changes,
     elapsedHours,
@@ -225,6 +267,32 @@ function evaluateSingleAction(
     after,
     window,
   );
+  const observedMeasurements = observations
+    .map((obs) => sortedMeas.find((m) => m.id === obs.afterMeasurementId))
+    .filter((m): m is Measurement => Boolean(m));
+  const intermediateActions = sortedActions.filter((other) =>
+    other.id !== action.id &&
+    other.performedAt > before.measuredAt &&
+    other.performedAt < after.measuredAt,
+  );
+  const assessmentSnapshot: AssessmentSnapshot = {
+    schemaVersion: 1,
+    actionId: action.id,
+    previousMeasurement: before,
+    observedMeasurements,
+    selectedEvaluationMeasurement: after,
+    expectedEffects: buildExpectedEffects(action),
+    observedChanges: buildObservedChanges(changes),
+    intermediateContext: observedMeasurements.map((m) => m.context).filter(Boolean),
+    intermediateActions,
+    result: { effectiveness, actionSuitability },
+    confidenceBreakdown: {
+      score: Math.round(confidence * 100) / 100,
+      reasons,
+    },
+    explanationCodes,
+    evaluatorVersion: OUTCOME_EVALUATOR_VERSION,
+  };
 
   return {
     actionId: action.id,
@@ -234,9 +302,12 @@ function evaluateSingleAction(
     timing: selected.timing,
     changes,
     effectiveness,
+    actionSuitability,
     confidence: Math.round(confidence * 100) / 100,
     confidenceReasons: reasons,
+    explanationCodes,
     observations,
+    assessmentSnapshot,
     evaluatedAt: now,
     evaluatorVersion: OUTCOME_EVALUATOR_VERSION,
   };
@@ -376,13 +447,26 @@ function evaluateEffectiveness(
   before: Measurement,
   after: Measurement,
   window: Window,
-): { effectiveness: OutcomeEffectiveness; confidence: number; reasons: string[] } {
+): {
+  effectiveness: OutcomeEffectiveness;
+  actionSuitability: ActionSuitability;
+  confidence: number;
+  reasons: string[];
+  explanationCodes: string[];
+} {
   const reasons: string[] = [];
+  const explanationCodes: string[] = [];
   const relevantFields = expectedFields(action);
 
   // No measurable fields → unknown
   if (relevantFields.length === 0) {
-    return { effectiveness: 'unknown', confidence: 0.1, reasons: ['No measurable field for this action type.'] };
+    return {
+      effectiveness: 'unknown',
+      actionSuitability: 'unknown',
+      confidence: 0.1,
+      reasons: ['No measurable field for this action type.'],
+      explanationCodes: ['NO_MEASURABLE_FIELD'],
+    };
   }
 
   // Compute how many fields moved in the expected direction
@@ -427,7 +511,13 @@ function evaluateEffectiveness(
   }
 
   if (deltas.length === 0) {
-    return { effectiveness: 'unknown', confidence: 0.1, reasons: ['No evaluable field deltas.'] };
+    return {
+      effectiveness: 'unknown',
+      actionSuitability: 'unknown',
+      confidence: 0.1,
+      reasons: ['No evaluable field deltas.'],
+      explanationCodes: ['NO_EVALUABLE_DELTAS'],
+    };
   }
 
   // Also check if before/after values were already in range (for partially-effective)
@@ -451,8 +541,10 @@ function evaluateEffectiveness(
   if (confidenceResult.externalVariableCount >= 4 || confidence < 0.3) {
     return {
       effectiveness: 'inconclusive',
+      actionSuitability: 'unknown',
       confidence,
       reasons: [...reasons, 'Demasiadas variables externas para atribuir el resultado a una sola acción.'],
+      explanationCodes: [...explanationCodes, 'TOO_MANY_EXTERNAL_VARIABLES'],
     };
   }
 
@@ -461,18 +553,28 @@ function evaluateEffectiveness(
     if (allFieldsAlreadyInRange(action, before, after)) {
       return {
         effectiveness: 'inconclusive',
+        actionSuitability: classifyInRangeSuitability(action),
         confidence: Math.max(confidence - 0.1, 0.2),
         reasons: [...reasons, 'Los campos ya estaban en rango; no se puede atribuir mantenimiento de estado a esta acción.'],
+        explanationCodes: [...explanationCodes, 'FIELDS_ALREADY_IN_RANGE'],
       };
     }
     const tiny = deltas.every((d) => Math.abs(d.actual) < significanceThreshold(d.field));
     if (tiny) {
       return {
         effectiveness: 'inconclusive',
+        actionSuitability: 'unknown',
         confidence: Math.max(confidence - 0.1, 0.2),
         reasons: [...reasons, 'El cambio está dentro del error de medida.'],
+        explanationCodes: [...explanationCodes, 'CHANGE_WITHIN_MEASUREMENT_ERROR'],
       };
     }
+  }
+
+  let actionSuitability: ActionSuitability = 'appropriate';
+  if (allFieldsAlreadyInRange(action, before, after)) {
+    actionSuitability = classifyInRangeSuitability(action);
+    explanationCodes.push('FIELDS_ALREADY_IN_RANGE');
   }
 
   // Judge effectiveness
@@ -483,7 +585,7 @@ function evaluateEffectiveness(
   } else if (matched > 0 && opposed === 0 && noChange === 0) {
     effectiveness = 'effective';
   } else if (matched > 0 && opposed === 0 && noChange > 0) {
-    effectiveness = 'partially-effective';
+    effectiveness = actionSuitability === 'appropriate' ? 'partially-effective' : 'effective';
   } else if (matched > 0 && opposed > 0) {
     effectiveness = 'partially-effective';
     confidence = Math.max(confidence - 0.1, 0.1);
@@ -495,7 +597,13 @@ function evaluateEffectiveness(
 
   confidence = Math.max(0.1, Math.min(confidence, 0.9));
 
-  return { effectiveness, confidence: Math.round(confidence * 100) / 100, reasons };
+  return {
+    effectiveness,
+    actionSuitability,
+    confidence: Math.round(confidence * 100) / 100,
+    reasons,
+    explanationCodes,
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -542,4 +650,29 @@ function allFieldsAlreadyInRange(
     }
   }
   return false;
+}
+
+function classifyInRangeSuitability(action: MaintenanceAction): ActionSuitability {
+  if (action.kind === 'chemical') return 'unnecessary';
+  if (action.kind === 'chlorinator' || action.kind === 'filtration') return 'maintained';
+  return 'preventive';
+}
+
+function buildExpectedEffects(action: MaintenanceAction): StructuredExpectedEffect[] {
+  return expectedFields(action).map((field) => {
+    const dir = expectedDirection(action, field);
+    return {
+      field,
+      direction: dir === 1 ? 'increase' : dir === -1 ? 'decrease' : dir === 0 ? 'any' : 'unknown',
+      significanceThreshold: significanceThreshold(field),
+    };
+  });
+}
+
+function buildObservedChanges(changes: FieldChanges): StructuredObservedChange[] {
+  return (Object.entries(changes) as Array<[keyof FieldChanges, number]>).map(([field, delta]) => ({
+    field,
+    delta,
+    significant: isSignificantDelta(field, Math.abs(delta)),
+  }));
 }
