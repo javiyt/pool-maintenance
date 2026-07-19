@@ -402,13 +402,23 @@ describe('Spanish UI does not expose observed English literals', () => {
         id: 'm1',
         measuredAt: '2026-07-09T10:00:00.000Z',
         ph: 7.4,
+        ec: 1500,
+        tds: 750,
+        salt: 3000,
+        orp: 700,
         fac: 1.5,
+        temperature: 25,
       },
       {
         id: 'm2',
         measuredAt: '2026-07-09T16:00:00.000Z',
         ph: 7.4,
+        ec: 1500,
+        tds: 750,
+        salt: 3000,
+        orp: 700,
         fac: 1.5,
+        temperature: 25,
       },
     ];
     const actions: MaintenanceAction[] = [{

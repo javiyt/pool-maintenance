@@ -31,7 +31,7 @@ export function calculateOutcomeConfidence(input: {
   interveningActions: number;
   explicitlyLinkedMeasurement: boolean;
 }): ConfidenceResult {
-  const reductions: Array<{ reason: string; amount: number }> = [];
+  const reductions: ConfidenceReason[] = [];
 
   if (!input.explicitlyLinkedMeasurement) {
     reductions.push(reduction('outcome.confidenceReason.noExplicitMeasurement', 0.2));
