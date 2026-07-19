@@ -21,7 +21,7 @@
   </header>
 
   <!-- ═══ Settings Panel ═══════════════════════════════════════════ -->
-  <aside id="settingsPanel" class="settings-panel" role="dialog" data-i18n-aria-label="settings.title" aria-label="Configuración" hidden>
+  <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" data-i18n-aria-label="settings.title" aria-label="Configuración" hidden>
     <div class="settings-overlay" id="settingsOverlay"></div>
     <div class="settings-drawer">
       <div class="settings-header">
@@ -115,8 +115,13 @@
           <label for="hlMaxFactor" data-i18n="settings.learning.maxFactor">Factor de corrección máximo</label>
           <input type="number" id="hlMaxFactor" min="1.1" max="3.0" step="0.1" />
         </div>
-        <button id="settingsSaveBtn" class="btn-primary" data-i18n="settings.save">Guardar configuración</button>
+      </div>
+      <div class="settings-footer">
         <p id="settingsStatus" class="status-msg" aria-live="polite"></p>
+        <div class="settings-actions">
+          <button id="settingsCancelBtn" type="button" class="btn-secondary" data-i18n="settings.cancel">Cancelar</button>
+          <button id="settingsSaveBtn" type="button" class="btn-primary" data-i18n="settings.save">Guardar configuración</button>
+        </div>
       </div>
     </div>
   </aside>
