@@ -262,7 +262,7 @@ describe('outcome evaluator v2 observations and context', () => {
     const outcomes = evaluateActionOutcomes(measurements, [action]);
 
     expect(outcomes[0].effectiveness).toBe('inconclusive');
-    expect(outcomes[0].confidenceReasons.join(' ')).toContain('Demasiadas variables externas');
+    expect(outcomes[0].explanationDetails?.some((r) => r.code === 'outcome.reason.tooManyExternalVariables')).toBe(true);
   });
 });
 

@@ -172,11 +172,11 @@ describe('validateLanguage()', () => {
     expect(validateLanguage('es')).toBe('es');
   });
 
-  it('falls back to "en" for invalid values', () => {
-    expect(validateLanguage('fr')).toBe('en');
-    expect(validateLanguage('')).toBe('en');
-    expect(validateLanguage(undefined)).toBe('en');
-    expect(validateLanguage(null)).toBe('en');
+  it('falls back to "es" for invalid values', () => {
+    expect(validateLanguage('fr')).toBe('es');
+    expect(validateLanguage('')).toBe('es');
+    expect(validateLanguage(undefined)).toBe('es');
+    expect(validateLanguage(null)).toBe('es');
   });
 });
 

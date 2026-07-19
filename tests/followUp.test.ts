@@ -111,6 +111,7 @@ function makeOutcome(overrides: Partial<ActionOutcome> = {}): ActionOutcome {
         reasons: ['Expected increase in FAC'],
       },
       explanationCodes: [],
+      explanationDetails: [],
       evaluatorVersion: '2.0.0',
     },
     evaluatedAt: '2026-07-09T18:00:00.000Z',

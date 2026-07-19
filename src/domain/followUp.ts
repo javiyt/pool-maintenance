@@ -13,15 +13,6 @@ export type UnusualEventType =
   | 'cover-removed'
   | 'equipment-issue';
 
-export const UNUSUAL_EVENT_LABELS: Record<UnusualEventType, string> = {
-  rain: 'Rain',
-  'many-bathers': 'Many bathers',
-  refill: 'Refill',
-  cleaning: 'Cleaning',
-  'cover-removed': 'Cover removed',
-  'equipment-issue': 'Equipment issue',
-};
-
 export interface ActionNote {
   eventType: UnusualEventType;
   note?: string;

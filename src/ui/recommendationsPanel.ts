@@ -42,7 +42,7 @@ export class RecommendationsPanel {
     parts.push(this.renderStatusBanner(result));
 
     // ── Summary ─────────────────────────────────────────────────
-    parts.push(`<div class="as-summary"><p>${escapeHtml(result.summary)}</p></div>`);
+    parts.push(`<div class="as-summary"><p>${escapeHtml(renderResultSummary(result))}</p></div>`);
 
     // ── Next check suggestion ───────────────────────────────────
     parts.push(this.renderNextCheck(result));
@@ -376,7 +376,7 @@ export class RecommendationsPanel {
     } else if (p.theoreticalValue !== undefined && p.personalizedValue !== undefined && p.theoreticalValue !== p.personalizedValue) {
       // Adjusted case
       const cf = p.correctionFactor ?? 1;
-      const direction = cf < 1 ? 'more' : 'less';
+      const direction = t(cf < 1 ? 'personalization.direction.more' : 'personalization.direction.less');
       const pct = Math.round(Math.abs((1 - cf) * 100));
       explanationKey = isChlorinator
         ? 'personalization.explanation.adjusted.chlorinator'
@@ -622,6 +622,13 @@ function getNextCheckReasonKey(status: string): TranslationKey {
   return map[status] ?? 'nextCheck.insufficientData';
 }
 
+function renderResultSummary(result: MaintenanceAssistantResult): string {
+  if (result.summaryKey) {
+    return t(result.summaryKey, result.summaryParams);
+  }
+  return result.summary;
+}
+
 function escapeHtml(s: string): string {
   const div = document.createElement('div');
   div.textContent = s;
@@ -688,7 +695,7 @@ function recommendationToActionKind(
       return 'chemical';
     case 'equipment':
       // Equipment recommendations for salt chlorinator → 'chlorinator'
-      if (rec.equipmentName?.toLowerCase().includes('clorador')) {
+      if (rec.equipmentNameKey === 'equipment.chlorinator' || rec.equipmentName?.toLowerCase().includes('clorador')) {
         return 'chlorinator';
       }
       return 'other';

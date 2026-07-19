@@ -1,7 +1,9 @@
 import type { Measurement } from './measurement';
 import type { MaintenanceAction } from './actions';
 import { calculateOutcomeConfidence } from './recommendation/confidenceCalculator';
+import type { ConfidenceReason } from './recommendation/confidenceCalculator';
 import { OUTCOME_EVALUATOR_VERSION } from './recommendation/versions';
+import type { TranslationKey, TranslationParams } from '../i18n/types';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -36,7 +38,9 @@ export interface ActionOutcome {
   actionSuitability: ActionSuitability;
   confidence: number;
   confidenceReasons: string[];
+  confidenceReasonCodes?: ConfidenceReason[];
   explanationCodes: string[];
+  explanationDetails?: OutcomeExplanation[];
   observations: ActionOutcomeObservation[];
   assessmentSnapshot: AssessmentSnapshot;
   recalculatedAssessment?: AssessmentSnapshot;
@@ -51,6 +55,11 @@ export interface ActionOutcomeObservation {
   elapsedHours: number;
   timing: EvaluationTiming;
   changes: FieldChanges;
+}
+
+export interface OutcomeExplanation {
+  code: TranslationKey;
+  params?: TranslationParams;
 }
 
 export interface StructuredExpectedEffect {
@@ -81,9 +90,10 @@ export interface AssessmentSnapshot {
   };
   confidenceBreakdown: {
     score: number;
-    reasons: string[];
+    reasons: Array<ConfidenceReason | string>;
   };
   explanationCodes: string[];
+  explanationDetails: OutcomeExplanation[];
   evaluatorVersion: string;
   originalSnapshot?: AssessmentSnapshot;
   recalculatedAssessment?: AssessmentSnapshot;
@@ -258,7 +268,7 @@ function evaluateSingleAction(
   const intervening = countInterveningActions(action, sortedActions, before.measuredAt, after.measuredAt);
 
   // Evaluate effectiveness
-  const { effectiveness, actionSuitability, confidence, reasons, explanationCodes } = evaluateEffectiveness(
+  const { effectiveness, actionSuitability, confidence, reasons, explanationCodes, explanationDetails } = evaluateEffectiveness(
     action,
     changes,
     elapsedHours,
@@ -291,6 +301,7 @@ function evaluateSingleAction(
       reasons,
     },
     explanationCodes,
+    explanationDetails,
     evaluatorVersion: OUTCOME_EVALUATOR_VERSION,
   };
 
@@ -304,8 +315,10 @@ function evaluateSingleAction(
     effectiveness,
     actionSuitability,
     confidence: Math.round(confidence * 100) / 100,
-    confidenceReasons: reasons,
+    confidenceReasons: [],
+    confidenceReasonCodes: reasons,
     explanationCodes,
+    explanationDetails,
     observations,
     assessmentSnapshot,
     evaluatedAt: now,
@@ -451,11 +464,13 @@ function evaluateEffectiveness(
   effectiveness: OutcomeEffectiveness;
   actionSuitability: ActionSuitability;
   confidence: number;
-  reasons: string[];
+  reasons: ConfidenceReason[];
   explanationCodes: string[];
+  explanationDetails: OutcomeExplanation[];
 } {
-  const reasons: string[] = [];
+  const reasons: ConfidenceReason[] = [];
   const explanationCodes: string[] = [];
+  const explanationDetails: OutcomeExplanation[] = [];
   const relevantFields = expectedFields(action);
 
   // No measurable fields → unknown
@@ -464,8 +479,9 @@ function evaluateEffectiveness(
       effectiveness: 'unknown',
       actionSuitability: 'unknown',
       confidence: 0.1,
-      reasons: ['No measurable field for this action type.'],
+      reasons: [],
       explanationCodes: ['NO_MEASURABLE_FIELD'],
+      explanationDetails: [{ code: 'outcome.reason.noMeasurableField' }],
     };
   }
 
@@ -515,15 +531,24 @@ function evaluateEffectiveness(
       effectiveness: 'unknown',
       actionSuitability: 'unknown',
       confidence: 0.1,
-      reasons: ['No evaluable field deltas.'],
+      reasons: [],
       explanationCodes: ['NO_EVALUABLE_DELTAS'],
+      explanationDetails: [{ code: 'outcome.reason.noEvaluableDeltas' }],
     };
   }
 
   // Also check if before/after values were already in range (for partially-effective)
   // Build reasons from deltas
   for (const d of deltas) {
-    reasons.push(`${d.field}: expected ${d.expected}, actual ${formatDelta(d.actual)}`);
+    explanationDetails.push({
+      code: 'outcome.reason.fieldExpected',
+      params: {
+        field: d.field,
+        expectedDirection: d.expected,
+        actualChange: d.actual,
+        unit: unitForField(d.field),
+      },
+    });
   }
 
   const confidenceResult = calculateOutcomeConfidence({
@@ -543,8 +568,9 @@ function evaluateEffectiveness(
       effectiveness: 'inconclusive',
       actionSuitability: 'unknown',
       confidence,
-      reasons: [...reasons, 'Demasiadas variables externas para atribuir el resultado a una sola acción.'],
+      reasons,
       explanationCodes: [...explanationCodes, 'TOO_MANY_EXTERNAL_VARIABLES'],
+      explanationDetails: [...explanationDetails, { code: 'outcome.reason.tooManyExternalVariables' }],
     };
   }
 
@@ -555,8 +581,9 @@ function evaluateEffectiveness(
         effectiveness: 'inconclusive',
         actionSuitability: classifyInRangeSuitability(action),
         confidence: Math.max(confidence - 0.1, 0.2),
-        reasons: [...reasons, 'Los campos ya estaban en rango; no se puede atribuir mantenimiento de estado a esta acción.'],
+        reasons,
         explanationCodes: [...explanationCodes, 'FIELDS_ALREADY_IN_RANGE'],
+        explanationDetails: [...explanationDetails, { code: 'outcome.reason.fieldsAlreadyInRange' }],
       };
     }
     const tiny = deltas.every((d) => Math.abs(d.actual) < significanceThreshold(d.field));
@@ -565,8 +592,9 @@ function evaluateEffectiveness(
         effectiveness: 'inconclusive',
         actionSuitability: 'unknown',
         confidence: Math.max(confidence - 0.1, 0.2),
-        reasons: [...reasons, 'El cambio está dentro del error de medida.'],
+        reasons,
         explanationCodes: [...explanationCodes, 'CHANGE_WITHIN_MEASUREMENT_ERROR'],
+        explanationDetails: [...explanationDetails, { code: 'outcome.reason.changeWithinMeasurementError' }],
       };
     }
   }
@@ -603,6 +631,7 @@ function evaluateEffectiveness(
     confidence: Math.round(confidence * 100) / 100,
     reasons,
     explanationCodes,
+    explanationDetails,
   };
 }
 
@@ -626,11 +655,6 @@ function significanceThreshold(field: string): number {
   }
 }
 
-function formatDelta(delta: number): string {
-  if (delta > 0) return `+${delta}`;
-  return String(delta);
-}
-
 function allFieldsAlreadyInRange(
   action: MaintenanceAction,
   before: Measurement,
@@ -650,6 +674,19 @@ function allFieldsAlreadyInRange(
     }
   }
   return false;
+}
+
+function unitForField(field: string): string {
+  switch (field) {
+    case 'ph': return '';
+    case 'fac':
+    case 'salt':
+    case 'tds': return 'ppm';
+    case 'orp': return 'mV';
+    case 'ec': return 'µS/cm';
+    case 'temperature': return '°C';
+    default: return '';
+  }
 }
 
 function classifyInRangeSuitability(action: MaintenanceAction): ActionSuitability {

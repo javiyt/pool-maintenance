@@ -1,4 +1,4 @@
-import { t, formatDateTime } from '../i18n/index';
+import { t, formatDateTime, formatDelta as formatLocalizedDelta, formatDurationHours } from '../i18n/index';
 import type { TranslationKey } from '../i18n/types';
 import {
   loadActions,
@@ -25,13 +25,13 @@ import {
 } from '../domain/followUp';
 import type { MaintenanceAction } from '../domain/actions';
 
-const EVENT_TYPE_KEYS: Array<{ key: string; tKey: TranslationKey }> = [
+const EVENT_TYPE_KEYS: Array<{ key: UnusualEventType; tKey: TranslationKey }> = [
   { key: 'rain', tKey: 'event.rain' },
-  { key: 'manyBathers', tKey: 'event.manyBathers' },
+  { key: 'many-bathers', tKey: 'event.manyBathers' },
   { key: 'refill', tKey: 'event.refill' },
   { key: 'cleaning', tKey: 'event.cleaning' },
-  { key: 'coverRemoved', tKey: 'event.coverRemoved' },
-  { key: 'equipmentIssue', tKey: 'event.equipmentIssue' },
+  { key: 'cover-removed', tKey: 'event.coverRemoved' },
+  { key: 'equipment-issue', tKey: 'event.equipmentIssue' },
 ];
 
 export class FollowUpDashboard {
@@ -161,7 +161,7 @@ export class FollowUpDashboard {
 
   private renderPendingItem(fu: FollowUp, actionMap: Map<string, MaintenanceAction>): string {
     const action = actionMap.get(fu.actionId);
-    const actionDesc = action ? escapeHtml(action.description) : 'Unknown action';
+    const actionDesc = action ? escapeHtml(action.description) : escapeHtml(t('generic.unknownAction'));
     const delayLabel = delayHoursToString(fu.suggestedRetestDelay);
     const statusLabel = t(fu.status === 'retest-due' ? 'followup.dueNow' : 'followup.awaitingRetest');
 
@@ -222,7 +222,7 @@ export class FollowUpDashboard {
 
   private renderEvaluatedItem(fu: FollowUp, actionMap: Map<string, MaintenanceAction>, showEffectiveness: boolean = true): string {
     const action = actionMap.get(fu.actionId);
-    const actionDesc = action ? escapeHtml(action.description) : 'Unknown action';
+    const actionDesc = action ? escapeHtml(action.description) : escapeHtml(t('generic.unknownAction'));
     const outcome = fu.outcome;
 
     let outcomeHtml = '';
@@ -289,7 +289,7 @@ export class FollowUpDashboard {
   private getPendingMessage(actionKind: string | undefined, actionDesc: string): string {
     switch (actionKind) {
       case 'chemical':
-        return t('followup.pending.chemical', { desc: stripAddedPrefix(actionDesc) });
+        return t('followup.pending.chemical', { desc: actionDesc });
       case 'chlorinator':
         return t('followup.pending.chlorinator');
       case 'filtration':
@@ -383,11 +383,11 @@ export class FollowUpDashboard {
 /** Lookup from event type string (e.g. 'rain') to its TranslationKey. */
 const EVENT_TYPE_KEYS_MAP: Record<string, TranslationKey> = {
   rain: 'event.rain',
-  manyBathers: 'event.manyBathers',
+  'many-bathers': 'event.manyBathers',
   refill: 'event.refill',
   cleaning: 'event.cleaning',
-  coverRemoved: 'event.coverRemoved',
-  equipmentIssue: 'event.equipmentIssue',
+  'cover-removed': 'event.coverRemoved',
+  'equipment-issue': 'event.equipmentIssue',
 };
 
 function renderChanges(changes: { ph?: number; ec?: number; tds?: number; salt?: number; orp?: number; fac?: number; temperature?: number }): string {
@@ -405,23 +405,15 @@ function renderChanges(changes: { ph?: number; ec?: number; tds?: number; salt?:
 }
 
 function formatDelta(delta: number): string {
-  if (delta > 0) return `+${delta}`;
-  return String(delta);
+  return formatLocalizedDelta(delta);
 }
 
 function delayHoursToString(hours: number): string {
-  if (hours < 24) return `${hours}h`;
-  const days = Math.round(hours / 24);
-  return `${days}d`;
+  return formatDurationHours(hours);
 }
 
 function escapeHtml(s: string): string {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
-}
-
-/** Strip a leading "Added " (case-insensitive) prefix from a description string. */
-function stripAddedPrefix(s: string): string {
-  return s.replace(/^[Aa]dded\s/, '');
 }

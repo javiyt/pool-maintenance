@@ -10,7 +10,6 @@ export type MaintenanceActionKind =
 import type { ActionExclusionFlags, ActionNote } from './followUp';
 import type { RecommendationSnapshot } from './recommendation/recommendationSnapshot';
 export type { ActionExclusionFlags, ActionNote, UnusualEventType } from './followUp';
-export { UNUSUAL_EVENT_LABELS } from './followUp';
 
 export type ChemicalProductType =
   | 'ph-reducer'

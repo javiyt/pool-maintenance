@@ -2,26 +2,8 @@ import { loadActions, deleteAction, loadMeasurements } from '../domain/storage';
 import type { MaintenanceAction, MaintenanceActionKind } from '../domain/actions';
 import { evaluateActionOutcomes } from '../domain/actionOutcomeEvaluator';
 import type { ActionOutcome, OutcomeEffectiveness } from '../domain/actionOutcomeEvaluator';
-import { t, formatAmount, formatDateTime } from '../i18n/index';
-
-const ACTION_KIND_LABELS: Record<MaintenanceActionKind, string> = {
-  chemical: t('actionKind.chemical'),
-  chlorinator: t('actionKind.chlorinator'),
-  filtration: t('actionKind.filtration'),
-  'water-replacement': t('actionKind.waterReplacement'),
-  cleaning: t('actionKind.cleaning'),
-  'manual-test': t('actionKind.manualTest'),
-  other: t('actionKind.other'),
-};
-
-const OUTCOME_LABELS: Record<OutcomeEffectiveness, { label: string; cssClass: string }> = {
-  effective: { label: t('outcome.effective'), cssClass: 'outcome-effective' },
-  'partially-effective': { label: t('outcome.partiallyEffective'), cssClass: 'outcome-partial' },
-  ineffective: { label: t('outcome.ineffective'), cssClass: 'outcome-ineffective' },
-  unexpected: { label: t('outcome.unexpected'), cssClass: 'outcome-unexpected' },
-  inconclusive: { label: t('outcome.inconclusive'), cssClass: 'outcome-unknown' },
-  unknown: { label: t('outcome.unknown'), cssClass: 'outcome-unknown' },
-};
+import { t, formatAmount, formatDateTime, formatDelta as formatLocalizedDelta, formatNumber } from '../i18n/index';
+import type { TranslationKey, TranslationParams } from '../i18n/types';
 
 export class ActionHistory {
   private content: HTMLElement;
@@ -70,7 +52,7 @@ export class ActionHistory {
   }
 
   private renderActionItem(a: MaintenanceAction, outcome?: ActionOutcome): string {
-    const kindLabel = ACTION_KIND_LABELS[a.kind] ?? a.kind;
+    const kindLabel = t(actionKindKey(a.kind));
     let detailsHtml = '';
 
     if (a.chemical) {
@@ -80,26 +62,32 @@ export class ActionHistory {
     } else if (a.chlorinator) {
       const parts: string[] = [];
       if (a.chlorinator.previousOutputPercent !== undefined) {
-        parts.push(`Output: ${a.chlorinator.previousOutputPercent}% → ${a.chlorinator.newOutputPercent}%`);
+        parts.push(t('actionDetails.chlorinator.outputChanged', {
+          from: formatNumber(a.chlorinator.previousOutputPercent),
+          to: formatNumber(a.chlorinator.newOutputPercent),
+        }));
       } else {
-        parts.push(`Output set to ${a.chlorinator.newOutputPercent}%`);
+        parts.push(t('actionDetails.chlorinator.outputSet', { to: formatNumber(a.chlorinator.newOutputPercent) }));
       }
-      if (a.chlorinator.additionalHours) parts.push(`+${a.chlorinator.additionalHours}h`);
-      if (a.chlorinator.totalHours) parts.push(`Total: ${a.chlorinator.totalHours}h/day`);
+      if (a.chlorinator.additionalHours) parts.push(t('actionDetails.chlorinator.additionalHours', { hours: formatNumber(a.chlorinator.additionalHours) }));
+      if (a.chlorinator.totalHours) parts.push(t('actionDetails.chlorinator.totalHoursPerDay', { hours: formatNumber(a.chlorinator.totalHours) }));
       detailsHtml = `<div class="action-details">${escapeHtml(parts.join(', '))}</div>`;
     } else if (a.filtration) {
       const parts: string[] = [];
       if (a.filtration.previousHours !== undefined) {
-        parts.push(`Filtration: ${a.filtration.previousHours}h → ${a.filtration.newHours}h/day`);
+        parts.push(t('actionDetails.filtration.hoursChanged', {
+          from: formatNumber(a.filtration.previousHours),
+          to: formatNumber(a.filtration.newHours),
+        }));
       } else {
-        parts.push(`Filtration set to ${a.filtration.newHours}h/day`);
+        parts.push(t('actionDetails.filtration.hoursSet', { hours: formatNumber(a.filtration.newHours) }));
       }
       detailsHtml = `<div class="action-details">${escapeHtml(parts.join(', '))}</div>`;
     } else if (a.waterReplacement) {
       const parts: string[] = [];
-      if (a.waterReplacement.estimatedLiters) parts.push(`${a.waterReplacement.estimatedLiters} L`);
-      if (a.waterReplacement.estimatedPercent) parts.push(`~${a.waterReplacement.estimatedPercent}%`);
-      detailsHtml = `<div class="action-details">${escapeHtml(t('actionForm.type.waterReplacement'))}: ${escapeHtml(parts.join(', '))}</div>`;
+      if (a.waterReplacement.estimatedLiters) parts.push(`${formatNumber(a.waterReplacement.estimatedLiters)} L`);
+      if (a.waterReplacement.estimatedPercent) parts.push(`~${formatNumber(a.waterReplacement.estimatedPercent)}%`);
+      detailsHtml = `<div class="action-details">${escapeHtml(t('actionDetails.waterReplacement', { details: parts.join(', ') }))}</div>`;
     }
 
     let relatedHtml = '';
@@ -114,15 +102,16 @@ export class ActionHistory {
     // Outcome display
     let outcomeHtml = '';
     if (outcome) {
-      const o = OUTCOME_LABELS[outcome.effectiveness] ?? OUTCOME_LABELS.unknown;
+      const o = outcomeDisplay(outcome.effectiveness);
       const changesHtml = renderChanges(outcome.changes);
+      const reasons = renderOutcomeReasons(outcome);
       outcomeHtml = `
         <div class="action-outcome ${o.cssClass}">
           <span class="action-outcome-badge">${escapeHtml(o.label)}</span>
           <span class="action-outcome-confidence">${escapeHtml(t('outcome.confidence', { pct: Math.round(outcome.confidence * 100) }))}</span>
           <div class="action-outcome-details">${changesHtml}</div>
-          ${outcome.confidenceReasons.length > 0
-            ? `<div class="action-outcome-reasons">${outcome.confidenceReasons.map((r) => escapeHtml(r)).join('<br>')}</div>`
+          ${reasons.length > 0
+            ? `<div class="action-outcome-reasons">${reasons.map((r) => escapeHtml(r)).join('<br>')}</div>`
             : ''}
         </div>
       `;
@@ -159,8 +148,7 @@ function renderChanges(changes: { ph?: number; ec?: number; tds?: number; salt?:
 }
 
 function formatDelta(delta: number): string {
-  if (delta > 0) return `+${delta}`;
-  return String(delta);
+  return formatLocalizedDelta(delta);
 }
 
 function productTypeLabel(pt: string): string {
@@ -173,6 +161,85 @@ function productTypeLabel(pt: string): string {
     'pool-salt': 'productType.poolSalt',
   };
   return t(keyMap[pt] as any) ?? pt;
+}
+
+function actionKindKey(kind: MaintenanceActionKind): TranslationKey {
+  const keyMap: Record<MaintenanceActionKind, TranslationKey> = {
+    chemical: 'actionKind.chemical',
+    chlorinator: 'actionKind.chlorinator',
+    filtration: 'actionKind.filtration',
+    'water-replacement': 'actionKind.waterReplacement',
+    cleaning: 'actionKind.cleaning',
+    'manual-test': 'actionKind.manualTest',
+    other: 'actionKind.other',
+  };
+  return keyMap[kind];
+}
+
+function outcomeDisplay(effectiveness: OutcomeEffectiveness): { label: string; cssClass: string } {
+  const keyMap: Record<OutcomeEffectiveness, TranslationKey> = {
+    effective: 'outcome.effective',
+    'partially-effective': 'outcome.partiallyEffective',
+    ineffective: 'outcome.ineffective',
+    unexpected: 'outcome.unexpected',
+    inconclusive: 'outcome.inconclusive',
+    unknown: 'outcome.unknown',
+  };
+  const cssMap: Record<OutcomeEffectiveness, string> = {
+    effective: 'outcome-effective',
+    'partially-effective': 'outcome-partial',
+    ineffective: 'outcome-ineffective',
+    unexpected: 'outcome-unexpected',
+    inconclusive: 'outcome-unknown',
+    unknown: 'outcome-unknown',
+  };
+  return { label: t(keyMap[effectiveness]), cssClass: cssMap[effectiveness] };
+}
+
+function renderOutcomeReasons(outcome: ActionOutcome): string[] {
+  const explanationTexts = (outcome.explanationDetails ?? []).map((detail) => {
+    if (detail.code === 'outcome.reason.fieldExpected') {
+      const params = { ...(detail.params ?? {}) } as TranslationParams;
+      const direction = typeof params.expectedDirection === 'string'
+        ? t(directionKey(params.expectedDirection))
+        : '';
+      return t(detail.code, {
+        ...params,
+        field: typeof params.field === 'string' ? t(fieldKey(params.field)) : '',
+        expectedDirection: direction,
+        actualChange: typeof params.actualChange === 'number' ? formatLocalizedDelta(params.actualChange) : String(params.actualChange ?? ''),
+      });
+    }
+    return t(detail.code, detail.params);
+  });
+  const confidenceTexts = (outcome.confidenceReasonCodes ?? []).map((reason) => {
+    const text = t(reason.code, reason.params);
+    return t('outcome.confidenceReduction', { reason: text, pct: reason.reductionPct });
+  });
+  return [...explanationTexts, ...confidenceTexts];
+}
+
+function directionKey(direction: string): TranslationKey {
+  const map: Record<string, TranslationKey> = {
+    increase: 'outcome.direction.increase',
+    decrease: 'outcome.direction.decrease',
+    any: 'outcome.direction.any',
+    unknown: 'outcome.direction.unknown',
+  };
+  return map[direction] ?? 'outcome.direction.unknown';
+}
+
+function fieldKey(field: string): TranslationKey {
+  const map: Record<string, TranslationKey> = {
+    ph: 'field.ph',
+    ec: 'field.ec',
+    tds: 'field.tds',
+    salt: 'field.salt',
+    orp: 'field.orp',
+    fac: 'field.fac',
+    temperature: 'field.temperature',
+  };
+  return map[field] ?? 'field.fac';
 }
 
 function escapeHtml(s: string): string {
