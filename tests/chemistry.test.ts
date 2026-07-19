@@ -3,22 +3,49 @@ import {
   classifyLevel,
   getTargetRange,
 } from '../src/domain/chemistry';
-import { CATALOG, getProductById } from '../src/domain/chemicalCatalog';
+import { CATALOG, getProductById, getProductsByCategory } from '../src/domain/chemicalCatalog';
 
 // ── Chemical Catalog Tests ────────────────────────────────────────
 
 describe('chemical catalog', () => {
-  it('has all six generic products', () => {
-    expect(CATALOG).toHaveLength(6);
+  it('keeps the recommendation products while exposing a broad open catalog', () => {
     const ids = CATALOG.map((p) => p.id).sort();
-    expect(ids).toEqual([
+    expect(CATALOG.length).toBeGreaterThan(100);
+    expect(ids).toEqual(expect.arrayContaining([
       'chlorine-granules',
       'chlorine-stabilizer',
       'ph-increaser-liquid',
       'ph-reducer-liquid',
       'pool-salt',
       'total-alkalinity-reducer',
-    ]);
+    ]));
+  });
+
+  it('covers the initial functional categories from the normalized pool product catalog', () => {
+    const categories = Array.from(new Set(CATALOG.flatMap((p) => [p.primaryCategory, ...p.secondaryCategories])));
+    expect(categories).toEqual(expect.arrayContaining([
+      'chlorine-disinfection',
+      'non-chlorine-disinfection',
+      'ph-regulation',
+      'alkalinity',
+      'calcium-hardness',
+      'cyanuric-acid',
+      'salt-system',
+      'algaecide',
+      'clarifier',
+      'flocculant',
+      'metals-stains',
+      'nutrients',
+      'chemical-cover',
+      'winterizing',
+      'surface-cleaning',
+      'filter-cleaning',
+      'equipment-cleaning',
+      'neutralizer',
+      'multifunction',
+      'spa',
+      'measurement-consumable',
+    ]));
   });
 
   it('contains no commercial brand names', () => {
@@ -55,6 +82,8 @@ describe('chemical catalog', () => {
     expect(product.mainComponent).toBe('Cloro de disolución rápida');
     expect(product.dosageRule).toBeDefined();
     expect(product.availableChlorinePercent).toBe(55);
+    expect(product.stabilizedChlorine).toBe(true);
+    expect(product.mayAffect?.some((effect) => effect.parameter === 'cya')).toBe(true);
     expect(product.dosageRule!.changesValueBy).toBe(1);
   });
 
@@ -75,6 +104,51 @@ describe('chemical catalog', () => {
   it('pool salt applies only to saltwater pools', () => {
     const product = getProductById('pool-salt')!;
     expect(product.appliesTo).toEqual(['saltwater']);
+  });
+
+  it('does not model all chlorine products as chemically equivalent', () => {
+    const sodium = getProductById('sodium-hypochlorite')!;
+    const calcium = getProductById('calcium-hypochlorite')!;
+    const dichlor = getProductById('dichlor')!;
+    expect(sodium.physicalForm).toBe('liquid');
+    expect(calcium.mayAffect?.some((effect) => effect.parameter === 'calcium-hardness')).toBe(true);
+    expect(dichlor.stabilizedChlorine).toBe(true);
+    expect(dichlor.mayAffect?.some((effect) => effect.parameter === 'cya')).toBe(true);
+  });
+
+  it('supports multifunction products with multiple functions without inferring components', () => {
+    const product = getProductById('multiaction-tablet')!;
+    expect(product.functions).toEqual(expect.arrayContaining([
+      'sanitation',
+      'algae-prevention',
+      'clarification',
+      'stabilization',
+    ]));
+    expect(product.mainComponent).toBe('Componentes múltiples no especificados');
+    expect(product.evaluationEligibility).toBe('conditionally-evaluable');
+  });
+
+  it('separates surface, filter, equipment, water and measurement consumable targets', () => {
+    expect(getProductById('waterline-cleaner')!.applicationTarget).toBe('waterline');
+    expect(getProductById('sand-filter-cleaner')!.applicationTarget).toBe('filter');
+    expect(getProductById('pipe-cleaner')!.applicationTarget).toBe('plumbing');
+    expect(getProductById('test-reagent')!.applicationTarget).toBe('other');
+    expect(getProductById('chemical-pool-cover')!.evaluationEligibility).toBe('not-evaluable');
+  });
+
+  it('keeps commercial units as units rather than invented conversions', () => {
+    const tablets = getProductById('chlorine-tablets')!;
+    const liquid = getProductById('liquid-pool-cover')!;
+    expect(tablets.allowedUnits).toEqual(expect.arrayContaining(['tablet', 'tablets', 'pastilla']));
+    expect(liquid.allowedUnits).toEqual(expect.arrayContaining(['ml', 'cl', 'l', 'tapon', 'dosis']));
+    expect(liquid.manufacturerDosage?.unitEquivalences).toBeUndefined();
+  });
+
+  it('can search by primary or secondary category', () => {
+    expect(getProductsByCategory('salt-system').map((p) => p.id)).toEqual(expect.arrayContaining([
+      'pool-salt',
+      'cell-cleaner',
+    ]));
   });
 });
 

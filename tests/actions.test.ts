@@ -18,6 +18,7 @@ import {
 } from '../src/domain/storage';
 import type { PoolSettings } from '../src/domain/settings';
 import type { Measurement } from '../src/domain/measurement';
+import { getProductById } from '../src/domain/chemicalCatalog';
 
 // ── localStorage mock ─────────────────────────────────────────────
 
@@ -581,6 +582,43 @@ describe('manual maintenance action requirements', () => {
     expect(evaluateActionOutcomes([before, after], loadActions())).toHaveLength(0);
   });
 
+  it('preserves normalized system product metadata in action snapshots', () => {
+    const product = getProductById('multiaction-tablet')!;
+    saveActions([{
+      id: 'multi-action',
+      performedAt: '2026-07-18T10:00:00.000Z',
+      kind: 'chemical',
+      description: 'Added multifunction tablet',
+      origin: 'manual',
+      chemical: {
+        amount: 1,
+        unit: 'tablet',
+        product: {
+          source: 'system-catalog',
+          productId: product.id,
+          snapshot: {
+            productId: product.id,
+            capturedAt: '2026-07-18T10:00:00.000Z',
+            name: product.genericName,
+            category: product.primaryCategory,
+            secondaryCategories: product.secondaryCategories,
+            functions: product.functions,
+            activeIngredients: product.activeIngredients,
+            physicalForm: product.physicalForm,
+            applicationTarget: product.applicationTarget,
+            evaluationEligibility: product.evaluationEligibility,
+          },
+        },
+      },
+    }]);
+
+    const action = loadActions()[0];
+    expect(action.chemical?.product?.snapshot.functions).toEqual(expect.arrayContaining(['sanitation', 'clarification']));
+    expect(action.chemical?.product?.snapshot.activeIngredients?.[0]?.name).toBe('Componentes múltiples no especificados');
+    expect(action.chemical?.product?.snapshot.applicationTarget).toBe('pool-water');
+    expect(action.evaluationEligibility).toBe('conditionally-evaluable');
+  });
+
   it('keeps exclusion flags for learning', () => {
     addAction({
       id: 'exclude-learning',
@@ -617,6 +655,7 @@ describe('manual maintenance action requirements', () => {
     const action = loadActions()[0];
     expect(action.origin).toBe('recommendation');
     expect(action.performedValuesProvenance).toBe('assumed-from-legacy-recommendation');
+    expect(action.chemical?.product?.snapshot.capturedAt).toBe('2026-07-18T10:00:00.000Z');
     expect(action.chemical?.product?.snapshot.name).toBe('Acid');
   });
 });

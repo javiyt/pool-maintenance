@@ -5,6 +5,8 @@ import type {
   ChemicalProductCategory,
   ChemicalProductSnapshot,
   ChemicalProductReference,
+  ProductUnit,
+  ApplicationTarget,
 } from '../domain/actions';
 import { buildPerformedComparison, determineEvaluationEligibility, generateActionId } from '../domain/actions';
 import { CATALOG, getProductById } from '../domain/chemicalCatalog';
@@ -315,9 +317,10 @@ export class ActionForm {
       const productType = getStr('actionChemicalProduct') as ChemicalProductType;
       const mainComponent = getStr('actionChemicalComponent');
       const amount = getNum('actionChemicalAmount');
-      const unit = getStr('actionChemicalUnit') as 'ml' | 'l' | 'g' | 'kg';
+      const unit = getStr('actionChemicalUnit') as ProductUnit;
       const concentrationPercent = getNum('actionChemicalConcentration');
       const product = this.buildProductReference(productType, mainComponent, concentrationPercent);
+      const applicationTarget = (getStr('actionApplicationTarget') as ApplicationTarget) || product?.snapshot.applicationTarget;
       chemical = {
         productType: productType || undefined,
         mainComponent: mainComponent || product?.snapshot.activeIngredients?.[0]?.name,
@@ -325,6 +328,7 @@ export class ActionForm {
         unit: unit || undefined,
         concentrationPercent,
         product,
+        applicationTarget,
       };
     } else if (kind === 'chlorinator') {
       const prevOutput = getNum('actionChlorinatorPrevOutput');
@@ -429,8 +433,13 @@ export class ActionForm {
       return {
         source: 'unknown',
         snapshot: {
+          capturedAt: new Date().toISOString(),
           name: getStr('actionCustomProductName').trim() || 'Producto desconocido',
-          category: 'other',
+          category: 'unknown',
+          physicalForm: 'unknown',
+          applicationTarget: (getStr('actionApplicationTarget') as ApplicationTarget) || 'other',
+          functions: ['unknown'],
+          evaluationEligibility: 'unknown',
           notes: getStr('actionCustomProductNotes').trim() || undefined,
         },
       };
@@ -456,28 +465,52 @@ export class ActionForm {
           source: 'system-catalog',
           productId: product.id,
           snapshot: {
+            productId: product.id,
+            capturedAt: new Date().toISOString(),
             name: product.genericName,
             brand: product.manufacturer,
+            manufacturer: product.manufacturer,
+            sku: product.sku,
+            barcode: product.barcode,
             category: categoryFromSystemProduct(product.id, legacyProductType),
-            activeIngredients: [{
-              name: product.mainComponent,
-              concentrationPercent: product.concentration.value,
-            }],
+            secondaryCategories: product.secondaryCategories,
+            functions: product.functions,
+            activeIngredients: product.activeIngredients.map((ingredient) => ({ ...ingredient })),
+            physicalForm: product.physicalForm,
+            applicationTarget: product.applicationTarget,
+            stabilizedChlorine: product.stabilizedChlorine,
+            availableChlorinePercent: product.availableChlorinePercent,
+            concentrationPercent: product.concentration.value,
+            densityKgPerLiter: product.densityKgPerLiter,
+            raises: product.raises,
+            lowers: product.lowers,
+            mayAffect: product.mayAffect,
+            compatiblePoolTypes: product.compatiblePoolTypes,
+            incompatibleSystems: product.incompatibleSystems,
+            defaultUnit: product.defaultUnit,
+            allowedUnits: product.allowedUnits,
+            safetyInstructions: product.safetyNotes,
+            applicationInstructions: product.applicationInstructions,
+            evaluationProfileId: product.evaluationProfileId,
+            evaluationEligibility: product.evaluationEligibility,
             dosageInstructions: product.recommendedDoses.join(' '),
             notes: product.limitations.join(' '),
+            catalogVersion: product.catalogVersion,
           },
         };
       }
     }
 
     const snapshot: ChemicalProductSnapshot = {
+      capturedAt: new Date().toISOString(),
       name: getStr('actionCustomProductName').trim() || legacyComponent || 'Producto puntual',
       brand: getStr('actionCustomProductBrand').trim() || undefined,
       category: (getStr('actionCustomProductCategory') as ChemicalProductCategory) || categoryFromSystemProduct('', legacyProductType),
       activeIngredients: legacyComponent
-        ? [{ name: legacyComponent, concentrationPercent }]
+        ? [{ name: legacyComponent, concentrationPercent, userProvided: true }]
         : undefined,
       physicalForm: (getStr('actionCustomProductForm') as ChemicalProductSnapshot['physicalForm']) || undefined,
+      applicationTarget: (getStr('actionApplicationTarget') as ApplicationTarget) || 'pool-water',
       dosageInstructions: getStr('actionCustomProductDosage').trim() || undefined,
       notes: getStr('actionCustomProductNotes').trim() || undefined,
     };
@@ -532,6 +565,8 @@ function categoryForKind(kind: MaintenanceActionKind): string {
 }
 
 function categoryFromSystemProduct(productId: string, fallback: string): ChemicalProductCategory {
+  const catalogProduct = productId ? getProductById(productId) : undefined;
+  if (catalogProduct) return catalogProduct.primaryCategory;
   if (productId.includes('ph-reducer') || fallback === 'ph-reducer') return 'ph-reducer';
   if (productId.includes('ph-increaser') || fallback === 'ph-increaser') return 'ph-increaser';
   if (productId.includes('chlorine-granules') || fallback === 'chlorine-granules') return 'fast-chlorine';

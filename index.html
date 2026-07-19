@@ -346,11 +346,29 @@
                     <option value="ph-increaser" data-i18n="productCategory.phIncreaser">Incrementador de pH</option>
                     <option value="fast-chlorine" data-i18n="productCategory.fastChlorine">Cloro rápido</option>
                     <option value="shock-chlorine" data-i18n="productCategory.shockChlorine">Cloro de choque</option>
+                    <option value="chlorine-disinfection">Desinfección con cloro</option>
+                    <option value="non-chlorine-disinfection">Desinfección sin cloro</option>
+                    <option value="ph-regulation">Regulación del pH</option>
+                    <option value="alkalinity">Alcalinidad</option>
+                    <option value="calcium-hardness">Dureza cálcica</option>
+                    <option value="cyanuric-acid">Ácido cianúrico</option>
+                    <option value="salt-system">Electrólisis salina</option>
                     <option value="algaecide" data-i18n="productCategory.algaecide">Antialgas</option>
                     <option value="clarifier" data-i18n="productCategory.clarifier">Clarificante</option>
                     <option value="flocculant" data-i18n="productCategory.flocculant">Floculante</option>
                     <option value="stabilizer" data-i18n="productCategory.stabilizer">Estabilizador</option>
+                    <option value="metals-stains">Metales y manchas</option>
+                    <option value="nutrients">Fosfatos y nutrientes</option>
+                    <option value="winterizing">Invernaje</option>
+                    <option value="surface-cleaning">Limpieza de superficies</option>
+                    <option value="filter-cleaning">Limpieza de filtro</option>
+                    <option value="equipment-cleaning">Limpieza de equipos</option>
+                    <option value="neutralizer">Neutralizadores</option>
+                    <option value="multifunction">Multifunción</option>
+                    <option value="spa">Spa</option>
+                    <option value="measurement-consumable">Consumible de medición</option>
                     <option value="salt" data-i18n="productCategory.salt">Sal</option>
+                    <option value="unknown">Desconocido</option>
                     <option value="other" data-i18n="productCategory.other">Otro</option>
                   </select>
                 </div>
@@ -362,6 +380,12 @@
                     <option value="granules" data-i18n="actionForm.physicalForm.granules">Gránulos</option>
                     <option value="tablets" data-i18n="actionForm.physicalForm.tablets">Tabletas</option>
                     <option value="powder" data-i18n="actionForm.physicalForm.powder">Polvo</option>
+                    <option value="blocks">Bloques</option>
+                    <option value="cartridge">Cartucho</option>
+                    <option value="gel">Gel</option>
+                    <option value="aerosol">Aerosol</option>
+                    <option value="solid">Sólido</option>
+                    <option value="unknown">Desconocido</option>
                     <option value="other" data-i18n="actionForm.physicalForm.other">Otro</option>
                   </select>
                 </div>
@@ -399,6 +423,22 @@
                 <label for="actionChemicalConcentration" data-i18n="actionForm.concentration">Concentración (%)</label>
                 <input type="number" id="actionChemicalConcentration" min="0" max="100" step="0.1" />
               </div>
+              <div class="field">
+                <label for="actionApplicationTarget">Destino de aplicación</label>
+                <select id="actionApplicationTarget">
+                  <option value="">Según producto</option>
+                  <option value="pool-water">Agua del vaso</option>
+                  <option value="pool-surface">Superficie del vaso</option>
+                  <option value="waterline">Línea de flotación</option>
+                  <option value="skimmer">Skimmer</option>
+                  <option value="filter">Filtro</option>
+                  <option value="equipment">Equipo</option>
+                  <option value="plumbing">Tuberías</option>
+                  <option value="physical-cover">Cubierta física</option>
+                  <option value="surrounding-area">Zona exterior</option>
+                  <option value="other">Otro</option>
+                </select>
+              </div>
               <div class="field-row">
                 <div class="field" style="flex:1">
                   <label for="actionChemicalAmount" data-i18n="actionForm.amount">Cantidad</label>
@@ -407,10 +447,27 @@
                 <div class="field" style="flex:0 0 auto; min-width:80px">
                   <label for="actionChemicalUnit" data-i18n="actionForm.unit">Unidad</label>
                   <select id="actionChemicalUnit">
+                    <option value=""></option>
                     <option value="ml">ml</option>
+                    <option value="cl">cl</option>
                     <option value="l">L</option>
+                    <option value="mg">mg</option>
                     <option value="g">g</option>
                     <option value="kg">kg</option>
+                    <option value="tablet">tableta</option>
+                    <option value="tablets">tabletas</option>
+                    <option value="pastilla">pastilla</option>
+                    <option value="block">bloque</option>
+                    <option value="cartucho">cartucho</option>
+                    <option value="bolsa">bolsa</option>
+                    <option value="sobre">sobre</option>
+                    <option value="tapon">tapón</option>
+                    <option value="dosis">dosis</option>
+                    <option value="unidad">unidad</option>
+                    <option value="percent">porcentaje</option>
+                    <option value="hours">horas</option>
+                    <option value="minutes">minutos</option>
+                    <option value="other">otra</option>
                   </select>
                 </div>
               </div>
