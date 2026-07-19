@@ -2,6 +2,8 @@ import { t } from '../i18n/index';
 import type { TranslationKey } from '../i18n/types';
 import type { Measurement, MeasurementContext, MeasurementContextFieldOrigin } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
+import { loadSettings } from '../domain/storage';
+import { getChlorinatorModeDefinitions, getChlorinatorOutputControl } from '../domain/saltChlorinator';
 
 /**
  * Convert a datetime-local value (YYYY-MM-DDTHH:MM) to an ISO 8601
@@ -61,14 +63,40 @@ export class MeasurementForm {
     this.dateTimeInput = document.getElementById('mDateTime') as HTMLInputElement;
 
     this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+    this.refreshChlorinatorContextFields();
+    window.addEventListener('storage', () => this.refreshChlorinatorContextFields());
   }
 
   onSubmit(cb: (m: Measurement) => void): void {
     this.onSubmitCb = cb;
   }
 
+  refreshChlorinatorContextFields(): void {
+    const settings = loadSettings();
+    const chlorinator = settings.saltChlorinator;
+    const enabled = settings.poolType === 'saltwater' && Boolean(chlorinator?.enabled);
+    const outputControl = chlorinator ? getChlorinatorOutputControl(chlorinator) : { kind: 'unknown' as const };
+    const showPercent = enabled && outputControl.kind === 'continuous-percentage';
+    const showRuntime = enabled && (outputControl.kind === 'fixed' || outputControl.kind === 'runtime-only' || outputControl.kind === 'continuous-percentage' || outputControl.kind === 'discrete-levels' || outputControl.kind === 'automatic' || outputControl.kind === 'externally-controlled');
+    const showBoost = enabled && chlorinator !== undefined && getChlorinatorModeDefinitions(chlorinator).some((mode) => mode.code === 'boost' && mode.supported);
+
+    this.form.querySelectorAll<HTMLElement>('.ctx-chlorinator-percent-field').forEach((el) => {
+      el.hidden = !showPercent;
+      el.style.display = showPercent ? '' : 'none';
+    });
+    this.form.querySelectorAll<HTMLElement>('.ctx-chlorinator-runtime-field').forEach((el) => {
+      el.hidden = !showRuntime;
+      el.style.display = showRuntime ? '' : 'none';
+    });
+    this.form.querySelectorAll<HTMLElement>('.ctx-chlorinator-boost-field').forEach((el) => {
+      el.hidden = !showBoost;
+      el.style.display = showBoost ? '' : 'none';
+    });
+  }
+
   private handleSubmit(e: Event): void {
     e.preventDefault();
+    this.refreshChlorinatorContextFields();
 
     const dateTimeLocal = this.dateTimeInput.value;
     const measuredAt = dateTimeLocal ? localDatetimeToISO(dateTimeLocal) : '';
@@ -134,6 +162,7 @@ export class MeasurementForm {
     this.errorsEl.innerHTML = '';
     this.form.querySelectorAll('.error').forEach((el) => el.classList.remove('error'));
   }
+
 }
 
 function escapeHtml(s: string): string {
@@ -155,6 +184,11 @@ function readContext(measuredAt: string): MeasurementContext | undefined {
   const backwash = (document.getElementById('ctxBackwash') as HTMLInputElement).checked;
   const chlorOutputRaw = (document.getElementById('ctxChlorOutput') as HTMLInputElement).value;
   const chlorHoursRaw = (document.getElementById('ctxChlorHours') as HTMLInputElement).value;
+  const chlorConfiguredHoursRaw = (document.getElementById('ctxChlorConfiguredHours') as HTMLInputElement).value;
+  const chlorCompletedRaw = (document.getElementById('ctxChlorCompleted') as HTMLSelectElement).value;
+  const chlorBoost = (document.getElementById('ctxChlorBoost') as HTMLInputElement).checked;
+  const chlorBoostHoursRaw = (document.getElementById('ctxChlorBoostHours') as HTMLInputElement).value;
+  const chlorFlowConfirmedRaw = (document.getElementById('ctxChlorFlowConfirmed') as HTMLSelectElement).value;
   const filtHoursRaw = (document.getElementById('ctxFiltHours') as HTMLInputElement).value;
   const algae = (document.getElementById('ctxAlgae') as HTMLInputElement).checked;
   const clarity = (document.getElementById('ctxClarity') as HTMLSelectElement).value;
@@ -175,6 +209,18 @@ function readContext(measuredAt: string): MeasurementContext | undefined {
   if (backwash) ctx.backwashPerformed = true;
   if (chlorOutputRaw) ctx.chlorinatorOutputPercent = parseFloat(chlorOutputRaw);
   if (chlorHoursRaw) ctx.chlorinatorHoursSincePreviousMeasurement = parseFloat(chlorHoursRaw);
+  const chlorinatorOperation = buildChlorinatorOperation({
+    measuredAt,
+    outputPercent: chlorOutputRaw ? parseFloat(chlorOutputRaw) : undefined,
+    runtimeHours: chlorHoursRaw ? parseFloat(chlorHoursRaw) : undefined,
+    configuredRuntimeHours: chlorConfiguredHoursRaw ? parseFloat(chlorConfiguredHoursRaw) : undefined,
+    completed: parseBooleanSelect(chlorCompletedRaw),
+    boostActivated: chlorBoost,
+    boostRuntimeHours: chlorBoostHoursRaw ? parseFloat(chlorBoostHoursRaw) : undefined,
+    flowConfirmed: parseBooleanSelect(chlorFlowConfirmedRaw),
+    filtrationRuntimeHours: filtHoursRaw ? parseFloat(filtHoursRaw) : undefined,
+  });
+  if (chlorinatorOperation) ctx.chlorinatorOperation = chlorinatorOperation;
   if (filtHoursRaw) ctx.filtrationHoursSincePreviousMeasurement = parseFloat(filtHoursRaw);
   if (algae) ctx.visibleAlgae = true;
   if (clarity === 'clear' || clarity === 'slightly-cloudy' || clarity === 'cloudy') {
@@ -191,4 +237,60 @@ function readContext(measuredAt: string): MeasurementContext | undefined {
       origin: 'user',
     }));
   return ctx;
+}
+
+function buildChlorinatorOperation(input: {
+  measuredAt: string;
+  outputPercent?: number;
+  runtimeHours?: number;
+  configuredRuntimeHours?: number;
+  completed?: boolean;
+  boostActivated: boolean;
+  boostRuntimeHours?: number;
+  flowConfirmed?: boolean;
+  filtrationRuntimeHours?: number;
+}): MeasurementContext['chlorinatorOperation'] | undefined {
+  const settings = loadSettings();
+  const chlorinator = settings.saltChlorinator;
+  if (!chlorinator?.enabled) return undefined;
+
+  const hasNormalData = input.outputPercent !== undefined ||
+    input.runtimeHours !== undefined ||
+    input.configuredRuntimeHours !== undefined ||
+    input.completed !== undefined;
+  const hasBoostData = input.boostActivated || input.boostRuntimeHours !== undefined;
+  const hasSupportData = input.flowConfirmed !== undefined || input.filtrationRuntimeHours !== undefined;
+  if (!hasNormalData && !hasBoostData && !hasSupportData) return undefined;
+
+  return {
+    chlorinatorId: chlorinator.equipment?.id ?? chlorinator.presetId ?? 'configured-chlorinator',
+    intervalStartAt: input.measuredAt,
+    intervalEndAt: input.measuredAt,
+    source: 'user-reported',
+    normalOperation: hasNormalData
+      ? {
+          runtimeHours: input.runtimeHours,
+          configuredRuntimeHours: input.configuredRuntimeHours,
+          outputPercent: input.outputPercent,
+          expectedCompleted: input.completed,
+          actuallyCompleted: input.completed,
+        }
+      : undefined,
+    boostOperation: hasBoostData
+      ? {
+          activated: input.boostActivated,
+          runtimeHours: input.boostRuntimeHours,
+          configuredRuntimeHours: input.boostRuntimeHours,
+          productionKnown: false,
+        }
+      : undefined,
+    filtrationRuntimeHours: input.filtrationRuntimeHours,
+    flowConfirmed: input.flowConfirmed,
+  };
+}
+
+function parseBooleanSelect(value: string): boolean | undefined {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
 }

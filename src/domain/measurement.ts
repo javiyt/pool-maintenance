@@ -1,3 +1,5 @@
+import type { ChlorinatorIntervalOperation } from './saltChlorinator';
+
 export type DataOrigin = 'user' | 'device' | 'inferred' | 'imported' | 'system';
 
 export type MeasurementContextDataField =
@@ -9,6 +11,7 @@ export type MeasurementContextDataField =
   | 'backwashPerformed'
   | 'chlorinatorOutputPercent'
   | 'chlorinatorHoursSincePreviousMeasurement'
+  | 'chlorinatorOperation'
   | 'filtrationHoursSincePreviousMeasurement'
   | 'visibleAlgae'
   | 'waterClarity';
@@ -27,6 +30,7 @@ export interface MeasurementContext {
   backwashPerformed?: boolean;
   chlorinatorOutputPercent?: number;
   chlorinatorHoursSincePreviousMeasurement?: number;
+  chlorinatorOperation?: ChlorinatorIntervalOperation;
   filtrationHoursSincePreviousMeasurement?: number;
   visibleAlgae?: boolean;
   waterClarity?: 'clear' | 'slightly-cloudy' | 'cloudy';

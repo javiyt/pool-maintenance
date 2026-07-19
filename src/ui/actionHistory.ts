@@ -63,16 +63,18 @@ export class ActionHistory {
       detailsHtml = `<div class="action-details">${escapeHtml([productName, amountStr, category ? productTypeLabel(category) : ''].filter(Boolean).join(' — '))}</div>`;
     } else if (a.chlorinator) {
       const parts: string[] = [];
-      if (a.chlorinator.previousOutputPercent !== undefined) {
+      if (a.chlorinator.previousOutputPercent !== undefined && a.chlorinator.newOutputPercent !== undefined) {
         parts.push(t('actionDetails.chlorinator.outputChanged', {
           from: formatNumber(a.chlorinator.previousOutputPercent),
           to: formatNumber(a.chlorinator.newOutputPercent),
         }));
-      } else {
+      } else if (a.chlorinator.newOutputPercent !== undefined) {
         parts.push(t('actionDetails.chlorinator.outputSet', { to: formatNumber(a.chlorinator.newOutputPercent) }));
       }
       if (a.chlorinator.additionalHours) parts.push(t('actionDetails.chlorinator.additionalHours', { hours: formatNumber(a.chlorinator.additionalHours) }));
       if (a.chlorinator.totalHours) parts.push(t('actionDetails.chlorinator.totalHoursPerDay', { hours: formatNumber(a.chlorinator.totalHours) }));
+      if (a.chlorinator.boostActivated) parts.push('Boost');
+      if (a.chlorinator.maintenanceTask) parts.push(a.chlorinator.maintenanceTask);
       detailsHtml = `<div class="action-details">${escapeHtml(parts.join(', '))}</div>`;
     } else if (a.filtration) {
       const parts: string[] = [];

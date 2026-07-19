@@ -1,6 +1,12 @@
 import type { PoolSettings } from '../domain/settings';
 import { DEFAULT_HISTORICAL_LEARNING, DEFAULT_SALT_CHLORINATOR } from '../domain/settings';
 import type { HistoricalLearningConfig, SaltChlorinatorConfig } from '../domain/settings';
+import {
+  createChlorinatorConfigFromPreset,
+  getChlorinatorModeDefinitions,
+  getChlorinatorOutputControl,
+} from '../domain/saltChlorinator';
+import type { ChlorinatorModeDefinition, ChlorinatorOutputControl, ChlorinatorPresetId } from '../domain/saltChlorinator';
 import { loadSettings, saveSettings } from '../domain/storage';
 import { getLanguage, setLanguage, t, validateLanguage } from '../i18n/index';
 import type { AppLanguage } from '../i18n/types';
@@ -26,11 +32,17 @@ export class SettingsPanel {
   private poolTypeSelect: HTMLSelectElement;
   private unitSystemSelect: HTMLSelectElement;
   private scEnabled: HTMLInputElement;
+  private scPreset: HTMLSelectElement;
+  private scControlKind: HTMLSelectElement;
+  private scManufacturer: HTMLInputElement;
+  private scModel: HTMLInputElement;
   private scProduction: HTMLInputElement;
   private scOutput: HTMLInputElement;
   private scHours: HTMLInputElement;
   private scMaxOutput: HTMLInputElement;
   private scMaxHours: HTMLInputElement;
+  private scBoostSupported: HTMLInputElement;
+  private scBoostDuration: HTMLInputElement;
   private statusEl: HTMLElement;
   private scFields: NodeListOf<HTMLElement>;
   private hlEnabled: HTMLInputElement;
@@ -59,11 +71,17 @@ export class SettingsPanel {
     this.poolTypeSelect = requiredElement<HTMLSelectElement>('poolType');
     this.unitSystemSelect = requiredElement<HTMLSelectElement>('unitSystem');
     this.scEnabled = requiredElement<HTMLInputElement>('scEnabled');
+    this.scPreset = requiredElement<HTMLSelectElement>('scPreset');
+    this.scControlKind = requiredElement<HTMLSelectElement>('scControlKind');
+    this.scManufacturer = requiredElement<HTMLInputElement>('scManufacturer');
+    this.scModel = requiredElement<HTMLInputElement>('scModel');
     this.scProduction = requiredElement<HTMLInputElement>('scProduction');
     this.scOutput = requiredElement<HTMLInputElement>('scOutput');
     this.scHours = requiredElement<HTMLInputElement>('scHours');
     this.scMaxOutput = requiredElement<HTMLInputElement>('scMaxOutput');
     this.scMaxHours = requiredElement<HTMLInputElement>('scMaxHours');
+    this.scBoostSupported = requiredElement<HTMLInputElement>('scBoostSupported');
+    this.scBoostDuration = requiredElement<HTMLInputElement>('scBoostDuration');
     this.statusEl = requiredElement('settingsStatus');
     this.scFields = document.querySelectorAll('.sc-field') as NodeListOf<HTMLElement>;
     this.hlEnabled = requiredElement<HTMLInputElement>('hlEnabled');
@@ -89,6 +107,15 @@ export class SettingsPanel {
 
     this.scEnabled.addEventListener('change', () => {
       this.toggleScFields({ reveal: this.scEnabled.checked });
+      this.handleFieldChange();
+    });
+    this.scPreset.addEventListener('change', () => {
+      this.applyChlorinatorPreset(this.scPreset.value as ChlorinatorPresetId);
+      this.toggleScFields();
+      this.handleFieldChange();
+    });
+    this.scControlKind.addEventListener('change', () => {
+      this.toggleScFields();
       this.handleFieldChange();
     });
     this.hlEnabled.addEventListener('change', () => {
@@ -128,11 +155,18 @@ export class SettingsPanel {
 
     const sc = s.saltChlorinator ?? DEFAULT_SALT_CHLORINATOR;
     this.scEnabled.checked = s.poolType === 'saltwater' ? sc.enabled : false;
+    this.scPreset.value = sc.presetId ?? 'custom';
+    this.scControlKind.value = controlSelectValue(getChlorinatorOutputControl(sc));
+    this.scManufacturer.value = sc.equipment?.manufacturer ?? '';
+    this.scModel.value = sc.equipment?.model ?? '';
     this.scProduction.value = String(sc.productionGramsPerHour);
     this.scOutput.value = String(sc.currentOutputPercent);
     this.scHours.value = String(sc.filtrationHoursPerDay);
     this.scMaxOutput.value = String(sc.maxRecommendedOutputPercent);
     this.scMaxHours.value = String(sc.maxRecommendedHoursPerDay);
+    const boost = getChlorinatorModeDefinitions(sc).find((mode) => mode.code === 'boost' && mode.supported);
+    this.scBoostSupported.checked = Boolean(boost);
+    this.scBoostDuration.value = boost?.fixedDurationHours !== undefined ? String(boost.fixedDurationHours) : '';
     this.toggleScFields();
 
     const hl = { ...DEFAULT_HISTORICAL_LEARNING, ...s.historicalLearning };
@@ -249,11 +283,17 @@ export class SettingsPanel {
       poolType: this.poolTypeSelect.value,
       unitSystem: this.unitSystemSelect.value,
       scEnabled: this.scEnabled.checked,
+      scPreset: this.scPreset.value,
+      scControlKind: this.scControlKind.value,
+      scManufacturer: this.scManufacturer.value,
+      scModel: this.scModel.value,
       scProduction: this.scProduction.value,
       scOutput: this.scOutput.value,
       scHours: this.scHours.value,
       scMaxOutput: this.scMaxOutput.value,
       scMaxHours: this.scMaxHours.value,
+      scBoostSupported: this.scBoostSupported.checked,
+      scBoostDuration: this.scBoostDuration.value,
       hlEnabled: this.hlEnabled.checked,
       hlMinSamples: this.hlMinSamples.value,
       hlApplyLow: this.hlApplyLow.checked,
@@ -267,6 +307,19 @@ export class SettingsPanel {
     for (const el of this.scFields) {
       el.hidden = !visible;
       el.style.display = visible ? '' : 'none';
+    }
+    if (visible) {
+      const kind = this.scControlKind.value;
+      const showPercent = kind === 'continuous-percentage';
+      const showProduction = kind === 'runtime-only' || kind === 'fixed' || kind === 'continuous-percentage' || kind === 'discrete-levels';
+      this.drawer.querySelectorAll<HTMLElement>('.sc-percent-field').forEach((el) => {
+        el.hidden = !showPercent;
+        el.style.display = showPercent ? '' : 'none';
+      });
+      this.drawer.querySelectorAll<HTMLElement>('.sc-production-field').forEach((el) => {
+        el.hidden = !showProduction;
+        el.style.display = showProduction ? '' : 'none';
+      });
     }
     if (options.preserveScrollTop !== undefined) {
       this.body.scrollTop = options.preserveScrollTop;
@@ -352,14 +405,46 @@ export class SettingsPanel {
     };
 
     if (this.scEnabled.checked) {
+      const outputControl = this.buildOutputControl();
+      const supportedModes = this.buildSupportedModes();
+      const presetId = this.scPreset.value as ChlorinatorPresetId;
+      const runtimeIncrementHours = DEFAULT_SALT_CHLORINATOR.minProgrammableHourIncrement ?? 1;
+      const maxHours = parseFloat(this.scMaxHours.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedHoursPerDay;
       const sc: SaltChlorinatorConfig = {
         enabled: true,
         productionGramsPerHour: parseFloat(this.scProduction.value) || DEFAULT_SALT_CHLORINATOR.productionGramsPerHour,
-        currentOutputPercent: parseFloat(this.scOutput.value) || DEFAULT_SALT_CHLORINATOR.currentOutputPercent,
+        currentOutputPercent: parseFloat(this.scOutput.value) || (outputControl.kind === 'continuous-percentage' ? DEFAULT_SALT_CHLORINATOR.currentOutputPercent : 100),
         filtrationHoursPerDay: parseFloat(this.scHours.value) || DEFAULT_SALT_CHLORINATOR.filtrationHoursPerDay,
         maxRecommendedOutputPercent: parseFloat(this.scMaxOutput.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedOutputPercent,
-        maxRecommendedHoursPerDay: parseFloat(this.scMaxHours.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedHoursPerDay,
+        maxRecommendedHoursPerDay: maxHours,
+        minProgrammableHourIncrement: runtimeIncrementHours,
+        presetId,
+        outputControl,
+        runtimeControl: {
+          supported: true,
+          maximumHours: maxHours,
+          incrementMinutes: runtimeIncrementHours * 60,
+          schedulingType: presetId === 'intex-qs500-26668' ? 'internal-daily-cycle' : 'unknown',
+        },
+        supportedModes,
+        usualOperatingMode: 'normal',
       };
+      const manufacturer = this.scManufacturer.value.trim();
+      const model = this.scModel.value.trim();
+      if (manufacturer || model || presetId === 'intex-qs500-26668') {
+        sc.equipment = {
+          id: presetId === 'custom' ? `custom-${Date.now()}` : presetId,
+          manufacturer: manufacturer || undefined,
+          model: model || undefined,
+          nominalChlorineOutputGramsPerHour: sc.productionGramsPerHour,
+          outputControl,
+          runtimeControl: sc.runtimeControl!,
+          supportedModes,
+          requiresWaterFlow: true,
+          linkedFiltrationRequired: true,
+          dataSource: presetId === 'custom' ? 'user-entered' : (presetId === 'unknown' ? 'unknown' : 'manufacturer'),
+        };
+      }
       settings.saltChlorinator = sc;
     } else if (existing.saltChlorinator) {
       settings.saltChlorinator = { ...existing.saltChlorinator, enabled: false };
@@ -375,6 +460,99 @@ export class SettingsPanel {
     settings.historicalLearning = hl;
 
     return settings;
+  }
+
+  private applyChlorinatorPreset(presetId: ChlorinatorPresetId): void {
+    const preset = createChlorinatorConfigFromPreset(presetId);
+    this.scControlKind.value = controlSelectValue(getChlorinatorOutputControl(preset));
+    this.scManufacturer.value = preset.equipment?.manufacturer ?? '';
+    this.scModel.value = preset.equipment?.model ?? '';
+    this.scProduction.value = String(preset.productionGramsPerHour);
+    this.scOutput.value = String(preset.currentOutputPercent);
+    this.scHours.value = String(preset.filtrationHoursPerDay);
+    this.scMaxOutput.value = String(preset.maxRecommendedOutputPercent);
+    this.scMaxHours.value = String(preset.maxRecommendedHoursPerDay);
+    const boost = getChlorinatorModeDefinitions(preset).find((mode) => mode.code === 'boost' && mode.supported);
+    this.scBoostSupported.checked = Boolean(boost);
+    this.scBoostDuration.value = boost?.fixedDurationHours !== undefined ? String(boost.fixedDurationHours) : '';
+  }
+
+  private buildOutputControl(): ChlorinatorOutputControl {
+    switch (this.scControlKind.value) {
+      case 'continuous-percentage':
+        return {
+          kind: 'continuous-percentage',
+          minimumPercent: 0,
+          maximumPercent: parseFloat(this.scMaxOutput.value) || DEFAULT_SALT_CHLORINATOR.maxRecommendedOutputPercent,
+          incrementPercent: 1,
+        };
+      case 'discrete-levels':
+        return {
+          kind: 'discrete-levels',
+          levels: [],
+        };
+      case 'automatic-orp':
+        return {
+          kind: 'automatic',
+          controlBasis: 'orp',
+        };
+      case 'automatic-free-chlorine':
+        return {
+          kind: 'automatic',
+          controlBasis: 'free-chlorine',
+        };
+      case 'externally-controlled':
+        return {
+          kind: 'externally-controlled',
+          controllerType: 'other',
+        };
+      case 'fixed':
+        return {
+          kind: 'fixed',
+        };
+      case 'unknown':
+        return {
+          kind: 'unknown',
+        };
+      case 'runtime-only':
+      default:
+        return {
+          kind: 'runtime-only',
+        };
+    }
+  }
+
+  private buildSupportedModes(): ChlorinatorModeDefinition[] {
+    const modes: ChlorinatorModeDefinition[] = [
+      {
+        code: 'normal',
+        supported: true,
+        durationControl: 'configurable',
+        minimumDurationHours: 0,
+        maximumDurationHours: parseFloat(this.scMaxHours.value) || undefined,
+        durationIncrementMinutes: (DEFAULT_SALT_CHLORINATOR.minProgrammableHourIncrement ?? 1) * 60,
+        outputModel: this.scControlKind.value === 'runtime-only' || this.scControlKind.value === 'fixed'
+          ? 'known-absolute-output'
+          : 'same-as-normal',
+        chlorineOutputGramsPerHour: this.scControlKind.value === 'runtime-only' || this.scControlKind.value === 'fixed'
+          ? parseFloat(this.scProduction.value) || undefined
+          : undefined,
+      },
+    ];
+
+    if (this.scBoostSupported.checked) {
+      const duration = parseFloat(this.scBoostDuration.value);
+      modes.push({
+        code: 'boost',
+        supported: true,
+        durationControl: Number.isFinite(duration) && duration > 0 ? 'fixed' : 'unknown',
+        fixedDurationHours: Number.isFinite(duration) && duration > 0 ? duration : undefined,
+        outputModel: 'unknown',
+        notes: ['Boost production is configured as unknown unless documented by the manufacturer.'],
+      });
+    }
+
+    return modes;
   }
 
   private setSaveState(state: SaveState): void {
@@ -411,4 +589,11 @@ function requiredElementBySelector<T extends HTMLElement = HTMLElement>(selector
   const el = document.querySelector(selector) as T | null;
   if (!el) throw new Error(`SettingsPanel: required element ${selector} not found.`);
   return el;
+}
+
+function controlSelectValue(control: ChlorinatorOutputControl): string {
+  if (control.kind === 'automatic') {
+    return control.controlBasis === 'free-chlorine' ? 'automatic-free-chlorine' : 'automatic-orp';
+  }
+  return control.kind;
 }

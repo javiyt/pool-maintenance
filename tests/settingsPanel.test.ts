@@ -52,11 +52,36 @@ function createSettingsPanelHTML(): void {
             <input type="checkbox" id="scEnabled" />
             Clorador salino instalado
           </label>
-          <div class="field sc-field"><label for="scProduction">Producción</label><input type="number" id="scProduction" /></div>
-          <div class="field sc-field"><label for="scOutput">Producción actual</label><input type="number" id="scOutput" /></div>
+          <div class="field sc-field">
+            <label for="scPreset">Preset</label>
+            <select id="scPreset">
+              <option value="custom">Personalizado</option>
+              <option value="intex-qs500-26668">INTEX QS500 / 26668</option>
+              <option value="unknown">Desconocido</option>
+            </select>
+          </div>
+          <div class="field sc-field">
+            <label for="scControlKind">Control</label>
+            <select id="scControlKind">
+              <option value="runtime-only">Horas</option>
+              <option value="continuous-percentage">Porcentaje</option>
+              <option value="discrete-levels">Niveles</option>
+              <option value="automatic-orp">ORP</option>
+              <option value="automatic-free-chlorine">Cloro libre</option>
+              <option value="externally-controlled">Externo</option>
+              <option value="unknown">No lo se</option>
+              <option value="fixed">Fijo</option>
+            </select>
+          </div>
+          <div class="field sc-field sc-model-field"><label for="scManufacturer">Fabricante</label><input type="text" id="scManufacturer" /></div>
+          <div class="field sc-field sc-model-field"><label for="scModel">Modelo</label><input type="text" id="scModel" /></div>
+          <div class="field sc-field sc-production-field"><label for="scProduction">Producción</label><input type="number" id="scProduction" /></div>
+          <div class="field sc-field sc-percent-field"><label for="scOutput">Producción actual</label><input type="number" id="scOutput" /></div>
           <div class="field sc-field"><label for="scHours">Horas</label><input type="number" id="scHours" /></div>
-          <div class="field sc-field"><label for="scMaxOutput">Máx. producción</label><input type="number" id="scMaxOutput" /></div>
+          <div class="field sc-field sc-percent-field"><label for="scMaxOutput">Máx. producción</label><input type="number" id="scMaxOutput" /></div>
           <div class="field sc-field"><label for="scMaxHours">Máx. horas</label><input type="number" id="scMaxHours" /></div>
+          <div class="field sc-field"><label for="scBoostSupported"><input type="checkbox" id="scBoostSupported" />Boost</label></div>
+          <div class="field sc-field"><label for="scBoostDuration">Boost h</label><input type="number" id="scBoostDuration" /></div>
           <label for="hlEnabled">
             <input type="checkbox" id="hlEnabled" />
             Aprendizaje histórico
@@ -165,6 +190,29 @@ describe('SettingsPanel drawer', () => {
     expect(saved.poolType).toBe('saltwater');
     expect(saved.saltChlorinator?.enabled).toBe(true);
     expect(document.getElementById('settingsSaveBtn')!.dataset.state).toBe('saved');
+  });
+
+  it('hides percentage-only fields for the INTEX runtime-only preset and saves a snapshot', () => {
+    saveSettings({ volume: 50000, volumeUnit: 'liters', poolType: 'saltwater', unitSystem: 'metric', language: 'es' });
+    const panel = new SettingsPanel();
+    panel.open();
+
+    const enabled = document.getElementById('scEnabled') as HTMLInputElement;
+    enabled.checked = true;
+    change(enabled);
+
+    const preset = document.getElementById('scPreset') as HTMLSelectElement;
+    preset.value = 'intex-qs500-26668';
+    change(preset);
+
+    expect((document.getElementById('scOutput')!.closest('.sc-field') as HTMLElement).hidden).toBe(true);
+    document.getElementById('settingsSaveBtn')!.click();
+
+    const saved = loadSettings();
+    expect(saved.saltChlorinator?.presetId).toBe('intex-qs500-26668');
+    expect(saved.saltChlorinator?.outputControl?.kind).toBe('runtime-only');
+    expect(saved.saltChlorinator?.equipment?.manufacturer).toBe('INTEX');
+    expect(saved.saltChlorinator?.supportedModes?.find((mode) => mode.code === 'boost')?.outputModel).toBe('unknown');
   });
 
   it('traps focus inside the drawer and releases body scroll on close', () => {

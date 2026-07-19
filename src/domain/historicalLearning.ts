@@ -3,6 +3,7 @@ import type { MaintenanceAction } from './actions';
 import { getChemicalProductCategory } from './actions';
 import type { PoolSettings, HistoricalLearningConfig } from './settings';
 import { DEFAULT_HISTORICAL_LEARNING, volumeInLiters } from './settings';
+import { getCurrentProductionGramsPerHour } from './saltChlorinator';
 import {
   evaluateActionOutcomes,
   type ActionOutcome,
@@ -254,13 +255,17 @@ function estimateTheoreticalEffect(
     const chl = action.chlorinator;
     if (!chl) return undefined;
 
-    // Theoretical FAC generation during additional runtime
-    const outputPct = chl.previousOutputPercent !== undefined
-      ? (chl.previousOutputPercent + chl.newOutputPercent) / 2
-      : chl.newOutputPercent;
+    // Theoretical FAC generation during additional runtime.
     const hours = chl.additionalHours ?? 1;
-    // Effective production in g/h, then ppm per hour
-    const effectiveGPerH = sc.productionGramsPerHour * (outputPct / 100);
+    const outputPct = chl.newOutputPercent !== undefined
+      ? (chl.previousOutputPercent !== undefined
+          ? (chl.previousOutputPercent + chl.newOutputPercent) / 2
+          : chl.newOutputPercent)
+      : undefined;
+    const effectiveGPerH = outputPct !== undefined
+      ? sc.productionGramsPerHour * (outputPct / 100)
+      : getCurrentProductionGramsPerHour(sc);
+    if (effectiveGPerH <= 0) return undefined;
     const ppmPerHour = (effectiveGPerH * hours) / volM3;
     return Math.round(ppmPerHour * 100) / 100;
   }
@@ -402,7 +407,7 @@ export function computeLearning(
     // Find before measurement to get temperature and chlorinator output
     const beforeMeas = findMeasurementById(measurements, outcome.beforeMeasurementId);
     const tempBand = beforeMeas ? getTemperatureBand(beforeMeas.temperature) : undefined;
-    const outBand = (action.kind === 'chlorinator' && action.chlorinator)
+    const outBand = (action.kind === 'chlorinator' && action.chlorinator?.newOutputPercent !== undefined)
       ? getOutputPercentBand(action.chlorinator.previousOutputPercent ?? action.chlorinator.newOutputPercent)
       : undefined;
 

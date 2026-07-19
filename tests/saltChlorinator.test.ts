@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { calculateChlorinatorAdjustment } from '../src/domain/saltChlorinator';
+import {
+  INTEX_QS500_26668_PRESET,
+  calculateChlorinatorAdjustment,
+  createChlorinatorConfigFromPreset,
+  getChlorinatorActionCapabilities,
+} from '../src/domain/saltChlorinator';
 import type { SaltChlorinatorConfig } from '../src/domain/saltChlorinator';
 
 function makeConfig(overrides: Partial<SaltChlorinatorConfig> = {}): SaltChlorinatorConfig {
@@ -170,5 +175,33 @@ describe('calculateChlorinatorAdjustment', () => {
     expect(result.hoursNeeded).toBeCloseTo(6.8);
     expect(result.suggestedAdditionalHours).toBe(0.8);
     expect(result.roundingPolicy.minProgrammableHourIncrement).toBe(0.1);
+  });
+
+  it('does not suggest percentage changes for runtime-only chlorinators', () => {
+    const config = createChlorinatorConfigFromPreset('intex-qs500-26668');
+    const result = calculateChlorinatorAdjustment(0.5, 50000, {
+      ...config,
+      filtrationHoursPerDay: 1,
+      maxRecommendedHoursPerDay: 12,
+    });
+
+    expect(result.canAdjustOutput).toBe(false);
+    expect(result.suggestedOutputPercent).toBeUndefined();
+    expect(result.suggestedAdditionalHours).toBeGreaterThan(0);
+  });
+
+  it('keeps the INTEX QS500 boost output unknown in the preset snapshot', () => {
+    const boost = INTEX_QS500_26668_PRESET.supportedModes.find((mode) => mode.code === 'boost');
+    expect(INTEX_QS500_26668_PRESET.outputControl.kind).toBe('runtime-only');
+    expect(boost?.outputModel).toBe('unknown');
+    expect(boost?.outputMultiplier).toBeUndefined();
+    expect(boost?.chlorineOutputGramsPerHour).toBeUndefined();
+  });
+
+  it('derives possible actions from chlorinator capabilities', () => {
+    const actions = getChlorinatorActionCapabilities(createChlorinatorConfigFromPreset('intex-qs500-26668'));
+    expect(actions).toContain('increase-runtime');
+    expect(actions).toContain('activate-boost');
+    expect(actions).not.toContain('increase-output-percent');
   });
 });

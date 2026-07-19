@@ -5,7 +5,11 @@ import { getTargetRange, getTargetRangeSnapshot, classifyLevel, TARGET_RANGES } 
 import type { TargetRange, TargetRangeSnapshot } from './chemistry';
 import { analyzeTrends } from './trendAnalysis';
 import type { MeasurementTrend } from './trendAnalysis';
-import { calculateChlorinatorAdjustment } from './saltChlorinator';
+import {
+  calculateChlorinatorAdjustment,
+  describeChlorinatorProduction,
+  getChlorinatorCapabilities,
+} from './saltChlorinator';
 import type { SaltChlorinatorConfig } from './saltChlorinator';
 import type { MaintenanceAction } from './actions';
 import { evaluateActionOutcomes } from './actionOutcomeEvaluator';
@@ -913,9 +917,10 @@ export function runAssistant(
           const calcNotes: string[] = [
             `Déficit de cloro: ${deltaPpm.toFixed(1)} ppm.`,
             `Volumen: ${volLiters.toLocaleString()} L.`,
-            `Producción del clorador: ${chlorinatorConfig.productionGramsPerHour} g/h al ${chlorinatorConfig.currentOutputPercent}%.`,
+            describeChlorinatorProduction(chlorinatorConfig),
             `Horas necesarias: ${adjustment.hoursNeeded.toFixed(1)} h.`,
           ];
+          const chlorinatorCapabilities = getChlorinatorCapabilities(chlorinatorConfig);
           const chlorineModel = estimateChlorinatorFacModel({
             deltaPpm,
             poolVolumeLiters: volLiters,
@@ -937,6 +942,9 @@ export function runAssistant(
             if (adjustment.suggestedAdditionalHours !== undefined && adjustment.suggestedAdditionalHours > 0) {
               calcNotes.push(`Añadir ${adjustment.suggestedAdditionalHours} hora(s) adicional(es) de filtración/cloración.`);
             }
+            if (!chlorinatorCapabilities.canAdjustPercentage && chlorinatorCapabilities.supportsBoost) {
+              calcNotes.push('El equipo no declara ajuste porcentual; usar horas y modo boost solo si el fabricante lo permite.');
+            }
 
             recommendations.push({
               id: nextId(),
@@ -955,7 +963,9 @@ export function runAssistant(
               calculationNotes: calcNotes,
               safetyNotes: [],
               followUpActions: [
-                'Aplicar los ajustes recomendados al clorador.',
+                chlorinatorCapabilities.canAdjustPercentage
+                  ? 'Aplicar los ajustes recomendados al clorador.'
+                  : 'Ajustar el ciclo diario o activar boost siguiendo las instrucciones del fabricante.',
                 'Medir FAC después del ciclo de filtración.',
               ],
               retestAfterHours: 24,
@@ -1379,13 +1389,18 @@ export function runAssistant(
           `FAC actual: ${latest.fac.toFixed(1)} ppm. Objetivo: ${facRange.ideal.toFixed(1)} ppm.`,
           `Déficit: ${deltaPpm.toFixed(1)} ppm.`,
           `Volumen: ${volLiters.toLocaleString()} L.`,
+          describeChlorinatorProduction(chlorinatorConfig),
         ];
+        const chlorinatorCapabilities = getChlorinatorCapabilities(chlorinatorConfig);
 
         if (adjustment.suggestedOutputPercent !== undefined) {
           calcNotes.push(`Aumentar producción del clorador al ${adjustment.suggestedOutputPercent}%.`);
         }
         if (adjustment.suggestedAdditionalHours !== undefined && adjustment.suggestedAdditionalHours > 0) {
           calcNotes.push(`Añadir ${adjustment.suggestedAdditionalHours} hora(s) adicional(es).`);
+        }
+        if (!chlorinatorCapabilities.canAdjustPercentage && chlorinatorCapabilities.supportsBoost) {
+          calcNotes.push('El equipo no declara ajuste porcentual; usar horas o boost solo si corresponde a su ficha.');
         }
 
         recommendations.push({
@@ -1405,7 +1420,9 @@ export function runAssistant(
           calculationNotes: calcNotes,
           safetyNotes: [],
           followUpActions: [
-            'Aplicar los ajustes recomendados.',
+            chlorinatorCapabilities.canAdjustPercentage
+              ? 'Aplicar los ajustes recomendados.'
+              : 'Ajustar horas o programa diario segun la ficha del clorador.',
             'Medir FAC después del ciclo de filtración.',
           ],
           retestAfterHours: 24,
