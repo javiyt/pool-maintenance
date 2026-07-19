@@ -53,6 +53,98 @@ export type ChemicalProductType =
   | 'alkalinity-reducer'
   | 'pool-salt';
 
+export type ProductFunction =
+  | 'sanitation'
+  | 'oxidation'
+  | 'ph-control'
+  | 'alkalinity-control'
+  | 'hardness-control'
+  | 'stabilization'
+  | 'salt-increase'
+  | 'algae-prevention'
+  | 'algae-treatment'
+  | 'clarification'
+  | 'flocculation'
+  | 'metal-control'
+  | 'stain-control'
+  | 'phosphate-control'
+  | 'nitrate-control'
+  | 'evaporation-reduction'
+  | 'winterizing'
+  | 'surface-cleaning'
+  | 'filter-cleaning'
+  | 'equipment-cleaning'
+  | 'neutralization'
+  | 'measurement-consumable'
+  | 'maintenance'
+  | 'other'
+  | 'unknown'
+  | (string & {});
+
+export type ProductPhysicalForm =
+  | 'liquid'
+  | 'granules'
+  | 'powder'
+  | 'tablets'
+  | 'blocks'
+  | 'cartridge'
+  | 'gel'
+  | 'aerosol'
+  | 'solid'
+  | 'other'
+  | 'unknown';
+
+export type ApplicationTarget =
+  | 'pool-water'
+  | 'pool-surface'
+  | 'waterline'
+  | 'skimmer'
+  | 'filter'
+  | 'equipment'
+  | 'plumbing'
+  | 'physical-cover'
+  | 'surrounding-area'
+  | 'other';
+
+export type ProductUnit =
+  | 'ml'
+  | 'cl'
+  | 'l'
+  | 'mg'
+  | 'g'
+  | 'kg'
+  | 'tablet'
+  | 'tablets'
+  | 'pastilla'
+  | 'block'
+  | 'cartucho'
+  | 'bolsa'
+  | 'sobre'
+  | 'tapon'
+  | 'dosis'
+  | 'unidad'
+  | 'percent'
+  | 'hours'
+  | 'minutes'
+  | 'ppm'
+  | 'other'
+  | (string & {});
+
+export interface ActiveIngredientSnapshot {
+  code?: string;
+  name: string;
+  concentrationPercent?: number;
+  availableSubstancePercent?: number;
+  role?: string;
+  userProvided?: boolean;
+}
+
+export interface ChemicalParameterEffect {
+  parameter: 'ph' | 'fac' | 'cya' | 'calcium-hardness' | 'alkalinity' | 'salt' | 'orp' | 'clarity' | 'temperature' | string;
+  certainty?: 'known' | 'potential' | 'manufacturer-claimed' | 'unknown';
+  notes?: string;
+}
+
 export type ChemicalProductCategory =
   | 'ph-reducer'
   | 'ph-increaser'
@@ -64,25 +156,67 @@ export type ChemicalProductCategory =
   | 'stabilizer'
   | 'chemical-cover'
   | 'salt'
-  | 'other';
+  | 'chlorine-disinfection'
+  | 'non-chlorine-disinfection'
+  | 'ph-regulation'
+  | 'alkalinity'
+  | 'calcium-hardness'
+  | 'cyanuric-acid'
+  | 'salt-system'
+  | 'metals-stains'
+  | 'nutrients'
+  | 'winterizing'
+  | 'surface-cleaning'
+  | 'filter-cleaning'
+  | 'equipment-cleaning'
+  | 'neutralizer'
+  | 'multifunction'
+  | 'spa'
+  | 'measurement-consumable'
+  | 'custom-product'
+  | 'unknown'
+  | 'other'
+  | (string & {});
 
 export type ChemicalProductSource =
   | 'system-catalog'
   | 'user-catalog'
   | 'one-off'
+  | 'imported'
   | 'unknown';
 
 export interface ChemicalProductSnapshot {
+  productId?: string;
+  capturedAt?: string;
   name: string;
   brand?: string;
+  manufacturer?: string;
+  sku?: string;
+  barcode?: string;
   category: ChemicalProductCategory;
-  activeIngredients?: Array<{
-    name: string;
-    concentrationPercent?: number;
-  }>;
-  physicalForm?: 'liquid' | 'granules' | 'tablets' | 'powder' | 'other';
+  secondaryCategories?: ChemicalProductCategory[];
+  functions?: ProductFunction[];
+  activeIngredients?: ActiveIngredientSnapshot[];
+  physicalForm?: ProductPhysicalForm;
+  applicationTarget?: ApplicationTarget;
+  stabilizedChlorine?: boolean;
+  availableChlorinePercent?: number;
+  concentrationPercent?: number;
+  densityKgPerLiter?: number;
+  raises?: ChemicalParameterEffect[];
+  lowers?: ChemicalParameterEffect[];
+  mayAffect?: ChemicalParameterEffect[];
+  compatiblePoolTypes?: string[];
+  incompatibleSystems?: string[];
+  defaultUnit?: ProductUnit;
+  allowedUnits?: ProductUnit[];
+  safetyInstructions?: string[];
+  applicationInstructions?: string[];
+  evaluationProfileId?: string;
+  evaluationEligibility?: EvaluationEligibility | 'unknown';
   dosageInstructions?: string;
   notes?: string;
+  catalogVersion?: string;
 }
 
 export interface ChemicalProductReference {
@@ -102,9 +236,26 @@ export interface MaintenanceActionChemical {
   productType?: ChemicalProductType;
   mainComponent?: string;
   amount?: number;
-  unit?: 'ml' | 'l' | 'g' | 'kg' | 'tablet' | 'tablets' | 'ppm' | 'percent' | string;
+  unit?: ProductUnit;
   concentrationPercent?: number;
   product?: ChemicalProductReference;
+  applicationTarget?: ApplicationTarget;
+  applicationMethod?:
+    | 'direct-to-pool'
+    | 'pre-diluted'
+    | 'skimmer'
+    | 'doser'
+    | 'dosing-pump'
+    | 'chlorinator'
+    | 'filter'
+    | 'surface'
+    | 'plumbing'
+    | 'other'
+    | (string & {});
+  filtrationActiveDuringApplication?: boolean;
+  postApplicationFiltrationMinutes?: number;
+  poolCoveredDuringApplication?: boolean;
+  bathingRestrictionMinutes?: number;
 }
 
 export interface MaintenanceActionChlorinator {
@@ -239,6 +390,9 @@ export function determineEvaluationEligibility(action: MaintenanceAction): Evalu
 
   if (action.kind === 'chemical') {
     if (action.chemical?.product?.source === 'unknown') return 'unknown-product';
+    const productEligibility = action.chemical?.product?.snapshot.evaluationEligibility;
+    if (productEligibility === 'unknown') return 'unknown-product';
+    if (productEligibility) return productEligibility;
     const category = getChemicalProductCategory(action);
     if (!category) return 'unknown-product';
     if (category === 'ph-reducer' || category === 'ph-increaser' || category === 'fast-chlorine' || category === 'salt') {

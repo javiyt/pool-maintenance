@@ -155,11 +155,14 @@ function buildLegacyProductSnapshot(action: MaintenanceAction): ChemicalProductS
   if (!chemical.productType && !chemical.mainComponent) return undefined;
 
   return {
+    productId: chemical.productType,
+    capturedAt: action.performedAt,
     name: chemical.mainComponent || chemical.productType || 'Producto desconocido',
     category: chemicalProductCategoryFromLegacyType(chemical.productType),
     activeIngredients: chemical.mainComponent
-      ? [{ name: chemical.mainComponent, concentrationPercent: chemical.concentrationPercent }]
+      ? [{ name: chemical.mainComponent, concentrationPercent: chemical.concentrationPercent, userProvided: false }]
       : undefined,
+    concentrationPercent: chemical.concentrationPercent,
   };
 }
 
@@ -269,11 +272,19 @@ export function saveUserChemicalProducts(products: UserChemicalProduct[]): void 
 
 export function addUserChemicalProduct(snapshot: ChemicalProductSnapshot, now = new Date()): UserChemicalProduct {
   const products = loadUserChemicalProducts();
+  const capturedAt = snapshot.capturedAt ?? now.toISOString();
   const product: UserChemicalProduct = {
     id: `usr-prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
-    snapshot: { ...snapshot },
+    snapshot: {
+      ...snapshot,
+      capturedAt,
+      activeIngredients: snapshot.activeIngredients?.map((ingredient) => ({
+        ...ingredient,
+        userProvided: ingredient.userProvided ?? true,
+      })),
+    },
   };
   saveUserChemicalProducts([...products, product]);
   return product;
