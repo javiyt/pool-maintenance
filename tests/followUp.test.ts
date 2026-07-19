@@ -49,18 +49,29 @@ function makeFollowUp(overrides: Partial<FollowUp> = {}): FollowUp {
 }
 
 function makeOutcome(overrides: Partial<ActionOutcome> = {}): ActionOutcome {
-  return {
+  const base: ActionOutcome = {
     actionId: 'act-test-1',
     beforeMeasurementId: 'meas-before',
     afterMeasurementId: 'meas-after',
     elapsedHours: 8,
+    timing: 'preferred',
     changes: { fac: 0.8, ph: -0.1 },
     effectiveness: 'effective',
     confidence: 0.8,
     confidenceReasons: ['Expected increase in FAC'],
+    observations: [
+      {
+        afterMeasurementId: 'meas-after',
+        elapsedHours: 8,
+        timing: 'preferred',
+        changes: { fac: 0.8, ph: -0.1 },
+      },
+    ],
     evaluatedAt: '2026-07-09T18:00:00.000Z',
-    ...overrides,
+    evaluatorVersion: '2.0.0',
   };
+
+  return { ...base, ...overrides };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────
