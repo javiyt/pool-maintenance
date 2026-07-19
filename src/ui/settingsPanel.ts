@@ -1,13 +1,26 @@
 import type { PoolSettings } from '../domain/settings';
-import { DEFAULT_SALT_CHLORINATOR, DEFAULT_HISTORICAL_LEARNING } from '../domain/settings';
-import type { SaltChlorinatorConfig, HistoricalLearningConfig } from '../domain/settings';
+import { DEFAULT_HISTORICAL_LEARNING, DEFAULT_SALT_CHLORINATOR } from '../domain/settings';
+import type { HistoricalLearningConfig, SaltChlorinatorConfig } from '../domain/settings';
 import { loadSettings, saveSettings } from '../domain/storage';
-import { t, setLanguage, getLanguage, validateLanguage } from '../i18n/index';
+import { getLanguage, setLanguage, t, validateLanguage } from '../i18n/index';
 import type { AppLanguage } from '../i18n/types';
+
+type SaveState = 'disabled' | 'enabled' | 'saving' | 'saved' | 'error';
+
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 export class SettingsPanel {
   private panel: HTMLElement;
+  private drawer: HTMLElement;
   private overlay: HTMLElement;
+  private body: HTMLElement;
   private volumeInput: HTMLInputElement;
   private volumeUnitSelect: HTMLSelectElement;
   private poolTypeSelect: HTMLSelectElement;
@@ -27,54 +40,71 @@ export class SettingsPanel {
   private hlMaxFactor: HTMLInputElement;
   private hlFields: NodeListOf<HTMLElement>;
   private languageSelect: HTMLSelectElement;
+  private saveBtn: HTMLButtonElement;
+  private cancelBtn: HTMLButtonElement;
+  private closeBtn: HTMLButtonElement;
+  private previousFocused: HTMLElement | null = null;
+  private initialSnapshot = '';
+  private saveState: SaveState = 'disabled';
   private onSave: ((s: PoolSettings) => void) | null = null;
   private onLangChange: ((lang: AppLanguage) => void) | null = null;
 
   constructor() {
-    this.panel = document.getElementById('settingsPanel') as HTMLElement;
-    this.overlay = document.getElementById('settingsOverlay') as HTMLElement;
-    this.volumeInput = document.getElementById('poolVolume') as HTMLInputElement;
-    this.volumeUnitSelect = document.getElementById('volumeUnit') as HTMLSelectElement;
-    this.poolTypeSelect = document.getElementById('poolType') as HTMLSelectElement;
-    this.unitSystemSelect = document.getElementById('unitSystem') as HTMLSelectElement;
-    this.scEnabled = document.getElementById('scEnabled') as HTMLInputElement;
-    this.scProduction = document.getElementById('scProduction') as HTMLInputElement;
-    this.scOutput = document.getElementById('scOutput') as HTMLInputElement;
-    this.scHours = document.getElementById('scHours') as HTMLInputElement;
-    this.scMaxOutput = document.getElementById('scMaxOutput') as HTMLInputElement;
-    this.scMaxHours = document.getElementById('scMaxHours') as HTMLInputElement;
-    this.statusEl = document.getElementById('settingsStatus') as HTMLElement;
+    this.panel = requiredElement('settingsPanel');
+    this.drawer = requiredElementBySelector('.settings-drawer');
+    this.overlay = requiredElement('settingsOverlay');
+    this.body = requiredElementBySelector('.settings-body');
+    this.volumeInput = requiredElement<HTMLInputElement>('poolVolume');
+    this.volumeUnitSelect = requiredElement<HTMLSelectElement>('volumeUnit');
+    this.poolTypeSelect = requiredElement<HTMLSelectElement>('poolType');
+    this.unitSystemSelect = requiredElement<HTMLSelectElement>('unitSystem');
+    this.scEnabled = requiredElement<HTMLInputElement>('scEnabled');
+    this.scProduction = requiredElement<HTMLInputElement>('scProduction');
+    this.scOutput = requiredElement<HTMLInputElement>('scOutput');
+    this.scHours = requiredElement<HTMLInputElement>('scHours');
+    this.scMaxOutput = requiredElement<HTMLInputElement>('scMaxOutput');
+    this.scMaxHours = requiredElement<HTMLInputElement>('scMaxHours');
+    this.statusEl = requiredElement('settingsStatus');
     this.scFields = document.querySelectorAll('.sc-field') as NodeListOf<HTMLElement>;
-    this.hlEnabled = document.getElementById('hlEnabled') as HTMLInputElement;
-    this.hlMinSamples = document.getElementById('hlMinSamples') as HTMLInputElement;
-    this.hlApplyLow = document.getElementById('hlApplyLow') as HTMLInputElement;
-    this.hlMinFactor = document.getElementById('hlMinFactor') as HTMLInputElement;
-    this.hlMaxFactor = document.getElementById('hlMaxFactor') as HTMLInputElement;
+    this.hlEnabled = requiredElement<HTMLInputElement>('hlEnabled');
+    this.hlMinSamples = requiredElement<HTMLInputElement>('hlMinSamples');
+    this.hlApplyLow = requiredElement<HTMLInputElement>('hlApplyLow');
+    this.hlMinFactor = requiredElement<HTMLInputElement>('hlMinFactor');
+    this.hlMaxFactor = requiredElement<HTMLInputElement>('hlMaxFactor');
     this.hlFields = document.querySelectorAll('.hl-field') as NodeListOf<HTMLElement>;
-    this.languageSelect = document.getElementById('appLanguage') as HTMLSelectElement;
+    this.languageSelect = requiredElement<HTMLSelectElement>('appLanguage');
+    this.saveBtn = requiredElement<HTMLButtonElement>('settingsSaveBtn');
+    this.cancelBtn = requiredElement<HTMLButtonElement>('settingsCancelBtn');
+    this.closeBtn = requiredElement<HTMLButtonElement>('settingsCloseBtn');
 
-    const toggleBtn = document.getElementById('settingsToggleBtn') as HTMLButtonElement;
-    const closeBtn = document.getElementById('settingsCloseBtn') as HTMLButtonElement;
-    const saveBtn = document.getElementById('settingsSaveBtn') as HTMLButtonElement;
+    const toggleBtn = document.getElementById('settingsToggleBtn') as HTMLButtonElement | null;
+    toggleBtn?.addEventListener('click', () => this.open());
+    this.closeBtn.addEventListener('click', () => this.requestClose());
+    this.cancelBtn.addEventListener('click', () => this.requestClose());
+    this.overlay.addEventListener('click', () => this.requestClose());
+    this.drawer.addEventListener('click', (e) => e.stopPropagation());
+    this.saveBtn.addEventListener('click', () => this.handleSave());
 
-    toggleBtn.addEventListener('click', () => this.open());
-    closeBtn.addEventListener('click', () => this.close());
-    this.overlay.addEventListener('click', () => this.close());
-    saveBtn.addEventListener('click', () => this.handleSave());
+    document.addEventListener('keydown', (e) => this.handleDocumentKeydown(e));
 
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this.panel.hidden) this.close();
+    this.scEnabled.addEventListener('change', () => {
+      this.toggleScFields({ reveal: this.scEnabled.checked });
+      this.handleFieldChange();
     });
-
-    // Toggle salt chlorinator fields visibility
-    this.scEnabled.addEventListener('change', () => this.toggleScFields());
-    // Toggle historical learning fields visibility
-    this.hlEnabled.addEventListener('change', () => this.toggleHlFields());
-
-    // Apply and persist language immediately when the dropdown changes
-    // (independent of pool volume / Save button)
+    this.hlEnabled.addEventListener('change', () => {
+      this.toggleHlFields({ reveal: this.hlEnabled.checked });
+      this.handleFieldChange();
+    });
+    this.poolTypeSelect.addEventListener('change', () => this.handlePoolTypeChange());
     this.languageSelect.addEventListener('change', () => {
       this.applyLanguage(this.languageSelect.value as AppLanguage);
+      this.handleFieldChange();
+    });
+
+    this.drawer.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((el) => {
+      if (el === this.scEnabled || el === this.hlEnabled || el === this.poolTypeSelect || el === this.languageSelect) return;
+      el.addEventListener('input', () => this.handleFieldChange());
+      el.addEventListener('change', () => this.handleFieldChange());
     });
   }
 
@@ -86,7 +116,100 @@ export class SettingsPanel {
     this.onLangChange = cb;
   }
 
-  /** Apply a new language immediately: set runtime, persist, notify UI. */
+  open(): void {
+    const s = loadSettings();
+    this.previousFocused = document.activeElement as HTMLElement | null;
+
+    this.volumeInput.value = s.volume > 0 ? String(s.volume) : '';
+    this.volumeUnitSelect.value = s.volumeUnit;
+    this.poolTypeSelect.value = s.poolType;
+    this.unitSystemSelect.value = s.unitSystem;
+    this.languageSelect.value = getLanguage();
+
+    const sc = s.saltChlorinator ?? DEFAULT_SALT_CHLORINATOR;
+    this.scEnabled.checked = s.poolType === 'saltwater' ? sc.enabled : false;
+    this.scProduction.value = String(sc.productionGramsPerHour);
+    this.scOutput.value = String(sc.currentOutputPercent);
+    this.scHours.value = String(sc.filtrationHoursPerDay);
+    this.scMaxOutput.value = String(sc.maxRecommendedOutputPercent);
+    this.scMaxHours.value = String(sc.maxRecommendedHoursPerDay);
+    this.toggleScFields();
+
+    const hl = { ...DEFAULT_HISTORICAL_LEARNING, ...s.historicalLearning };
+    this.hlEnabled.checked = hl.enabled;
+    this.hlMinSamples.value = String(hl.minimumSamples);
+    this.hlApplyLow.checked = hl.applyLowConfidence;
+    this.hlMinFactor.value = String(hl.minCorrectionFactor);
+    this.hlMaxFactor.value = String(hl.maxCorrectionFactor);
+    this.toggleHlFields();
+
+    this.clearValidation();
+    this.statusEl.textContent = '';
+    this.statusEl.className = 'status-msg';
+    this.panel.hidden = false;
+    this.body.scrollTop = 0;
+    document.body.classList.add('drawer-open');
+
+    this.initialSnapshot = this.currentSnapshot();
+    this.setSaveState('disabled');
+    window.setTimeout(() => this.firstFocusable()?.focus(), 0);
+  }
+
+  close(): void {
+    this.panel.hidden = true;
+    document.body.classList.remove('drawer-open');
+    this.previousFocused?.focus?.();
+  }
+
+  getSettings(): PoolSettings {
+    return loadSettings();
+  }
+
+  private requestClose(): void {
+    if (this.hasPendingChanges() && !window.confirm(t('settings.discardChanges'))) {
+      return;
+    }
+    this.close();
+  }
+
+  private handleDocumentKeydown(e: KeyboardEvent): void {
+    if (this.panel.hidden) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this.requestClose();
+      return;
+    }
+    if (e.key === 'Tab') {
+      this.trapFocus(e);
+    }
+  }
+
+  private trapFocus(e: KeyboardEvent): void {
+    const focusable = this.focusableElements();
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  private focusableElements(): HTMLElement[] {
+    return Array.from(this.drawer.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter((el) => !el.hidden && !el.closest('[hidden]') && getComputedStyle(el).display !== 'none');
+  }
+
+  private firstFocusable(): HTMLElement | undefined {
+    return this.focusableElements()[0] ?? this.closeBtn;
+  }
+
   private applyLanguage(lang: AppLanguage): void {
     const validated = validateLanguage(lang);
     if (validated === getLanguage()) return;
@@ -97,84 +220,137 @@ export class SettingsPanel {
     this.onLangChange?.(validated);
   }
 
-  open(): void {
-    const s = loadSettings();
-    this.volumeInput.value = s.volume > 0 ? String(s.volume) : '';
-    this.volumeUnitSelect.value = s.volumeUnit;
-    this.poolTypeSelect.value = s.poolType;
-    this.unitSystemSelect.value = s.unitSystem;
-    this.languageSelect.value = getLanguage();
+  private handlePoolTypeChange(): void {
+    const previousScroll = this.body.scrollTop;
+    const shouldShowChlorinator = this.poolTypeSelect.value === 'saltwater';
+    const wasVisible = this.scEnabled.checked;
+    this.scEnabled.checked = shouldShowChlorinator;
+    this.toggleScFields({ reveal: shouldShowChlorinator && !wasVisible, preserveScrollTop: previousScroll });
+    this.handleFieldChange();
+  }
 
-    // Salt chlorinator fields
-    const sc = s.saltChlorinator ?? DEFAULT_SALT_CHLORINATOR;
-    this.scEnabled.checked = sc.enabled;
-    this.scProduction.value = String(sc.productionGramsPerHour);
-    this.scOutput.value = String(sc.currentOutputPercent);
-    this.scHours.value = String(sc.filtrationHoursPerDay);
-    this.scMaxOutput.value = String(sc.maxRecommendedOutputPercent);
-    this.scMaxHours.value = String(sc.maxRecommendedHoursPerDay);
-    this.toggleScFields();
-
+  private handleFieldChange(): void {
+    if (this.saveState === 'saving') return;
+    this.clearValidation();
     this.statusEl.textContent = '';
     this.statusEl.className = 'status-msg';
-
-    // Historical learning fields
-    const hl = { ...DEFAULT_HISTORICAL_LEARNING, ...s.historicalLearning };
-    this.hlEnabled.checked = hl.enabled;
-    this.hlMinSamples.value = String(hl.minimumSamples);
-    this.hlApplyLow.checked = hl.applyLowConfidence;
-    this.hlMinFactor.value = String(hl.minCorrectionFactor);
-    this.hlMaxFactor.value = String(hl.maxCorrectionFactor);
-    this.toggleHlFields();
-
-    this.panel.hidden = false;
+    this.setSaveState(this.hasPendingChanges() ? 'enabled' : 'disabled');
   }
 
-  close(): void {
-    this.panel.hidden = true;
+  private hasPendingChanges(): boolean {
+    return this.currentSnapshot() !== this.initialSnapshot;
   }
 
-  private toggleScFields(): void {
+  private currentSnapshot(): string {
+    return JSON.stringify({
+      language: this.languageSelect.value,
+      volume: this.volumeInput.value,
+      volumeUnit: this.volumeUnitSelect.value,
+      poolType: this.poolTypeSelect.value,
+      unitSystem: this.unitSystemSelect.value,
+      scEnabled: this.scEnabled.checked,
+      scProduction: this.scProduction.value,
+      scOutput: this.scOutput.value,
+      scHours: this.scHours.value,
+      scMaxOutput: this.scMaxOutput.value,
+      scMaxHours: this.scMaxHours.value,
+      hlEnabled: this.hlEnabled.checked,
+      hlMinSamples: this.hlMinSamples.value,
+      hlApplyLow: this.hlApplyLow.checked,
+      hlMinFactor: this.hlMinFactor.value,
+      hlMaxFactor: this.hlMaxFactor.value,
+    });
+  }
+
+  private toggleScFields(options: { reveal?: boolean; preserveScrollTop?: number } = {}): void {
     const visible = this.scEnabled.checked;
     for (const el of this.scFields) {
-      (el as HTMLElement).style.display = visible ? '' : 'none';
+      el.hidden = !visible;
+      el.style.display = visible ? '' : 'none';
+    }
+    if (options.preserveScrollTop !== undefined) {
+      this.body.scrollTop = options.preserveScrollTop;
+    }
+    if (options.reveal) {
+      this.ensureVisible(this.scFields[0]);
     }
   }
 
-  private toggleHlFields(): void {
+  private toggleHlFields(options: { reveal?: boolean } = {}): void {
     const visible = this.hlEnabled.checked;
     for (const el of this.hlFields) {
-      (el as HTMLElement).style.display = visible ? '' : 'none';
+      el.hidden = !visible;
+      el.style.display = visible ? '' : 'none';
     }
+    if (options.reveal) {
+      this.ensureVisible(this.hlFields[0]);
+    }
+  }
+
+  private validate(): HTMLElement | null {
+    this.clearValidation();
+    const volume = parseFloat(this.volumeInput.value);
+    if (isNaN(volume) || volume <= 0) {
+      return this.markInvalid(this.volumeInput, t('settings.enterVolume'));
+    }
+    if (volume > 10000000) {
+      return this.markInvalid(this.volumeInput, t('settings.volumeTooLarge'));
+    }
+    return null;
+  }
+
+  private markInvalid(input: HTMLElement, message: string): HTMLElement {
+    input.setAttribute('aria-invalid', 'true');
+    this.showStatus(message, 'error');
+    return input;
+  }
+
+  private clearValidation(): void {
+    this.drawer.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+      el.removeAttribute('aria-invalid');
+    });
   }
 
   private handleSave(): void {
-    const volume = parseFloat(this.volumeInput.value);
+    if (this.saveState === 'saving' || this.saveState === 'disabled') return;
 
-    if (isNaN(volume) || volume <= 0) {
-      this.showStatus(t('settings.enterVolume'), 'error');
+    const invalid = this.validate();
+    if (invalid) {
+      this.setSaveState('error');
+      this.ensureVisible(invalid);
+      invalid.focus();
       return;
     }
 
-    if (volume > 10000000) {
-      this.showStatus(t('settings.volumeTooLarge'), 'error');
-      return;
+    this.setSaveState('saving');
+    try {
+      const settings = this.buildSettings();
+      saveSettings(settings);
+      this.initialSnapshot = this.currentSnapshot();
+      this.onSave?.(settings);
+      this.showStatus(t('settings.saved'), 'success');
+      this.setSaveState('saved');
+      window.setTimeout(() => {
+        if (!this.panel.hidden && !this.hasPendingChanges()) {
+          this.setSaveState('disabled');
+        }
+      }, 1200);
+    } catch {
+      this.showStatus(t('settings.saveError'), 'error');
+      this.setSaveState('error');
     }
+  }
 
+  private buildSettings(): PoolSettings {
+    const existing = loadSettings();
     const settings: PoolSettings = {
-      volume,
+      volume: parseFloat(this.volumeInput.value),
       volumeUnit: this.volumeUnitSelect.value as PoolSettings['volumeUnit'],
       poolType: this.poolTypeSelect.value as PoolSettings['poolType'],
       unitSystem: this.unitSystemSelect.value as PoolSettings['unitSystem'],
+      language: existing.language,
     };
 
-    // Preserve existing settings (language, salt chlorinator, historical learning)
-    const existing = loadSettings();
-    if (existing.language) {
-      settings.language = existing.language;
-    }
-
-    // Salt chlorinator config
     if (this.scEnabled.checked) {
       const sc: SaltChlorinatorConfig = {
         enabled: true,
@@ -186,11 +362,9 @@ export class SettingsPanel {
       };
       settings.saltChlorinator = sc;
     } else if (existing.saltChlorinator) {
-      // Preserve salt chlorinator config when checkbox is unchecked
       settings.saltChlorinator = { ...existing.saltChlorinator, enabled: false };
     }
 
-    // Historical learning config
     const hl: HistoricalLearningConfig = {
       enabled: this.hlEnabled.checked,
       minimumSamples: parseInt(this.hlMinSamples.value, 10) || DEFAULT_HISTORICAL_LEARNING.minimumSamples,
@@ -200,9 +374,20 @@ export class SettingsPanel {
     };
     settings.historicalLearning = hl;
 
-    saveSettings(settings);
-    this.showStatus(t('settings.saved'), 'success');
-    this.onSave?.(settings);
+    return settings;
+  }
+
+  private setSaveState(state: SaveState): void {
+    this.saveState = state;
+    this.saveBtn.dataset.state = state;
+    this.saveBtn.disabled = state === 'disabled' || state === 'saving' || state === 'saved';
+    if (state === 'saving') {
+      this.saveBtn.textContent = t('settings.saving');
+    } else if (state === 'saved') {
+      this.saveBtn.textContent = t('settings.saved');
+    } else {
+      this.saveBtn.textContent = t('settings.save');
+    }
   }
 
   private showStatus(msg: string, type: 'success' | 'error'): void {
@@ -210,8 +395,20 @@ export class SettingsPanel {
     this.statusEl.className = `status-msg ${type}`;
   }
 
-  /** Return the currently saved settings (for display in other panels). */
-  getSettings(): PoolSettings {
-    return loadSettings();
+  private ensureVisible(el: Element | undefined): void {
+    if (!el) return;
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
+}
+
+function requiredElement<T extends HTMLElement = HTMLElement>(id: string): T {
+  const el = document.getElementById(id) as T | null;
+  if (!el) throw new Error(`SettingsPanel: required element #${id} not found.`);
+  return el;
+}
+
+function requiredElementBySelector<T extends HTMLElement = HTMLElement>(selector: string): T {
+  const el = document.querySelector(selector) as T | null;
+  if (!el) throw new Error(`SettingsPanel: required element ${selector} not found.`);
+  return el;
 }

@@ -42,6 +42,7 @@ const HTML_DATA_I18N_KEYS: readonly string[] = [
   'settings.unitSystem',
   'settings.unitSystem.metric',
   'settings.unitSystem.imperial',
+  'settings.cancel',
   'settings.chlorinator.title',
   'settings.chlorinator.enabled',
   'settings.chlorinator.production',
