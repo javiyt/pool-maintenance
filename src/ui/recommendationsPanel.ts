@@ -474,19 +474,24 @@ export class RecommendationsPanel {
     }
     if (chemicalAmount !== undefined) {
       prefill.chemicalAmount = chemicalAmount;
+      prefill.recommendedAmount = chemicalAmount;
     }
     if (item.unit) {
       prefill.chemicalUnit = item.unit as 'ml' | 'l' | 'g' | 'kg';
+      prefill.recommendedUnit = item.unit;
     }
 
     if (item.suggestedOutputPercent !== undefined) {
       prefill.chlorinatorNewOutput = item.suggestedOutputPercent;
+      prefill.recommendedOutputPercent = item.suggestedOutputPercent;
     }
     if (addHours !== undefined) {
       prefill.chlorinatorAddHours = addHours;
+      prefill.recommendedRuntimeHours = addHours;
     }
     if (item.suggestedFiltrationHours !== undefined) {
       prefill.filtrationNewHours = item.suggestedFiltrationHours;
+      prefill.recommendedRuntimeHours = item.suggestedFiltrationHours;
     }
 
     return `<button class="rec-perform-btn" data-prefill='${escapeHtmlAttr(JSON.stringify(prefill))}'>${escapeHtml(t('rec.performButton'))}</button>`;

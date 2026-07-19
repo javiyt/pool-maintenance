@@ -57,8 +57,10 @@ export class ActionHistory {
 
     if (a.chemical) {
       const c = a.chemical;
-      const amountStr = formatAmount(c.amount, c.unit);
-      detailsHtml = `<div class="action-details">${escapeHtml(c.mainComponent)} — ${escapeHtml(amountStr)} (${escapeHtml(productTypeLabel(c.productType))})</div>`;
+      const amountStr = c.amount !== undefined && c.unit ? formatAmount(c.amount, c.unit) : '';
+      const productName = c.product?.snapshot.name ?? c.mainComponent ?? c.productType ?? '';
+      const category = c.product?.snapshot.category ?? c.productType ?? '';
+      detailsHtml = `<div class="action-details">${escapeHtml([productName, amountStr, category ? productTypeLabel(category) : ''].filter(Boolean).join(' — '))}</div>`;
     } else if (a.chlorinator) {
       const parts: string[] = [];
       if (a.chlorinator.previousOutputPercent !== undefined) {
@@ -159,21 +161,42 @@ function productTypeLabel(pt: string): string {
     'chlorine-stabilizer': 'productType.chlorineStabilizer',
     'alkalinity-reducer': 'productType.alkalinityReducer',
     'pool-salt': 'productType.poolSalt',
+    'fast-chlorine': 'productCategory.fastChlorine',
+    'shock-chlorine': 'productCategory.shockChlorine',
+    algaecide: 'productCategory.algaecide',
+    clarifier: 'productCategory.clarifier',
+    flocculant: 'productCategory.flocculant',
+    stabilizer: 'productCategory.stabilizer',
+    'chemical-cover': 'productCategory.chemicalCover',
+    salt: 'productCategory.salt',
+    other: 'productCategory.other',
   };
   return t(keyMap[pt] as any) ?? pt;
 }
 
 function actionKindKey(kind: MaintenanceActionKind): TranslationKey {
-  const keyMap: Record<MaintenanceActionKind, TranslationKey> = {
+  const keyMap: Partial<Record<string, TranslationKey>> = {
     chemical: 'actionKind.chemical',
     chlorinator: 'actionKind.chlorinator',
     filtration: 'actionKind.filtration',
+    'filter-backwash': 'actionKind.filterBackwash',
     'water-replacement': 'actionKind.waterReplacement',
+    'water-top-up': 'actionKind.waterTopUp',
+    'partial-drain': 'actionKind.partialDrain',
+    'physical-cover': 'actionKind.physicalCover',
+    'chemical-cover': 'actionKind.chemicalCover',
+    algaecide: 'actionKind.algaecide',
+    clarifier: 'actionKind.clarifier',
+    flocculant: 'actionKind.flocculant',
+    stabilizer: 'actionKind.stabilizer',
+    'unknown-product': 'actionKind.unknownProduct',
+    'equipment-maintenance': 'actionKind.equipmentMaintenance',
+    inspection: 'actionKind.inspection',
     cleaning: 'actionKind.cleaning',
     'manual-test': 'actionKind.manualTest',
     other: 'actionKind.other',
   };
-  return keyMap[kind];
+  return keyMap[kind] ?? 'actionKind.other';
 }
 
 function outcomeDisplay(effectiveness: OutcomeEffectiveness): { label: string; cssClass: string } {

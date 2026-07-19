@@ -1,4 +1,4 @@
-import type { MaintenanceAction } from './actions';
+import type { MaintenanceAction, UserChemicalProduct } from './actions';
 import { CATALOG, CHEMICAL_CATALOG_VERSION } from './chemicalCatalog';
 import { getTargetRangeSnapshot, type TargetRangeSnapshot } from './chemistry';
 import { evaluateActionOutcomes, type ActionOutcome, type AssessmentSnapshot } from './actionOutcomeEvaluator';
@@ -138,6 +138,7 @@ export function buildExportSnapshots(input: {
   followUps: FollowUp[];
   settings: PoolSettings;
   capturedAt: string;
+  userChemicalProducts?: UserChemicalProduct[];
 }): ExportSnapshots {
   const latest = [...input.measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
   const assistant = runAssistant(input.measurements, input.settings, input.actions);
@@ -244,13 +245,22 @@ export function buildExportSnapshots(input: {
     actionOutcomeSnapshots,
     unusualEvents: buildUnusualEventSnapshots(input.actions, input.followUps, input.capturedAt),
     learningStateSnapshots: [historicalLearningState],
-    productSnapshots: CATALOG.map((product) => ({
-      schemaVersion: 1,
-      capturedAt: input.capturedAt,
-      productId: product.id,
-      catalogVersion: CHEMICAL_CATALOG_VERSION,
-      product,
-    })),
+    productSnapshots: [
+      ...CATALOG.map((product) => ({
+        schemaVersion: 1,
+        capturedAt: input.capturedAt,
+        productId: product.id,
+        catalogVersion: CHEMICAL_CATALOG_VERSION,
+        product,
+      })),
+      ...(input.userChemicalProducts ?? []).map((product) => ({
+        schemaVersion: 1,
+        capturedAt: input.capturedAt,
+        productId: product.id,
+        catalogVersion: CHEMICAL_CATALOG_VERSION,
+        product,
+      })),
+    ],
   };
 }
 

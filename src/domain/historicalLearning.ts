@@ -1,5 +1,6 @@
 import type { Measurement } from './measurement';
 import type { MaintenanceAction } from './actions';
+import { getChemicalProductCategory } from './actions';
 import type { PoolSettings, HistoricalLearningConfig } from './settings';
 import { DEFAULT_HISTORICAL_LEARNING, volumeInLiters } from './settings';
 import {
@@ -128,9 +129,9 @@ function isEligibleOutcome(
   // For chemical actions, require a specific product type that affects a known metric
   if (action.kind === 'chemical') {
     if (!action.chemical) return false;
-    const pt = action.chemical.productType;
-    if (pt !== 'ph-reducer' && pt !== 'ph-increaser' &&
-        pt !== 'chlorine-granules' && pt !== 'pool-salt') {
+    const category = getChemicalProductCategory(action);
+    if (category !== 'ph-reducer' && category !== 'ph-increaser' &&
+        category !== 'fast-chlorine' && category !== 'shock-chlorine' && category !== 'salt') {
       return false;
     }
   }
@@ -150,19 +151,20 @@ function extractMetricEffect(
   outcome: ActionOutcome,
 ): MetricEffect | null {
   if (action.kind === 'chemical' && action.chemical) {
-    switch (action.chemical.productType) {
+    switch (getChemicalProductCategory(action)) {
       case 'ph-reducer':
       case 'ph-increaser':
         if (outcome.changes.ph !== undefined) {
           return { metric: 'ph', effect: outcome.changes.ph };
         }
         return null;
-      case 'chlorine-granules':
+      case 'fast-chlorine':
+      case 'shock-chlorine':
         if (outcome.changes.fac !== undefined) {
           return { metric: 'fac', effect: outcome.changes.fac };
         }
         return null;
-      case 'pool-salt':
+      case 'salt':
         if (outcome.changes.salt !== undefined) {
           return { metric: 'salt', effect: outcome.changes.salt };
         }
@@ -183,7 +185,8 @@ function extractMetricEffect(
 
 function actionTypeKey(action: MaintenanceAction): string {
   if (action.kind === 'chemical' && action.chemical) {
-    return `chemical:${action.chemical.productType}`;
+    if (action.chemical.productType) return `chemical:${action.chemical.productType}`;
+    return `chemical:${getChemicalProductCategory(action) ?? 'unknown'}`;
   }
   if (action.kind === 'chlorinator') {
     return 'chlorinator';
@@ -209,10 +212,12 @@ function estimateTheoreticalEffect(
   const volM3 = volL / 1000;
 
   if (action.kind === 'chemical' && action.chemical) {
-    const { productType, amount, unit } = action.chemical;
+    const { amount, unit } = action.chemical;
+    const category = getChemicalProductCategory(action);
+    if (amount === undefined || !unit) return undefined;
     const amountL = unit === 'l' ? amount : unit === 'ml' ? amount / 1000 : amount;
 
-    switch (productType) {
+    switch (category) {
       case 'ph-reducer': {
         // ~750ml per 50m³ reduces pH by 0.1
         const normAmount = unit === 'ml' ? amount : amountL * 1000;
@@ -225,14 +230,15 @@ function estimateTheoreticalEffect(
         const expected = (normAmountL / 1) * (50 / volM3) * 0.1;
         return metric === 'ph' ? Math.round(expected * 100) / 100 : undefined;
       }
-      case 'chlorine-granules': {
+      case 'fast-chlorine':
+      case 'shock-chlorine': {
         // 3g/m³ raises FAC by ~1ppm
         if (unit !== 'g' && unit !== 'kg') return undefined;
         const grams = unit === 'kg' ? amount * 1000 : amount;
         const expected = (grams / 3) / volM3;
         return metric === 'fac' ? Math.round(expected * 100) / 100 : undefined;
       }
-      case 'pool-salt': {
+      case 'salt': {
         // deltaPpm = (amount_kg * 1,000,000) / volume_liters
         if (unit !== 'kg' && unit !== 'g') return undefined;
         const kg = unit === 'g' ? amount / 1000 : amount;

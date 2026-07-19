@@ -286,7 +286,19 @@
                 <option value="chemical" data-i18n="actionForm.type.chemical">Adición química</option>
                 <option value="chlorinator" data-i18n="actionForm.type.chlorinator">Ajuste del clorador salino</option>
                 <option value="filtration" data-i18n="actionForm.type.filtration">Ajuste de filtración</option>
+                <option value="filter-backwash" data-i18n="actionForm.type.filterBackwash">Lavado de filtro</option>
                 <option value="water-replacement" data-i18n="actionForm.type.waterReplacement">Reemplazo parcial de agua</option>
+                <option value="water-top-up" data-i18n="actionForm.type.waterTopUp">Reposición de agua</option>
+                <option value="partial-drain" data-i18n="actionForm.type.partialDrain">Vaciado parcial</option>
+                <option value="physical-cover" data-i18n="actionForm.type.physicalCover">Cubierta física</option>
+                <option value="chemical-cover" data-i18n="actionForm.type.chemicalCover">Cubierta química</option>
+                <option value="algaecide" data-i18n="actionForm.type.algaecide">Tratamiento antialgas</option>
+                <option value="clarifier" data-i18n="actionForm.type.clarifier">Clarificante</option>
+                <option value="flocculant" data-i18n="actionForm.type.flocculant">Floculante</option>
+                <option value="stabilizer" data-i18n="actionForm.type.stabilizer">Estabilizador</option>
+                <option value="unknown-product" data-i18n="actionForm.type.unknownProduct">Producto desconocido</option>
+                <option value="equipment-maintenance" data-i18n="actionForm.type.equipmentMaintenance">Mantenimiento del equipo</option>
+                <option value="inspection" data-i18n="actionForm.type.inspection">Inspección</option>
                 <option value="cleaning" data-i18n="actionForm.type.cleaning">Limpieza</option>
                 <option value="manual-test" data-i18n="actionForm.type.manualTest">Prueba manual</option>
                 <option value="other" data-i18n="actionForm.type.other">Otro</option>
@@ -299,6 +311,75 @@
 
             <!-- Chemical fields -->
             <div id="actionChemicalFields" class="action-kind-fields" hidden>
+              <div class="field">
+                <label for="actionProductSource" data-i18n="actionForm.productSource">Producto</label>
+                <select id="actionProductSource">
+                  <option value="system-catalog" data-i18n="actionForm.productSource.system">Buscar producto existente</option>
+                  <option value="user-catalog" data-i18n="actionForm.productSource.user">Usar producto personalizado guardado</option>
+                  <option value="one-off" data-i18n="actionForm.productSource.oneOff">Usar producto solo esta vez</option>
+                  <option value="unknown" data-i18n="actionForm.productSource.unknown">Producto desconocido</option>
+                </select>
+              </div>
+              <div id="actionSystemProductField" class="field">
+                <label for="actionSystemProduct" data-i18n="actionForm.systemProduct">Catálogo</label>
+                <select id="actionSystemProduct"></select>
+              </div>
+              <div id="actionUserProductField" class="field" hidden>
+                <label for="actionUserProduct" data-i18n="actionForm.userProduct">Producto guardado</label>
+                <select id="actionUserProduct"></select>
+              </div>
+              <div id="actionUnknownProductHint" class="field-hint" hidden data-i18n="actionForm.unknownProduct.hint">Se guardará en el historial sin calcular efectos químicos.</div>
+              <div id="actionCustomProductFields" hidden>
+                <div class="field">
+                  <label for="actionCustomProductName" data-i18n="actionForm.customProductName">Nombre del producto</label>
+                  <input type="text" id="actionCustomProductName" data-i18n-placeholder="actionForm.customProductName.placeholder" placeholder="Ej. cubierta química de verano" />
+                </div>
+                <div class="field">
+                  <label for="actionCustomProductBrand" data-i18n="actionForm.customProductBrand">Marca</label>
+                  <input type="text" id="actionCustomProductBrand" />
+                </div>
+                <div class="field">
+                  <label for="actionCustomProductCategory" data-i18n="actionForm.customProductCategory">Categoría</label>
+                  <select id="actionCustomProductCategory">
+                    <option value="chemical-cover" data-i18n="productCategory.chemicalCover">Cubierta química</option>
+                    <option value="ph-reducer" data-i18n="productCategory.phReducer">Reductor de pH</option>
+                    <option value="ph-increaser" data-i18n="productCategory.phIncreaser">Incrementador de pH</option>
+                    <option value="fast-chlorine" data-i18n="productCategory.fastChlorine">Cloro rápido</option>
+                    <option value="shock-chlorine" data-i18n="productCategory.shockChlorine">Cloro de choque</option>
+                    <option value="algaecide" data-i18n="productCategory.algaecide">Antialgas</option>
+                    <option value="clarifier" data-i18n="productCategory.clarifier">Clarificante</option>
+                    <option value="flocculant" data-i18n="productCategory.flocculant">Floculante</option>
+                    <option value="stabilizer" data-i18n="productCategory.stabilizer">Estabilizador</option>
+                    <option value="salt" data-i18n="productCategory.salt">Sal</option>
+                    <option value="other" data-i18n="productCategory.other">Otro</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="actionCustomProductForm" data-i18n="actionForm.physicalForm">Formato</label>
+                  <select id="actionCustomProductForm">
+                    <option value="" data-i18n="actionForm.physicalForm.unknown">—</option>
+                    <option value="liquid" data-i18n="actionForm.physicalForm.liquid">Líquido</option>
+                    <option value="granules" data-i18n="actionForm.physicalForm.granules">Gránulos</option>
+                    <option value="tablets" data-i18n="actionForm.physicalForm.tablets">Tabletas</option>
+                    <option value="powder" data-i18n="actionForm.physicalForm.powder">Polvo</option>
+                    <option value="other" data-i18n="actionForm.physicalForm.other">Otro</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="actionCustomProductDosage" data-i18n="actionForm.dosageInstructions">Instrucciones de dosificación</label>
+                  <input type="text" id="actionCustomProductDosage" />
+                </div>
+                <div class="field">
+                  <label for="actionCustomProductNotes" data-i18n="actionForm.productNotes">Notas del producto</label>
+                  <textarea id="actionCustomProductNotes" rows="2"></textarea>
+                </div>
+                <div class="field">
+                  <label data-i18n="actionForm.saveProduct">
+                    <input type="checkbox" id="actionSaveProduct" />
+                    Guardar como producto personalizado reutilizable
+                  </label>
+                </div>
+              </div>
               <div class="field">
                 <label for="actionChemicalProduct" data-i18n="actionForm.productType">Tipo de producto</label>
                 <select id="actionChemicalProduct">
@@ -313,6 +394,10 @@
               <div class="field">
                 <label for="actionChemicalComponent" data-i18n="actionForm.mainComponent">Componente principal</label>
                 <input type="text" id="actionChemicalComponent" data-i18n-placeholder="actionForm.mainComponent.placeholder" placeholder="Ej. ácido reductor de pH" />
+              </div>
+              <div class="field">
+                <label for="actionChemicalConcentration" data-i18n="actionForm.concentration">Concentración (%)</label>
+                <input type="number" id="actionChemicalConcentration" min="0" max="100" step="0.1" />
               </div>
               <div class="field-row">
                 <div class="field" style="flex:1">
@@ -380,6 +465,30 @@
               <textarea id="actionNotes" rows="2"></textarea>
             </div>
             <div class="field">
+              <label for="actionReason" data-i18n="actionForm.reason">Motivo</label>
+              <input type="text" id="actionReason" />
+            </div>
+            <div class="field">
+              <label for="actionPerformedBy" data-i18n="actionForm.performedBy">Realizada por</label>
+              <input type="text" id="actionPerformedBy" />
+            </div>
+            <div class="field">
+              <label for="actionExpectedEffect" data-i18n="actionForm.expectedEffect">Efecto esperado</label>
+              <input type="text" id="actionExpectedEffect" />
+            </div>
+            <div class="field">
+              <label data-i18n="actionForm.atypical">
+                <input type="checkbox" id="actionIsAtypical" />
+                Marcar como acción atípica
+              </label>
+            </div>
+            <div class="field">
+              <label data-i18n="actionForm.excludeLearning">
+                <input type="checkbox" id="actionExcludeLearning" />
+                Excluir del aprendizaje
+              </label>
+            </div>
+            <div class="field">
               <label for="actionRelatedMeasurement" data-i18n="actionForm.linkedMeasurement">Medición vinculada <span class="optional" data-i18n="actionForm.linkedMeasurement.none">opcional</span></label>
               <select id="actionRelatedMeasurement">
                 <option value="" data-i18n="actionForm.linkedMeasurement.none">— Ninguna —</option>
@@ -422,6 +531,9 @@
     <!-- ── Action History ───────────────────────────────────────── -->
     <section class="card" aria-labelledby="action-history-heading">
       <h2 id="action-history-heading" class="card-title" data-i18n="actionHistory.title">Historial de acciones de mantenimiento</h2>
+      <div class="history-toolbar">
+        <button id="recordActionBtn" class="btn-secondary" data-i18n="actionHistory.record">Registrar acción de mantenimiento</button>
+      </div>
       <div id="actionHistoryContent">
         <p class="empty-state" data-i18n="actionHistory.empty">Aún no se han registrado acciones de mantenimiento.</p>
       </div>

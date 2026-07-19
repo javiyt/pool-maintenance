@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { MaintenanceAction } from '../src/domain/actions';
 import { generateActionId } from '../src/domain/actions';
+import { evaluateActionOutcomes } from '../src/domain/actionOutcomeEvaluator';
 import {
   loadActions,
   saveActions,
@@ -12,6 +13,8 @@ import {
   EXPORT_SCHEMA_VERSION,
   loadMeasurements,
   saveMeasurements,
+  addUserChemicalProduct,
+  loadUserChemicalProducts,
 } from '../src/domain/storage';
 import type { PoolSettings } from '../src/domain/settings';
 import type { Measurement } from '../src/domain/measurement';
@@ -403,8 +406,218 @@ describe('action sorting', () => {
 // ── Schema version ────────────────────────────────────────────────
 
 describe('schema version', () => {
-  it('is version 9', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(9);
+  it('is version 10', () => {
+    expect(EXPORT_SCHEMA_VERSION).toBe(10);
+  });
+});
+
+// ── Manual action domain requirements ────────────────────────────
+
+describe('manual maintenance action requirements', () => {
+  it('registers an action without a recommendation', () => {
+    addAction({
+      id: 'manual-1',
+      performedAt: '2026-07-16T10:00:00.000Z',
+      kind: 'inspection',
+      category: 'inspection',
+      description: 'Checked pump pressure',
+      origin: 'manual',
+    });
+
+    const action = loadActions()[0];
+    expect(action.origin).toBe('manual');
+    expect(action.recommendationId).toBeUndefined();
+    expect(action.relatedRecommendationId).toBeUndefined();
+  });
+
+  it('registers a chemical cover with a preserved one-off product snapshot and no required amount', () => {
+    addAction({
+      id: 'cover-1',
+      performedAt: '2026-07-16T11:00:00.000Z',
+      kind: 'chemical-cover',
+      category: 'chemical',
+      description: 'Added summer chemical cover',
+      origin: 'manual',
+      chemical: {
+        product: {
+          source: 'one-off',
+          snapshot: {
+            name: 'Cubierta liquida',
+            category: 'chemical-cover',
+            physicalForm: 'liquid',
+          },
+        },
+      },
+    });
+
+    const action = loadActions()[0];
+    expect(action.chemical?.product?.source).toBe('one-off');
+    expect(action.chemical?.product?.snapshot.category).toBe('chemical-cover');
+    expect(action.chemical?.amount).toBeUndefined();
+    expect(action.evaluationEligibility).toBe('not-evaluable');
+  });
+
+  it('creates a custom product and uses it later with independent snapshots', () => {
+    const product = addUserChemicalProduct({
+      name: 'My pH down',
+      brand: 'Local',
+      category: 'ph-reducer',
+      activeIngredients: [{ name: 'Acid blend', concentrationPercent: 15 }],
+    }, FIXED_NOW);
+
+    addAction({
+      id: 'custom-product-action',
+      performedAt: '2026-07-17T10:00:00.000Z',
+      kind: 'chemical',
+      description: 'Used saved product',
+      origin: 'manual',
+      chemical: {
+        amount: 100,
+        unit: 'ml',
+        product: {
+          source: 'user-catalog',
+          productId: product.id,
+          snapshot: { ...product.snapshot },
+        },
+      },
+    });
+
+    const products = loadUserChemicalProducts();
+    products[0] = {
+      ...products[0],
+      snapshot: { ...products[0].snapshot, name: 'Renamed pH down' },
+    };
+    store.set('pool-maintenance:userChemicalProducts', JSON.stringify(products));
+
+    const action = loadActions()[0];
+    expect(action.chemical?.product?.snapshot.name).toBe('My pH down');
+    expect(loadUserChemicalProducts()[0].snapshot.name).toBe('Renamed pH down');
+  });
+
+  it('exports and imports a one-off custom action without losing product detail', () => {
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveActions([{
+      id: 'one-off-1',
+      performedAt: '2026-07-17T12:00:00.000Z',
+      kind: 'chemical',
+      description: 'Used a product once',
+      origin: 'manual',
+      chemical: {
+        amount: 2,
+        unit: 'l',
+        product: {
+          source: 'one-off',
+          snapshot: {
+            name: 'No-store clarifier',
+            brand: 'Unlisted',
+            category: 'clarifier',
+            notes: 'Borrowed from neighbour',
+          },
+        },
+      },
+    }]);
+
+    const imported = parseImportData(JSON.stringify(exportData(FIXED_NOW)));
+    expect(imported.actions[0].chemical?.product?.source).toBe('one-off');
+    expect(imported.actions[0].chemical?.product?.snapshot.brand).toBe('Unlisted');
+  });
+
+  it('records recommendation deviations for more, less, and different quantities', () => {
+    const more = addAction({
+      id: 'more',
+      performedAt: '2026-07-18T10:00:00.000Z',
+      kind: 'chemical',
+      description: 'Added more than recommended',
+      origin: 'recommendation',
+      recommendationId: 'rec-1',
+      performedComparison: {
+        recommendationId: 'rec-1',
+        recommended: { amount: 100, unit: 'g' },
+        performed: { amount: 150, unit: 'g' },
+      },
+      chemical: { amount: 150, unit: 'g', productType: 'chlorine-granules' },
+    })[0];
+    const less = addAction({
+      id: 'less',
+      performedAt: '2026-07-18T11:00:00.000Z',
+      kind: 'chemical',
+      description: 'Added less than recommended',
+      origin: 'recommendation',
+      recommendationId: 'rec-2',
+      performedComparison: {
+        recommendationId: 'rec-2',
+        recommended: { amount: 100, unit: 'g' },
+        performed: { amount: 50, unit: 'g' },
+      },
+      chemical: { amount: 50, unit: 'g', productType: 'chlorine-granules' },
+    })[1];
+
+    expect(more.performedComparison?.performed.amount).toBe(150);
+    expect(less.performedComparison?.performed.amount).toBe(50);
+    expect(more.performedComparison?.recommended?.amount).toBe(100);
+    expect(more.performedComparison?.deviation?.amountAbsolute).toBe(50);
+    expect(less.performedComparison?.deviation?.amountAbsolute).toBe(-50);
+  });
+
+  it('does not evaluate an unknown chemical product', () => {
+    const before: Measurement = { ...SAMPLE_MEASUREMENT, id: 'before', measuredAt: '2026-07-18T08:00:00.000Z' };
+    const after: Measurement = { ...SAMPLE_MEASUREMENT, id: 'after', measuredAt: '2026-07-18T14:00:00.000Z', fac: 3.0 };
+    const action: MaintenanceAction = {
+      id: 'unknown-action',
+      performedAt: '2026-07-18T10:00:00.000Z',
+      kind: 'chemical',
+      description: 'Unknown chemical',
+      origin: 'manual',
+      chemical: {
+        product: {
+          source: 'unknown',
+          snapshot: { name: 'Unknown', category: 'other' },
+        },
+      },
+    };
+
+    saveActions([action]);
+    expect(loadActions()[0].evaluationEligibility).toBe('unknown-product');
+    expect(evaluateActionOutcomes([before, after], loadActions())).toHaveLength(0);
+  });
+
+  it('keeps exclusion flags for learning', () => {
+    addAction({
+      id: 'exclude-learning',
+      performedAt: '2026-07-18T10:00:00.000Z',
+      kind: 'chemical',
+      description: 'Excluded action',
+      origin: 'manual',
+      exclusionFlags: {
+        atypical: true,
+        incorrectlyRecorded: false,
+        excludedFromLearning: true,
+      },
+      chemical: { productType: 'ph-reducer', amount: 100, unit: 'ml' },
+    });
+
+    expect(loadActions()[0].exclusionFlags?.excludedFromLearning).toBe(true);
+  });
+
+  it('migrates legacy recommendation actions without claiming exact performed values', () => {
+    store.set('pool-maintenance:actions', JSON.stringify([{
+      id: 'legacy-rec',
+      performedAt: '2026-07-18T10:00:00.000Z',
+      kind: 'chemical',
+      description: 'Legacy pH reducer',
+      relatedRecommendationId: 'rec-old',
+      chemical: {
+        productType: 'ph-reducer',
+        mainComponent: 'Acid',
+        amount: 250,
+        unit: 'ml',
+      },
+    }]));
+
+    const action = loadActions()[0];
+    expect(action.origin).toBe('recommendation');
+    expect(action.performedValuesProvenance).toBe('assumed-from-legacy-recommendation');
+    expect(action.chemical?.product?.snapshot.name).toBe('Acid');
   });
 });
 

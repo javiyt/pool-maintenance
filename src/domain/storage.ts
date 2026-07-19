@@ -1,7 +1,18 @@
 import type { Measurement } from './measurement';
 import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
-import type { MaintenanceAction } from './actions';
+import type {
+  ChemicalProductSnapshot,
+  MaintenanceAction,
+  MaintenanceActionKind,
+  UserChemicalProduct,
+} from './actions';
+import {
+  buildPerformedComparison,
+  chemicalProductCategoryFromLegacyType,
+  determineEvaluationEligibility,
+  getActionRecommendationId,
+} from './actions';
 import type { FollowUp } from './followUp';
 import type { DiagnosticExperiment } from './latentStateEstimator';
 import { buildExportSnapshots, type ExportSnapshots } from './exportSnapshots';
@@ -102,33 +113,170 @@ export function deleteMeasurement(id: string): Measurement[] {
 
 // ── Maintenance Actions ────────────────────────────────────────────
 
+const ACTION_SCHEMA_VERSION = 2;
+
+function categoryForKind(kind: MaintenanceActionKind): string {
+  switch (kind) {
+    case 'chemical':
+    case 'chemical-cover':
+    case 'algaecide':
+    case 'clarifier':
+    case 'flocculant':
+    case 'stabilizer':
+    case 'unknown-product':
+      return 'chemical';
+    case 'chlorinator':
+    case 'equipment-maintenance':
+      return 'equipment';
+    case 'filtration':
+    case 'filter-backwash':
+      return 'filtration';
+    case 'water-replacement':
+    case 'water-top-up':
+    case 'partial-drain':
+      return 'water';
+    case 'cleaning':
+      return 'cleaning';
+    case 'physical-cover':
+      return 'cover';
+    case 'manual-test':
+      return 'measurement';
+    case 'inspection':
+      return 'inspection';
+    default:
+      return 'custom';
+  }
+}
+
+function buildLegacyProductSnapshot(action: MaintenanceAction): ChemicalProductSnapshot | undefined {
+  const chemical = action.chemical;
+  if (!chemical) return undefined;
+  if (chemical.product?.snapshot) return chemical.product.snapshot;
+  if (!chemical.productType && !chemical.mainComponent) return undefined;
+
+  return {
+    name: chemical.mainComponent || chemical.productType || 'Producto desconocido',
+    category: chemicalProductCategoryFromLegacyType(chemical.productType),
+    activeIngredients: chemical.mainComponent
+      ? [{ name: chemical.mainComponent, concentrationPercent: chemical.concentrationPercent }]
+      : undefined,
+  };
+}
+
+function migrateAction(raw: Record<string, unknown>): MaintenanceAction {
+  const action = { ...raw } as unknown as MaintenanceAction;
+  const recommendationId = getActionRecommendationId(action);
+  const legacyLinkedRecommendation = Boolean(recommendationId || action.recommendationSnapshot);
+
+  action.schemaVersion = action.schemaVersion ?? ACTION_SCHEMA_VERSION;
+  action.origin = action.origin ?? (legacyLinkedRecommendation ? 'recommendation' : 'manual');
+  action.relatedRecommendationId = action.relatedRecommendationId ?? action.recommendationId;
+  action.recommendationId = action.recommendationId ?? action.relatedRecommendationId;
+  action.category = action.category ?? categoryForKind(action.kind);
+  action.actionType = action.actionType ?? action.kind;
+  action.performedValuesProvenance = action.performedValuesProvenance
+    ?? (legacyLinkedRecommendation ? 'assumed-from-legacy-recommendation' : 'user-entered');
+
+  const snapshot = buildLegacyProductSnapshot(action);
+  if (action.chemical && snapshot && !action.chemical.product) {
+    action.chemical = {
+      ...action.chemical,
+      product: {
+        source: action.chemical.productType ? 'system-catalog' : 'unknown',
+        productId: action.chemical.productType,
+        snapshot,
+      },
+    };
+  }
+
+  if (!action.performedComparison) {
+    const amount = action.chemical?.amount;
+    const unit = action.chemical?.unit;
+    const runtimeHours = action.chlorinator?.additionalHours ?? action.filtration?.newHours;
+    const outputPercent = action.chlorinator?.newOutputPercent;
+    action.performedComparison = {
+      recommendationId,
+      recommended: legacyLinkedRecommendation
+        ? { amount, unit, runtimeHours, outputPercent }
+        : undefined,
+      performed: { amount, unit, runtimeHours, outputPercent },
+    };
+  } else if (!action.performedComparison.deviation) {
+    action.performedComparison = buildPerformedComparison({
+      recommendationId: action.performedComparison.recommendationId ?? recommendationId,
+      recommended: action.performedComparison.recommended,
+      performed: action.performedComparison.performed,
+    });
+  }
+
+  action.evaluationEligibility = action.evaluationEligibility ?? determineEvaluationEligibility(action);
+  action.chemicalCatalogVersion = action.chemicalCatalogVersion ?? CHEMICAL_CATALOG_VERSION;
+
+  return action;
+}
+
 export function loadActions(): MaintenanceAction[] {
   try {
     const raw = localStorage.getItem(key('actions'));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed as MaintenanceAction[];
+    return parsed.map((item) => migrateAction(item as Record<string, unknown>));
   } catch {
     return [];
   }
 }
 
 export function saveActions(actions: MaintenanceAction[]): void {
-  localStorage.setItem(key('actions'), JSON.stringify(actions));
+  localStorage.setItem(key('actions'), JSON.stringify(actions.map((action) => migrateAction(action as unknown as Record<string, unknown>))));
 }
 
 export function addAction(a: MaintenanceAction): MaintenanceAction[] {
   const list = loadActions();
   list.push(a);
   saveActions(list);
-  return list;
+  return loadActions();
 }
 
 export function deleteAction(id: string): MaintenanceAction[] {
   const list = loadActions().filter((a) => a.id !== id);
   saveActions(list);
   return list;
+}
+
+// ── User Chemical Product Catalog ─────────────────────────────────
+
+export function loadUserChemicalProducts(): UserChemicalProduct[] {
+  try {
+    const raw = localStorage.getItem(key('userChemicalProducts'));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is UserChemicalProduct =>
+      typeof item === 'object'
+      && item !== null
+      && typeof (item as UserChemicalProduct).id === 'string'
+      && typeof (item as UserChemicalProduct).snapshot?.name === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveUserChemicalProducts(products: UserChemicalProduct[]): void {
+  localStorage.setItem(key('userChemicalProducts'), JSON.stringify(products));
+}
+
+export function addUserChemicalProduct(snapshot: ChemicalProductSnapshot, now = new Date()): UserChemicalProduct {
+  const products = loadUserChemicalProducts();
+  const product: UserChemicalProduct = {
+    id: `usr-prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    snapshot: { ...snapshot },
+  };
+  saveUserChemicalProducts([...products, product]);
+  return product;
 }
 
 // ── Follow-Up Records ──────────────────────────────────────────────
@@ -224,7 +372,7 @@ export function mergeExperiments(
   return [...existing, ...deduped];
 }
 
-export const EXPORT_SCHEMA_VERSION = 9;
+export const EXPORT_SCHEMA_VERSION = 10;
 
 export interface ExportData extends ExportSnapshots {
   schemaVersion: number;
@@ -240,6 +388,7 @@ export interface ExportData extends ExportSnapshots {
   actions: MaintenanceAction[];
   followUps: FollowUp[];
   experiments?: DiagnosticExperiment[];
+  userChemicalProducts?: UserChemicalProduct[];
 }
 
 export interface ImportResult {
@@ -247,6 +396,7 @@ export interface ImportResult {
   actions: MaintenanceAction[];
   followUps: FollowUp[];
   experiments: DiagnosticExperiment[];
+  userChemicalProducts: UserChemicalProduct[];
   poolConfig: PoolSettings | null;
   count: number;
 }
@@ -264,6 +414,7 @@ export function exportData(now?: Date): ExportData {
   const actions = loadActions();
   const followUps = loadFollowUps();
   const experiments = loadExperiments();
+  const userChemicalProducts = loadUserChemicalProducts();
   const snapshots = buildExportSnapshots({
     measurements,
     actions,
@@ -286,6 +437,7 @@ export function exportData(now?: Date): ExportData {
     actions,
     followUps,
     experiments,
+    userChemicalProducts,
     ...snapshots,
   };
 }
@@ -294,6 +446,7 @@ export function exportData(now?: Date): ExportData {
  * Parse and validate an import JSON string.
  *
  * Supports:
+ * - v10: v9 plus independent manual maintenance actions, performed/recommended comparison, and user chemical products
  * - v9: v8 plus structured versioned snapshots for export auditability
  * - v8: `{ schemaVersion: 8, applicationVersion, recommendationEngineVersion, outcomeEvaluatorVersion, chemicalCatalogVersion, poolConfig, measurements, actions, followUps, experiments }`
  * - v7: `{ schemaVersion: 7, poolConfig, measurements, actions, followUps, experiments }` — adds diagnostic experiments
@@ -322,7 +475,7 @@ export function parseImportData(jsonString: string): ImportResult {
   // ── Legacy format: plain array of measurements ────────────────
   if (Array.isArray(data)) {
     if (data.length === 0) {
-      return { measurements: [], actions: [], followUps: [], experiments: [], poolConfig: null, count: 0 };
+      return { measurements: [], actions: [], followUps: [], experiments: [], userChemicalProducts: [], poolConfig: null, count: 0 };
     }
 
     for (const item of data) {
@@ -339,7 +492,7 @@ export function parseImportData(jsonString: string): ImportResult {
     }
 
     const measurements = data.map(migrateMeasurement);
-    return { measurements, actions: [], followUps: [], experiments: [], poolConfig: null, count: measurements.length };
+    return { measurements, actions: [], followUps: [], experiments: [], userChemicalProducts: [], poolConfig: null, count: measurements.length };
   }
 
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
@@ -376,7 +529,7 @@ export function parseImportData(jsonString: string): ImportResult {
           );
         }
       }
-      actions = obj.actions as MaintenanceAction[];
+      actions = obj.actions.map((action) => migrateAction(action as Record<string, unknown>));
     }
 
     // Parse follow-ups (v6+); v5 and older exports won't have this field
@@ -405,12 +558,24 @@ export function parseImportData(jsonString: string): ImportResult {
       experiments = obj.experiments as DiagnosticExperiment[];
     }
 
+    let userChemicalProducts: UserChemicalProduct[] = [];
+    if (Array.isArray(obj.userChemicalProducts)) {
+      for (const item of obj.userChemicalProducts) {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error(
+            'Invalid JSON format: userChemicalProducts must be an array of objects.',
+          );
+        }
+      }
+      userChemicalProducts = obj.userChemicalProducts as UserChemicalProduct[];
+    }
+
     let poolConfig: PoolSettings | null = null;
     if (obj.poolConfig && typeof obj.poolConfig === 'object') {
       poolConfig = { ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings;
     }
 
-    return { measurements, actions, followUps, experiments, poolConfig, count: measurements.length };
+    return { measurements, actions, followUps, experiments, userChemicalProducts, poolConfig, count: measurements.length };
   }
 
   throw new Error(

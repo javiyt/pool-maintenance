@@ -1,5 +1,6 @@
 import type { Measurement } from './measurement';
 import type { MaintenanceAction } from './actions';
+import { determineEvaluationEligibility, getChemicalProductCategory } from './actions';
 import { calculateOutcomeConfidence } from './recommendation/confidenceCalculator';
 import type { ConfidenceReason } from './recommendation/confidenceCalculator';
 import { OUTCOME_EVALUATOR_VERSION } from './recommendation/versions';
@@ -123,9 +124,18 @@ const EVALUATION_WINDOWS: Record<string, Window> = {
 };
 
 function getWindow(action: MaintenanceAction): Window | null {
+  const eligibility = determineEvaluationEligibility(action);
+  if (eligibility === 'unknown-product') return null;
   if (action.kind === 'chemical' && action.chemical) {
-    return EVALUATION_WINDOWS[`chemical:${action.chemical.productType}`] ?? EVALUATION_WINDOWS.chemical;
+    const category = getChemicalProductCategory(action);
+    if (category === 'ph-reducer') return EVALUATION_WINDOWS['chemical:ph-reducer'];
+    if (category === 'ph-increaser') return EVALUATION_WINDOWS['chemical:ph-increaser'];
+    if (category === 'fast-chlorine' || category === 'shock-chlorine') return EVALUATION_WINDOWS['chemical:chlorine-granules'];
+    if (category === 'salt') return EVALUATION_WINDOWS['chemical:pool-salt'];
+    if (action.chemical.productType) return EVALUATION_WINDOWS.chemical;
+    return null;
   }
+  if (eligibility === 'not-evaluable') return null;
   return EVALUATION_WINDOWS[action.kind] ?? null;
 }
 
@@ -140,17 +150,16 @@ function hoursBetween(isoA: string, isoB: string): number {
 /** Return the relevant field-change keys for an action kind. */
 function expectedFields(action: MaintenanceAction): Array<keyof FieldChanges> {
   if (action.kind === 'chemical' && action.chemical) {
-    switch (action.chemical.productType) {
+    switch (getChemicalProductCategory(action)) {
       case 'ph-reducer':
       case 'ph-increaser':
         return ['ph'];
-      case 'chlorine-granules':
+      case 'fast-chlorine':
+      case 'shock-chlorine':
         return ['fac', 'orp'];
-      case 'pool-salt':
+      case 'salt':
         return ['salt'];
-      case 'chlorine-stabilizer':
-        return [];
-      case 'alkalinity-reducer':
+      case 'stabilizer':
         return [];
     }
   }
@@ -172,13 +181,14 @@ function expectedDirection(
   field: keyof FieldChanges,
 ): 1 | -1 | 0 | null {
   if (action.kind === 'chemical' && action.chemical) {
+    const category = getChemicalProductCategory(action);
     if (field === 'ph') {
-      if (action.chemical.productType === 'ph-reducer') return -1;
-      if (action.chemical.productType === 'ph-increaser') return 1;
+      if (category === 'ph-reducer') return -1;
+      if (category === 'ph-increaser') return 1;
     }
-    if (field === 'fac' && action.chemical.productType === 'chlorine-granules') return 1;
-    if (field === 'orp' && action.chemical.productType === 'chlorine-granules') return 1;
-    if (field === 'salt' && action.chemical.productType === 'pool-salt') return 1;
+    if (field === 'fac' && (category === 'fast-chlorine' || category === 'shock-chlorine')) return 1;
+    if (field === 'orp' && (category === 'fast-chlorine' || category === 'shock-chlorine')) return 1;
+    if (field === 'salt' && category === 'salt') return 1;
   }
   if (action.kind === 'chlorinator') {
     if (field === 'fac') return 1;
@@ -663,13 +673,14 @@ function allFieldsAlreadyInRange(
   // Quick heuristic: check if the key fields were already in a reasonable range
   // before the action and stayed there after
   if (action.kind === 'chemical' && action.chemical) {
-    if (action.chemical.productType === 'ph-reducer' || action.chemical.productType === 'ph-increaser') {
+    const category = getChemicalProductCategory(action);
+    if (category === 'ph-reducer' || category === 'ph-increaser') {
       return before.ph >= 7.0 && before.ph <= 7.8 && after.ph >= 7.0 && after.ph <= 7.8;
     }
-    if (action.chemical.productType === 'chlorine-granules') {
+    if (category === 'fast-chlorine' || category === 'shock-chlorine') {
       return before.fac >= 0.5 && before.fac <= 3.5 && after.fac >= 0.5 && after.fac <= 3.5;
     }
-    if (action.chemical.productType === 'pool-salt') {
+    if (category === 'salt') {
       return before.salt >= 2500 && before.salt <= 3500 && after.salt >= 2500 && after.salt <= 3500;
     }
   }

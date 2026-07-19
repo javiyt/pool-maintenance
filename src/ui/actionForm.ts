@@ -2,9 +2,13 @@ import type {
   MaintenanceAction,
   MaintenanceActionKind,
   ChemicalProductType,
+  ChemicalProductCategory,
+  ChemicalProductSnapshot,
+  ChemicalProductReference,
 } from '../domain/actions';
-import { generateActionId } from '../domain/actions';
-import { addAction } from '../domain/storage';
+import { buildPerformedComparison, determineEvaluationEligibility, generateActionId } from '../domain/actions';
+import { CATALOG, getProductById } from '../domain/chemicalCatalog';
+import { addAction, addUserChemicalProduct, loadUserChemicalProducts } from '../domain/storage';
 import { loadMeasurements } from '../domain/storage';
 import type { RecommendationSnapshot } from '../domain/recommendation/recommendationSnapshot';
 import {
@@ -38,6 +42,10 @@ function getStr(id: string): string {
   return (document.getElementById(id) as HTMLInputElement | HTMLSelectElement)?.value ?? '';
 }
 
+function getBool(id: string): boolean {
+  return (document.getElementById(id) as HTMLInputElement | null)?.checked ?? false;
+}
+
 function setVal(id: string, val: string | number | undefined): void {
   const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
   if (el && val !== undefined && val !== null) {
@@ -62,6 +70,10 @@ export interface ActionFormPrefill {
   filtrationNewHours?: number;
   filtrationPrevHours?: number;
   relatedMeasurementId?: string;
+  recommendedAmount?: number;
+  recommendedUnit?: string;
+  recommendedRuntimeHours?: number;
+  recommendedOutputPercent?: number;
 }
 
 function requiredElement<T extends HTMLElement = HTMLElement>(id: string, kind: string): T {
@@ -89,9 +101,18 @@ export class ActionForm {
 
   private readonly kindFieldMap: Record<string, string> = {
     chemical: 'actionChemicalFields',
+    'chemical-cover': 'actionChemicalFields',
+    algaecide: 'actionChemicalFields',
+    clarifier: 'actionChemicalFields',
+    flocculant: 'actionChemicalFields',
+    stabilizer: 'actionChemicalFields',
+    'unknown-product': 'actionChemicalFields',
     chlorinator: 'actionChlorinatorFields',
     filtration: 'actionFiltrationFields',
+    'filter-backwash': 'actionFiltrationFields',
     'water-replacement': 'actionWaterFields',
+    'water-top-up': 'actionWaterFields',
+    'partial-drain': 'actionWaterFields',
   };
 
   constructor() {
@@ -109,6 +130,7 @@ export class ActionForm {
     this.overlay.addEventListener('click', () => this.close());
     this.closeBtn.addEventListener('click', () => this.close());
     this.kindSelect.addEventListener('change', () => this.toggleKindFields());
+    document.getElementById('actionProductSource')?.addEventListener('change', () => this.toggleProductFields());
     this.form.addEventListener('submit', (e) => this.handleSubmit(e));
     this.drawer.addEventListener('click', (e) => e.stopPropagation());
 
@@ -138,6 +160,7 @@ export class ActionForm {
 
     // Populate measurement dropdown
     this.populateMeasurementDropdown();
+    this.populateProductDropdowns();
 
     // Apply prefill if provided
     if (prefill) {
@@ -165,6 +188,7 @@ export class ActionForm {
     }
 
     this.toggleKindFields();
+    this.toggleProductFields();
     this.panel.hidden = false;
 
     // Focus the close button so the panel is keyboard-accessible
@@ -199,6 +223,14 @@ export class ActionForm {
     }
   }
 
+  private toggleProductFields(): void {
+    const source = getStr('actionProductSource') || 'system-catalog';
+    document.getElementById('actionSystemProductField')?.toggleAttribute('hidden', source !== 'system-catalog');
+    document.getElementById('actionUserProductField')?.toggleAttribute('hidden', source !== 'user-catalog');
+    document.getElementById('actionCustomProductFields')?.toggleAttribute('hidden', source !== 'one-off' && source !== 'user-catalog');
+    document.getElementById('actionUnknownProductHint')?.toggleAttribute('hidden', source !== 'unknown');
+  }
+
   private populateMeasurementDropdown(): void {
     const measurements = loadMeasurements();
     // Keep the first option ("— None —")
@@ -225,6 +257,32 @@ export class ActionForm {
     }
   }
 
+  private populateProductDropdowns(): void {
+    const systemSelect = document.getElementById('actionSystemProduct') as HTMLSelectElement | null;
+    if (systemSelect) {
+      systemSelect.innerHTML = '';
+      for (const product of CATALOG) {
+        const opt = document.createElement('option');
+        opt.value = product.id;
+        opt.textContent = product.genericName;
+        systemSelect.appendChild(opt);
+      }
+    }
+
+    const userSelect = document.getElementById('actionUserProduct') as HTMLSelectElement | null;
+    if (userSelect) {
+      userSelect.innerHTML = '';
+      for (const product of loadUserChemicalProducts()) {
+        const opt = document.createElement('option');
+        opt.value = product.id;
+        opt.textContent = product.snapshot.brand
+          ? `${product.snapshot.brand} ${product.snapshot.name}`
+          : product.snapshot.name;
+        userSelect.appendChild(opt);
+      }
+    }
+  }
+
   private handleSubmit(e: Event): void {
     e.preventDefault();
     this.clearErrors();
@@ -245,20 +303,29 @@ export class ActionForm {
     const kind = this.kindSelect.value as MaintenanceActionKind;
     const notes = (document.getElementById('actionNotes') as HTMLTextAreaElement).value.trim() || undefined;
     const relatedMeasurementId = this.relatedSelect.value || undefined;
+    const reason = getStr('actionReason').trim() || undefined;
+    const performedBy = getStr('actionPerformedBy').trim() || undefined;
 
     let chemical: MaintenanceAction['chemical'] | undefined;
     let chlorinator: MaintenanceAction['chlorinator'] | undefined;
     let filtration: MaintenanceAction['filtration'] | undefined;
     let waterReplacement: MaintenanceAction['waterReplacement'] | undefined;
 
-    if (kind === 'chemical') {
+    if (categoryForKind(kind) === 'chemical') {
       const productType = getStr('actionChemicalProduct') as ChemicalProductType;
       const mainComponent = getStr('actionChemicalComponent');
       const amount = getNum('actionChemicalAmount');
       const unit = getStr('actionChemicalUnit') as 'ml' | 'l' | 'g' | 'kg';
-      if (productType && mainComponent && amount !== undefined && unit) {
-        chemical = { productType, mainComponent, amount, unit };
-      }
+      const concentrationPercent = getNum('actionChemicalConcentration');
+      const product = this.buildProductReference(productType, mainComponent, concentrationPercent);
+      chemical = {
+        productType: productType || undefined,
+        mainComponent: mainComponent || product?.snapshot.activeIngredients?.[0]?.name,
+        amount,
+        unit: unit || undefined,
+        concentrationPercent,
+        product,
+      };
     } else if (kind === 'chlorinator') {
       const prevOutput = getNum('actionChlorinatorPrevOutput');
       const newOutput = getNum('actionChlorinatorNewOutput');
@@ -267,36 +334,73 @@ export class ActionForm {
       if (newOutput !== undefined) {
         chlorinator = { previousOutputPercent: prevOutput, newOutputPercent: newOutput, additionalHours: addHours, totalHours };
       }
-    } else if (kind === 'filtration') {
+    } else if (kind === 'filtration' || kind === 'filter-backwash') {
       const prevHours = getNum('actionFiltrationPrevHours');
       const newHours = getNum('actionFiltrationNewHours');
       if (newHours !== undefined) {
         filtration = { previousHours: prevHours, newHours };
       }
-    } else if (kind === 'water-replacement') {
+    } else if (kind === 'water-replacement' || kind === 'water-top-up' || kind === 'partial-drain') {
       const liters = getNum('actionWaterLiters');
       const percent = getNum('actionWaterPercent');
       waterReplacement = { estimatedLiters: liters, estimatedPercent: percent };
     }
 
+    const recommended = {
+      amount: this.currentPrefill?.recommendedAmount ?? this.currentPrefill?.chemicalAmount,
+      unit: this.currentPrefill?.recommendedUnit ?? this.currentPrefill?.chemicalUnit,
+      runtimeHours: this.currentPrefill?.recommendedRuntimeHours
+        ?? this.currentPrefill?.chlorinatorAddHours
+        ?? this.currentPrefill?.filtrationNewHours,
+      outputPercent: this.currentPrefill?.recommendedOutputPercent ?? this.currentPrefill?.chlorinatorNewOutput,
+    };
+    const performed = {
+      amount: chemical?.amount,
+      unit: chemical?.unit,
+      runtimeHours: chlorinator?.additionalHours ?? filtration?.newHours,
+      outputPercent: chlorinator?.newOutputPercent,
+    };
+    const hasRecommendation = Boolean(this.currentPrefill?.recommendationId);
+
     const action: MaintenanceAction = {
       id: generateActionId(),
+      schemaVersion: 2,
       performedAt,
       kind,
+      actionType: kind,
+      category: categoryForKind(kind),
       description,
       notes,
+      reason,
+      performedBy,
       relatedMeasurementId,
       relatedRecommendationId: this.currentPrefill?.recommendationId,
+      recommendationId: this.currentPrefill?.recommendationId,
       recommendationSnapshot: this.currentPrefill?.recommendationSnapshot,
+      origin: hasRecommendation ? 'recommendation' : 'manual',
+      performedValuesProvenance: 'user-entered',
+      performedComparison: buildPerformedComparison({
+        recommendationId: this.currentPrefill?.recommendationId,
+        recommended: hasRecommendation ? recommended : undefined,
+        performed,
+      }),
       chemical,
       chlorinator,
       filtration,
       waterReplacement,
+      isAtypical: getBool('actionIsAtypical'),
+      expectedEffect: getStr('actionExpectedEffect').trim() || undefined,
+      exclusionFlags: {
+        atypical: getBool('actionIsAtypical'),
+        incorrectlyRecorded: false,
+        excludedFromLearning: getBool('actionExcludeLearning'),
+      },
       applicationVersion: APPLICATION_VERSION,
       recommendationEngineVersion: this.currentPrefill?.recommendationSnapshot?.recommendationEngineVersion ?? RECOMMENDATION_ENGINE_VERSION,
       outcomeEvaluatorVersion: OUTCOME_EVALUATOR_VERSION,
       chemicalCatalogVersion: this.currentPrefill?.recommendationSnapshot?.chemicalCatalogVersion ?? CHEMICAL_CATALOG_VERSION,
     };
+    action.evaluationEligibility = determineEvaluationEligibility(action);
 
     addAction(action);
     this.close();
@@ -314,6 +418,126 @@ export class ActionForm {
   private clearErrors(): void {
     this.errorsEl.innerHTML = '';
   }
+
+  private buildProductReference(
+    legacyProductType: ChemicalProductType | '',
+    legacyComponent: string,
+    concentrationPercent: number | undefined,
+  ): ChemicalProductReference | undefined {
+    const source = getStr('actionProductSource') || 'system-catalog';
+    if (source === 'unknown') {
+      return {
+        source: 'unknown',
+        snapshot: {
+          name: getStr('actionCustomProductName').trim() || 'Producto desconocido',
+          category: 'other',
+          notes: getStr('actionCustomProductNotes').trim() || undefined,
+        },
+      };
+    }
+
+    if (source === 'user-catalog') {
+      const selectedId = getStr('actionUserProduct');
+      const selected = loadUserChemicalProducts().find((p) => p.id === selectedId);
+      if (selected && !getStr('actionCustomProductName').trim()) {
+        return {
+          source: 'user-catalog',
+          productId: selected.id,
+          snapshot: { ...selected.snapshot },
+        };
+      }
+    }
+
+    if (source === 'system-catalog') {
+      const systemId = getStr('actionSystemProduct');
+      const product = getProductById(systemId);
+      if (product) {
+        return {
+          source: 'system-catalog',
+          productId: product.id,
+          snapshot: {
+            name: product.genericName,
+            brand: product.manufacturer,
+            category: categoryFromSystemProduct(product.id, legacyProductType),
+            activeIngredients: [{
+              name: product.mainComponent,
+              concentrationPercent: product.concentration.value,
+            }],
+            dosageInstructions: product.recommendedDoses.join(' '),
+            notes: product.limitations.join(' '),
+          },
+        };
+      }
+    }
+
+    const snapshot: ChemicalProductSnapshot = {
+      name: getStr('actionCustomProductName').trim() || legacyComponent || 'Producto puntual',
+      brand: getStr('actionCustomProductBrand').trim() || undefined,
+      category: (getStr('actionCustomProductCategory') as ChemicalProductCategory) || categoryFromSystemProduct('', legacyProductType),
+      activeIngredients: legacyComponent
+        ? [{ name: legacyComponent, concentrationPercent }]
+        : undefined,
+      physicalForm: (getStr('actionCustomProductForm') as ChemicalProductSnapshot['physicalForm']) || undefined,
+      dosageInstructions: getStr('actionCustomProductDosage').trim() || undefined,
+      notes: getStr('actionCustomProductNotes').trim() || undefined,
+    };
+
+    if (getBool('actionSaveProduct')) {
+      const saved = addUserChemicalProduct(snapshot);
+      return {
+        source: 'user-catalog',
+        productId: saved.id,
+        snapshot: { ...saved.snapshot },
+      };
+    }
+
+    return {
+      source: 'one-off',
+      snapshot,
+    };
+  }
+}
+
+function categoryForKind(kind: MaintenanceActionKind): string {
+  switch (kind) {
+    case 'chemical':
+    case 'chemical-cover':
+    case 'algaecide':
+    case 'clarifier':
+    case 'flocculant':
+    case 'stabilizer':
+    case 'unknown-product':
+      return 'chemical';
+    case 'chlorinator':
+    case 'equipment-maintenance':
+      return 'equipment';
+    case 'filtration':
+    case 'filter-backwash':
+      return 'filtration';
+    case 'water-replacement':
+    case 'water-top-up':
+    case 'partial-drain':
+      return 'water';
+    case 'cleaning':
+      return 'cleaning';
+    case 'physical-cover':
+      return 'cover';
+    case 'manual-test':
+      return 'measurement';
+    case 'inspection':
+      return 'inspection';
+    default:
+      return 'custom';
+  }
+}
+
+function categoryFromSystemProduct(productId: string, fallback: string): ChemicalProductCategory {
+  if (productId.includes('ph-reducer') || fallback === 'ph-reducer') return 'ph-reducer';
+  if (productId.includes('ph-increaser') || fallback === 'ph-increaser') return 'ph-increaser';
+  if (productId.includes('chlorine-granules') || fallback === 'chlorine-granules') return 'fast-chlorine';
+  if (productId.includes('stabilizer') || fallback === 'chlorine-stabilizer') return 'stabilizer';
+  if (productId.includes('salt') || fallback === 'pool-salt') return 'salt';
+  return 'other';
 }
 
 function escapeHtml(s: string): string {

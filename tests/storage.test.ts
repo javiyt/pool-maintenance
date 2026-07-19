@@ -553,10 +553,10 @@ describe('export includes follow-ups (v6)', () => {
     expect(data.followUps[0].id).toBe('fu-1');
   });
 
-  it('sets schemaVersion to 9 and separates algorithm versions', () => {
+  it('sets schemaVersion to 10 and separates algorithm versions', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(9);
+    expect(data.schemaVersion).toBe(10);
     expect(data.applicationVersion).toBeDefined();
     expect(data.recommendationEngineVersion).toBeDefined();
     expect(data.outcomeEvaluatorVersion).toBeDefined();
