@@ -9,6 +9,7 @@ import {
 } from './versions';
 
 export interface RecommendationSnapshot {
+  schemaVersion: 2;
   recommendationId: string;
   applicationVersion: string;
   recommendationEngineVersion: string;
@@ -20,6 +21,28 @@ export interface RecommendationSnapshot {
     poolSettings: PoolSettings;
   };
   result: MaintenanceRecommendation;
+  diagnosticOrigin?: {
+    diagnosisCode?: MaintenanceRecommendation['diagnosisCode'];
+    relatedFields: MaintenanceRecommendation['relatedFields'];
+  };
+  category: MaintenanceRecommendation['kind'];
+  type?: string;
+  severity: MaintenanceRecommendation['severity'];
+  status?: MaintenanceRecommendation['state'];
+  stage?: number;
+  currentValues: Partial<Measurement>;
+  targetRanges?: MaintenanceRecommendation['rangePolicy'];
+  calculationInputs: {
+    latestMeasurement?: Measurement;
+    poolSettings: PoolSettings;
+    relatedFields: MaintenanceRecommendation['relatedFields'];
+  };
+  calculationResults: {
+    estimatedAmount?: MaintenanceRecommendation['estimatedAmount'];
+    suggestedOutputPercent?: MaintenanceRecommendation['suggestedOutputPercent'];
+    suggestedAdditionalHours?: MaintenanceRecommendation['suggestedAdditionalHours'];
+    suggestedFiltrationHours?: MaintenanceRecommendation['suggestedFiltrationHours'];
+  };
   theoreticalAmount?: number;
   personalizedAmount?: number;
   state?: string;
@@ -32,6 +55,14 @@ export interface RecommendationSnapshot {
     followUpActions: string[];
   };
   dependencies: MaintenanceRecommendation['dependencies'];
+  confidence?: NonNullable<MaintenanceRecommendation['personalization']>['confidence'];
+  confidenceReasons: string[];
+  engineVersions: {
+    application: string;
+    recommendationEngine: string;
+    outcomeEvaluator: string;
+    chemicalCatalog: string;
+  };
   notes: string[];
 }
 
@@ -42,7 +73,9 @@ export function buildRecommendationSnapshot(input: {
   capturedAt?: Date;
 }): RecommendationSnapshot {
   const rec = input.recommendation;
+  const latest = input.latestMeasurement;
   return {
+    schemaVersion: 2,
     recommendationId: rec.id,
     applicationVersion: APPLICATION_VERSION,
     recommendationEngineVersion: RECOMMENDATION_ENGINE_VERSION,
@@ -54,6 +87,33 @@ export function buildRecommendationSnapshot(input: {
       poolSettings: input.settings,
     },
     result: rec,
+    diagnosticOrigin: {
+      diagnosisCode: rec.diagnosisCode,
+      relatedFields: rec.relatedFields,
+    },
+    category: rec.kind,
+    type: rec.chemicalProductId ?? rec.equipmentName ?? rec.chlorineCorrectionType ?? rec.kind,
+    severity: rec.severity,
+    status: rec.state,
+    stage: rec.stage,
+    currentValues: rec.relatedFields.reduce<Partial<Measurement>>((acc, field) => {
+      if (latest && latest[field] !== undefined) {
+        (acc as Record<string, unknown>)[field] = latest[field];
+      }
+      return acc;
+    }, {}),
+    targetRanges: rec.rangePolicy,
+    calculationInputs: {
+      latestMeasurement: input.latestMeasurement,
+      poolSettings: input.settings,
+      relatedFields: rec.relatedFields,
+    },
+    calculationResults: {
+      estimatedAmount: rec.estimatedAmount,
+      suggestedOutputPercent: rec.suggestedOutputPercent,
+      suggestedAdditionalHours: rec.suggestedAdditionalHours,
+      suggestedFiltrationHours: rec.suggestedFiltrationHours,
+    },
     theoreticalAmount: rec.personalization?.theoreticalValue ?? rec.estimatedAmount ?? rec.suggestedAdditionalHours,
     personalizedAmount: rec.personalization?.personalizedValue,
     state: rec.state,
@@ -66,7 +126,14 @@ export function buildRecommendationSnapshot(input: {
       followUpActions: rec.followUpActions,
     },
     dependencies: rec.dependencies,
+    confidence: rec.personalization?.confidence,
+    confidenceReasons: rec.personalization ? [rec.personalization.explanation] : [],
+    engineVersions: {
+      application: APPLICATION_VERSION,
+      recommendationEngine: RECOMMENDATION_ENGINE_VERSION,
+      outcomeEvaluator: OUTCOME_EVALUATOR_VERSION,
+      chemicalCatalog: CHEMICAL_CATALOG_VERSION,
+    },
     notes: rec.calculationNotes,
   };
 }
-

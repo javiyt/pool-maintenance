@@ -329,6 +329,23 @@ describe('effectiveness evaluation', () => {
     expect(outcomes).toHaveLength(1);
     expect(outcomes[0].effectiveness).toBe('inconclusive');
   });
+
+  it('does not mark a chlorinator action with negative noisy FAC evidence as partially effective', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 1.0, orp: 650 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-10T10:00:00.000Z', fac: 0.9, orp: 599 }, 'm2'),
+    ];
+    const action = makeChlorinatorAction({ performedAt: '2026-07-09T11:00:00.000Z' });
+
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].changes.fac).toBe(-0.1);
+    expect(outcomes[0].changes.orp).toBe(-51);
+    expect(outcomes[0].effectiveness).toBe('inconclusive');
+    expect(outcomes[0].effectiveness).not.toBe('partially-effective');
+    expect(outcomes[0].explanationCodes).toContain('CHANGE_WITHIN_MEASUREMENT_ERROR');
+  });
 });
 
 // ── Confidence and intervening actions ────────────────────────────
@@ -464,6 +481,25 @@ describe('fields already in range before action', () => {
     const outcomes = evaluateActionOutcomes(measurements, [action]);
     expect(outcomes).toHaveLength(1);
     expect(outcomes[0].effectiveness).toBe('inconclusive');
+    expect(outcomes[0].actionSuitability).toBe('unnecessary');
+    expect(outcomes[0].explanationCodes).toContain('FIELDS_ALREADY_IN_RANGE');
+  });
+
+  it('does not call chemical action partially effective only because FAC was already in range', () => {
+    const measurements = [
+      makeMeasurement({ measuredAt: '2026-07-09T10:00:00.000Z', fac: 2.0, orp: 610 }, 'm1'),
+      makeMeasurement({ measuredAt: '2026-07-09T16:00:00.000Z', fac: 2.0, orp: 660 }, 'm2'),
+    ];
+    const action = makeChemicalAction({
+      performedAt: '2026-07-09T11:00:00.000Z',
+      chemical: { productType: 'chlorine-granules', mainComponent: 'Cloro', amount: 500, unit: 'g' },
+    });
+
+    const outcomes = evaluateActionOutcomes(measurements, [action]);
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].effectiveness).not.toBe('partially-effective');
+    expect(outcomes[0].actionSuitability).toBe('unnecessary');
   });
 });
 

@@ -49,6 +49,24 @@ function makeFollowUp(overrides: Partial<FollowUp> = {}): FollowUp {
 }
 
 function makeOutcome(overrides: Partial<ActionOutcome> = {}): ActionOutcome {
+  const beforeMeasurement = {
+    id: 'meas-before',
+    measuredAt: '2026-07-09T10:00:00.000Z',
+    ph: 7.5,
+    ec: 6640,
+    tds: 3230,
+    salt: 3380,
+    orp: 672,
+    fac: 1.0,
+    temperature: 25.0,
+  };
+  const afterMeasurement = {
+    ...beforeMeasurement,
+    id: 'meas-after',
+    measuredAt: '2026-07-09T18:00:00.000Z',
+    ph: 7.4,
+    fac: 1.8,
+  };
   const base: ActionOutcome = {
     actionId: 'act-test-1',
     beforeMeasurementId: 'meas-before',
@@ -57,8 +75,10 @@ function makeOutcome(overrides: Partial<ActionOutcome> = {}): ActionOutcome {
     timing: 'preferred',
     changes: { fac: 0.8, ph: -0.1 },
     effectiveness: 'effective',
+    actionSuitability: 'appropriate',
     confidence: 0.8,
     confidenceReasons: ['Expected increase in FAC'],
+    explanationCodes: [],
     observations: [
       {
         afterMeasurementId: 'meas-after',
@@ -67,6 +87,32 @@ function makeOutcome(overrides: Partial<ActionOutcome> = {}): ActionOutcome {
         changes: { fac: 0.8, ph: -0.1 },
       },
     ],
+    assessmentSnapshot: {
+      schemaVersion: 1,
+      actionId: 'act-test-1',
+      previousMeasurement: beforeMeasurement,
+      observedMeasurements: [afterMeasurement],
+      selectedEvaluationMeasurement: afterMeasurement,
+      expectedEffects: [
+        { field: 'fac', direction: 'increase', significanceThreshold: 0.2 },
+      ],
+      observedChanges: [
+        { field: 'fac', delta: 0.8, significant: true },
+        { field: 'ph', delta: -0.1, significant: true },
+      ],
+      intermediateContext: [],
+      intermediateActions: [],
+      result: {
+        effectiveness: 'effective',
+        actionSuitability: 'appropriate',
+      },
+      confidenceBreakdown: {
+        score: 0.8,
+        reasons: ['Expected increase in FAC'],
+      },
+      explanationCodes: [],
+      evaluatorVersion: '2.0.0',
+    },
     evaluatedAt: '2026-07-09T18:00:00.000Z',
     evaluatorVersion: '2.0.0',
   };

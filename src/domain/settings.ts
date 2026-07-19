@@ -10,6 +10,7 @@ export interface SaltChlorinatorConfig {
   filtrationHoursPerDay: number;
   maxRecommendedOutputPercent: number;
   maxRecommendedHoursPerDay: number;
+  minProgrammableHourIncrement?: number;
 }
 
 export interface HistoricalLearningConfig {
@@ -52,6 +53,7 @@ export const DEFAULT_SALT_CHLORINATOR: SaltChlorinatorConfig = {
   filtrationHoursPerDay: 6,
   maxRecommendedOutputPercent: 100,
   maxRecommendedHoursPerDay: 12,
+  minProgrammableHourIncrement: 1,
 };
 
 export function volumeInLiters(settings: PoolSettings): number {

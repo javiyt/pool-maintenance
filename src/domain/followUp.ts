@@ -34,6 +34,13 @@ export interface ActionExclusionFlags {
   excludedFromLearning?: boolean;
 }
 
+export interface FollowUpStatusTransition {
+  from?: FollowUpStatus;
+  to: FollowUpStatus;
+  changedAt: string;
+  reasonCode: string;
+}
+
 export interface FollowUp {
   id: string;
   actionId: string;
@@ -41,6 +48,7 @@ export interface FollowUp {
   sourceMeasurementId?: string;
   suggestedRetestDelay: number; // hours
   status: FollowUpStatus;
+  statusHistory?: FollowUpStatusTransition[];
   createdAt: string; // ISO 8601
   dueAt?: string; // ISO 8601
   evaluationMeasurementId?: string;
@@ -100,6 +108,13 @@ export function createFollowUp(
     sourceMeasurementId,
     suggestedRetestDelay: delay,
     status: 'awaiting-retest',
+    statusHistory: [
+      {
+        to: 'awaiting-retest',
+        changedAt: now,
+        reasonCode: 'FOLLOW_UP_CREATED',
+      },
+    ],
     createdAt: now,
     dueAt,
     excludedFromLearning: false,
@@ -125,12 +140,12 @@ export function updateFollowUpStatuses(followUps: FollowUp[], now: Date = new Da
 
     // Expire if more than 3x the suggested delay has passed
     if (elapsed > fu.suggestedRetestDelay * 3) {
-      return { ...fu, status: 'expired' as const };
+      return transitionFollowUpStatus(fu, 'expired', now.toISOString(), 'FOLLOW_UP_EXPIRED');
     }
 
     // Mark as due if the due time has passed
     if (fu.status === 'awaiting-retest' && fu.dueAt && new Date(fu.dueAt) <= now) {
-      return { ...fu, status: 'retest-due' as const };
+      return transitionFollowUpStatus(fu, 'retest-due', now.toISOString(), 'RETEST_DUE');
     }
 
     return fu;
@@ -166,9 +181,11 @@ export function markFollowUpEvaluated(
       return fu;
     }
     const completedLate = fu.status === 'expired' || outcome.timing === 'late';
+    const status = completedLate ? 'completed-late' as const : 'completed' as const;
     return {
       ...fu,
-      status: completedLate ? 'completed-late' as const : 'completed' as const,
+      status,
+      statusHistory: appendStatusTransition(fu, status, outcome.evaluatedAt, completedLate ? 'EVALUATED_LATE' : 'EVALUATED'),
       evaluationMeasurementId: outcome.afterMeasurementId,
       evaluatedAt: outcome.evaluatedAt,
       effectiveness: outcome.effectiveness,
@@ -189,6 +206,37 @@ export function setFollowUpExclusionFlags(
     incorrectlyRecorded: flags.incorrectlyRecorded ?? followUp.incorrectlyRecorded,
     excludedFromLearning: flags.excludedFromLearning ?? followUp.excludedFromLearning,
   };
+}
+
+function transitionFollowUpStatus(
+  followUp: FollowUp,
+  to: FollowUpStatus,
+  changedAt: string,
+  reasonCode: string,
+): FollowUp {
+  if (followUp.status === to) return followUp;
+  return {
+    ...followUp,
+    status: to,
+    statusHistory: appendStatusTransition(followUp, to, changedAt, reasonCode),
+  };
+}
+
+function appendStatusTransition(
+  followUp: FollowUp,
+  to: FollowUpStatus,
+  changedAt: string,
+  reasonCode: string,
+): FollowUpStatusTransition[] {
+  return [
+    ...(followUp.statusHistory ?? []),
+    {
+      from: followUp.status,
+      to,
+      changedAt,
+      reasonCode,
+    },
+  ];
 }
 
 // ── Unusual event notes ───────────────────────────────────────────

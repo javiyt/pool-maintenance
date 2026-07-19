@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from './settings';
 import type { MaintenanceAction } from './actions';
 import type { FollowUp } from './followUp';
 import type { DiagnosticExperiment } from './latentStateEstimator';
+import { buildExportSnapshots, type ExportSnapshots } from './exportSnapshots';
 import {
   APPLICATION_VERSION,
   CHEMICAL_CATALOG_VERSION,
@@ -221,9 +222,9 @@ export function mergeExperiments(
   return [...existing, ...deduped];
 }
 
-export const EXPORT_SCHEMA_VERSION = 8;
+export const EXPORT_SCHEMA_VERSION = 9;
 
-export interface ExportData {
+export interface ExportData extends ExportSnapshots {
   schemaVersion: number;
   applicationVersion: string;
   recommendationEngineVersion: string;
@@ -253,18 +254,33 @@ export interface ImportResult {
  * @param now Optional date to use as the export timestamp (for testing).
  */
 export function exportData(now?: Date): ExportData {
+  const exportedAt = (now ?? new Date()).toISOString();
+  const poolConfig = loadSettings();
+  const measurements = loadMeasurements();
+  const actions = loadActions();
+  const followUps = loadFollowUps();
+  const experiments = loadExperiments();
+  const snapshots = buildExportSnapshots({
+    measurements,
+    actions,
+    followUps,
+    settings: poolConfig,
+    capturedAt: exportedAt,
+  });
+
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     applicationVersion: APPLICATION_VERSION,
     recommendationEngineVersion: RECOMMENDATION_ENGINE_VERSION,
     outcomeEvaluatorVersion: OUTCOME_EVALUATOR_VERSION,
     chemicalCatalogVersion: CHEMICAL_CATALOG_VERSION,
-    exportedAt: (now ?? new Date()).toISOString(),
-    poolConfig: loadSettings(),
-    measurements: loadMeasurements(),
-    actions: loadActions(),
-    followUps: loadFollowUps(),
-    experiments: loadExperiments(),
+    exportedAt,
+    poolConfig,
+    measurements,
+    actions,
+    followUps,
+    experiments,
+    ...snapshots,
   };
 }
 
@@ -272,6 +288,7 @@ export function exportData(now?: Date): ExportData {
  * Parse and validate an import JSON string.
  *
  * Supports:
+ * - v9: v8 plus structured versioned snapshots for export auditability
  * - v8: `{ schemaVersion: 8, applicationVersion, recommendationEngineVersion, outcomeEvaluatorVersion, chemicalCatalogVersion, poolConfig, measurements, actions, followUps, experiments }`
  * - v7: `{ schemaVersion: 7, poolConfig, measurements, actions, followUps, experiments }` — adds diagnostic experiments
  * - v6: `{ schemaVersion: 6, poolConfig, measurements, actions, followUps }` — adds follow-ups

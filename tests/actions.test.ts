@@ -403,8 +403,8 @@ describe('action sorting', () => {
 // ── Schema version ────────────────────────────────────────────────
 
 describe('schema version', () => {
-  it('is version 8', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(8);
+  it('is version 9', () => {
+    expect(EXPORT_SCHEMA_VERSION).toBe(9);
   });
 });
 

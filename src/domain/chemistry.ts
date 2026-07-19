@@ -7,6 +7,15 @@ export interface TargetRange {
   unit: string;
 }
 
+export type TargetRangeKind = 'general' | 'configured' | 'custom';
+
+export interface TargetRangeSnapshot extends TargetRange {
+  field: string;
+  kind: TargetRangeKind;
+  origin: 'catalog';
+  catalogVersion: string;
+}
+
 export const TARGET_RANGES: Record<string, TargetRange> = {
   ph: { min: 7.2, max: 7.6, ideal: 7.4, unit: '' },
   fac: { min: 1.0, max: 3.0, ideal: 2.0, unit: 'ppm' },
@@ -30,6 +39,20 @@ export function getTargetRange(
     return SALTWATER_FAC_RANGE;
   }
   return TARGET_RANGES[field] ?? TARGET_RANGES.ph;
+}
+
+export function getTargetRangeSnapshot(
+  field: string,
+  poolType: string,
+): TargetRangeSnapshot {
+  const range = getTargetRange(field, poolType);
+  return {
+    ...range,
+    field,
+    kind: field === 'fac' && poolType === 'saltwater' ? 'configured' : 'general',
+    origin: 'catalog',
+    catalogVersion: '2.0.0',
+  };
 }
 
 // ── Danger level ─────────────────────────────────────────────────
