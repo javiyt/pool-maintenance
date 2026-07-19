@@ -485,6 +485,7 @@ export type TranslationKey =
   | 'outcome.changes.temperature'
   | 'actionDetails.chlorinator.outputChanged'
   | 'actionDetails.chlorinator.outputSet'
+  | 'actionDetails.chlorinator.fixedOutputNormal'
   | 'actionDetails.chlorinator.additionalHours'
   | 'actionDetails.chlorinator.totalHoursPerDay'
   | 'actionDetails.filtration.hoursChanged'

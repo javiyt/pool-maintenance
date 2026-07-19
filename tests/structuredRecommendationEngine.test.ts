@@ -5,6 +5,7 @@ import { runRecommendationEngine } from '../src/domain/recommendation/recommenda
 import type { PoolSettings } from '../src/domain/settings';
 import type { Measurement } from '../src/domain/measurement';
 import type { Diagnosis } from '../src/domain/diagnosis/diagnosis';
+import { createChlorinatorConfigFromPreset } from '../src/domain/saltChlorinator';
 
 function makeSettings(overrides: Partial<PoolSettings> = {}): PoolSettings {
   return {
@@ -112,6 +113,61 @@ describe('Structured Recommendation Engine', () => {
     expect(result.recommendations.find((recommendation) => recommendation.code === 'INCREASE_CHLORINATOR_RUNTIME')).toBeUndefined();
   });
 
+  it('chooses chlorinator recommendation codes from configured capabilities', () => {
+    const baseDiagnoses = [diagnosis('FAC_LOW')];
+    const percentage = runRecommendationEngine({
+      settings: makeSettings(),
+      diagnoses: baseDiagnoses,
+      generatedAt: '2026-07-09T10:00:00.000Z',
+    });
+    const fixed = runRecommendationEngine({
+      settings: makeSettings({
+        saltChlorinator: createChlorinatorConfigFromPreset('intex-qs500-26668'),
+      }),
+      diagnoses: baseDiagnoses,
+      generatedAt: '2026-07-09T10:00:00.000Z',
+    });
+    const levels = runRecommendationEngine({
+      settings: makeSettings({
+        saltChlorinator: {
+          ...makeSettings().saltChlorinator!,
+          outputControl: {
+            kind: 'discrete-levels',
+            levels: [{ id: 'low', labelKey: 'Bajo' }, { id: 'high', labelKey: 'Alto' }],
+          },
+        },
+      }),
+      diagnoses: baseDiagnoses,
+      generatedAt: '2026-07-09T10:00:00.000Z',
+    });
+    const automatic = runRecommendationEngine({
+      settings: makeSettings({
+        saltChlorinator: {
+          ...makeSettings().saltChlorinator!,
+          outputControl: { kind: 'automatic', controlBasis: 'orp' },
+        },
+      }),
+      diagnoses: baseDiagnoses,
+      generatedAt: '2026-07-09T10:00:00.000Z',
+    });
+    const unknown = runRecommendationEngine({
+      settings: makeSettings({
+        saltChlorinator: createChlorinatorConfigFromPreset('unknown'),
+      }),
+      diagnoses: baseDiagnoses,
+      generatedAt: '2026-07-09T10:00:00.000Z',
+    });
+
+    expect(percentage.recommendations.map((rec) => rec.code)).toContain('ADJUST_CHLORINATOR_OUTPUT');
+    expect(fixed.recommendations.map((rec) => rec.code)).toContain('INCREASE_CHLORINATOR_RUNTIME');
+    expect(levels.recommendations.map((rec) => rec.code)).toContain('SET_CHLORINATOR_LEVEL');
+    expect(automatic.recommendations.map((rec) => rec.code)).toEqual(expect.arrayContaining([
+      'REVIEW_CHLORINATOR_SETPOINT',
+      'CALIBRATE_CHLORINATOR_SENSOR',
+    ]));
+    expect(unknown.recommendations.map((rec) => rec.code)).toContain('IDENTIFY_CHLORINATOR_CAPABILITIES');
+  });
+
   it('builds structured staged plans', () => {
     const result = runRecommendationEngine({
       settings: makeSettings(),
@@ -209,4 +265,3 @@ describe('Structured Recommendation Engine', () => {
     expect(result.recommendation.plans[0].stages).toHaveLength(3);
   });
 });
-

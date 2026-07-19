@@ -5,6 +5,7 @@ import {
   createChlorinatorConfigFromPreset,
   getChlorinatorModeDefinitions,
   getChlorinatorOutputControl,
+  migrateSaltChlorinatorConfig,
 } from '../domain/saltChlorinator';
 import type { ChlorinatorModeDefinition, ChlorinatorOutputControl, ChlorinatorPresetId } from '../domain/saltChlorinator';
 import { loadSettings, saveSettings } from '../domain/storage';
@@ -445,7 +446,7 @@ export class SettingsPanel {
           dataSource: presetId === 'custom' ? 'user-entered' : (presetId === 'unknown' ? 'unknown' : 'manufacturer'),
         };
       }
-      settings.saltChlorinator = sc;
+      settings.saltChlorinator = migrateSaltChlorinatorConfig(sc, new Date().toISOString());
     } else if (existing.saltChlorinator) {
       settings.saltChlorinator = { ...existing.saltChlorinator, enabled: false };
     }

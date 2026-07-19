@@ -476,6 +476,7 @@ export const en: Record<TranslationKey, string> = {
   'outcome.changes.temperature': 'Temp {delta}',
   'actionDetails.chlorinator.outputChanged': 'Output: {from}% → {to}%',
   'actionDetails.chlorinator.outputSet': 'Output set to {to}%',
+  'actionDetails.chlorinator.fixedOutputNormal': 'Fixed-output normal mode',
   'actionDetails.chlorinator.additionalHours': '+{hours} h',
   'actionDetails.chlorinator.totalHoursPerDay': 'Total: {hours} h/day',
   'actionDetails.filtration.hoursChanged': 'Filtration: {from} h → {to} h/day',

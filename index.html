@@ -282,10 +282,13 @@
               </select>
             </div>
             <div class="field ctx-chlorinator-boost-field">
-              <label>
-                <input type="checkbox" id="ctxChlorBoost" />
-                Se utilizó boost
-              </label>
+              <label for="ctxChlorBoostStatus">Se utilizó boost</label>
+              <select id="ctxChlorBoostStatus">
+                <option value="">—</option>
+                <option value="used">Sí</option>
+                <option value="not-used">No</option>
+                <option value="unknown">No se sabe</option>
+              </select>
             </div>
             <div class="field ctx-chlorinator-boost-field">
               <label for="ctxChlorBoostHours">Duración boost (h)</label>
@@ -298,6 +301,22 @@
                 <option value="true">Sí</option>
                 <option value="false">No / no confirmado</option>
               </select>
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorPumpActive">Depuradora activa durante el ciclo</label>
+              <select id="ctxChlorPumpActive">
+                <option value="">—</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorAlarms">Alarmas del clorador</label>
+              <input type="text" id="ctxChlorAlarms" />
+            </div>
+            <div class="field ctx-chlorinator-runtime-field">
+              <label for="ctxChlorInterruptions">Interrupciones</label>
+              <input type="text" id="ctxChlorInterruptions" />
             </div>
             <div class="field">
               <label for="ctxFiltHours" data-i18n="context.filtrationHours">Horas de filtración</label>

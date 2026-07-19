@@ -7,12 +7,21 @@ export type {
   ChlorinatorOutputControl,
   ChlorinatorOperatingMode,
   ChlorinatorModeDefinition,
+  ChlorinatorControlType,
+  ChlorinatorRuntimeControl,
+  RuntimeCalculation,
   ChlorinatorPresetId,
   SaltChlorinator,
+  SaltChlorinatorV2,
   SaltChlorinatorConfig,
 } from './saltChlorinator';
 
 import type { SaltChlorinatorConfig } from './saltChlorinator';
+import {
+  CHLORINATOR_CALCULATION_VERSION,
+  CHLORINATOR_CATALOG_VERSION,
+  CHLORINATOR_SCHEMA_VERSION,
+} from './saltChlorinator';
 
 export interface HistoricalLearningConfig {
   enabled: boolean;
@@ -76,6 +85,9 @@ export const DEFAULT_SALT_CHLORINATOR: SaltChlorinatorConfig = {
       outputModel: 'same-as-normal',
     },
   ],
+  chlorinatorSchemaVersion: CHLORINATOR_SCHEMA_VERSION,
+  chlorinatorCatalogVersion: CHLORINATOR_CATALOG_VERSION,
+  chlorinatorCalculationVersion: CHLORINATOR_CALCULATION_VERSION,
 };
 
 export function volumeInLiters(settings: PoolSettings): number {

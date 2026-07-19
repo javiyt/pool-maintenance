@@ -63,7 +63,12 @@ export class ActionHistory {
       detailsHtml = `<div class="action-details">${escapeHtml([productName, amountStr, category ? productTypeLabel(category) : ''].filter(Boolean).join(' — '))}</div>`;
     } else if (a.chlorinator) {
       const parts: string[] = [];
-      if (a.chlorinator.previousOutputPercent !== undefined && a.chlorinator.newOutputPercent !== undefined) {
+      const legacyFixedNominalOutput = a.chlorinator.previousOutputPercent === 100 &&
+        a.chlorinator.newOutputPercent === 100 &&
+        a.chlorinator.additionalHours !== undefined;
+      if (legacyFixedNominalOutput) {
+        parts.push(t('actionDetails.chlorinator.fixedOutputNormal'));
+      } else if (a.chlorinator.previousOutputPercent !== undefined && a.chlorinator.newOutputPercent !== undefined) {
         parts.push(t('actionDetails.chlorinator.outputChanged', {
           from: formatNumber(a.chlorinator.previousOutputPercent),
           to: formatNumber(a.chlorinator.newOutputPercent),

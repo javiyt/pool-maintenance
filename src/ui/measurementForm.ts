@@ -186,9 +186,12 @@ function readContext(measuredAt: string): MeasurementContext | undefined {
   const chlorHoursRaw = (document.getElementById('ctxChlorHours') as HTMLInputElement).value;
   const chlorConfiguredHoursRaw = (document.getElementById('ctxChlorConfiguredHours') as HTMLInputElement).value;
   const chlorCompletedRaw = (document.getElementById('ctxChlorCompleted') as HTMLSelectElement).value;
-  const chlorBoost = (document.getElementById('ctxChlorBoost') as HTMLInputElement).checked;
+  const chlorBoostStatusRaw = (document.getElementById('ctxChlorBoostStatus') as HTMLSelectElement).value;
   const chlorBoostHoursRaw = (document.getElementById('ctxChlorBoostHours') as HTMLInputElement).value;
   const chlorFlowConfirmedRaw = (document.getElementById('ctxChlorFlowConfirmed') as HTMLSelectElement).value;
+  const chlorPumpActiveRaw = (document.getElementById('ctxChlorPumpActive') as HTMLSelectElement).value;
+  const chlorAlarmsRaw = (document.getElementById('ctxChlorAlarms') as HTMLInputElement).value;
+  const chlorInterruptionsRaw = (document.getElementById('ctxChlorInterruptions') as HTMLInputElement).value;
   const filtHoursRaw = (document.getElementById('ctxFiltHours') as HTMLInputElement).value;
   const algae = (document.getElementById('ctxAlgae') as HTMLInputElement).checked;
   const clarity = (document.getElementById('ctxClarity') as HTMLSelectElement).value;
@@ -214,11 +217,14 @@ function readContext(measuredAt: string): MeasurementContext | undefined {
     outputPercent: chlorOutputRaw ? parseFloat(chlorOutputRaw) : undefined,
     runtimeHours: chlorHoursRaw ? parseFloat(chlorHoursRaw) : undefined,
     configuredRuntimeHours: chlorConfiguredHoursRaw ? parseFloat(chlorConfiguredHoursRaw) : undefined,
-    completed: parseBooleanSelect(chlorCompletedRaw),
-    boostActivated: chlorBoost,
+    completionStatus: completionStatusFromSelect(chlorCompletedRaw),
+    boostStatus: boostStatusFromSelect(chlorBoostStatusRaw),
     boostRuntimeHours: chlorBoostHoursRaw ? parseFloat(chlorBoostHoursRaw) : undefined,
-    flowConfirmed: parseBooleanSelect(chlorFlowConfirmedRaw),
+    flowStatus: flowStatusFromSelect(chlorFlowConfirmedRaw),
+    pumpActive: parseBooleanSelect(chlorPumpActiveRaw),
     filtrationRuntimeHours: filtHoursRaw ? parseFloat(filtHoursRaw) : undefined,
+    alarms: parseAlarmList(chlorAlarmsRaw),
+    interruptions: parseInterruptionList(chlorInterruptionsRaw),
   });
   if (chlorinatorOperation) ctx.chlorinatorOperation = chlorinatorOperation;
   if (filtHoursRaw) ctx.filtrationHoursSincePreviousMeasurement = parseFloat(filtHoursRaw);
@@ -244,11 +250,14 @@ function buildChlorinatorOperation(input: {
   outputPercent?: number;
   runtimeHours?: number;
   configuredRuntimeHours?: number;
-  completed?: boolean;
-  boostActivated: boolean;
+  completionStatus: 'completed' | 'interrupted' | 'unknown';
+  boostStatus: 'not-used' | 'used' | 'unknown';
   boostRuntimeHours?: number;
-  flowConfirmed?: boolean;
+  flowStatus: 'confirmed' | 'not-confirmed' | 'unknown';
+  pumpActive?: boolean;
   filtrationRuntimeHours?: number;
+  alarms: Array<{ message: string; severity: 'unknown' }>;
+  interruptions: Array<{ reason: 'unknown'; notes: string }>;
 }): MeasurementContext['chlorinatorOperation'] | undefined {
   const settings = loadSettings();
   const chlorinator = settings.saltChlorinator;
@@ -257,35 +266,53 @@ function buildChlorinatorOperation(input: {
   const hasNormalData = input.outputPercent !== undefined ||
     input.runtimeHours !== undefined ||
     input.configuredRuntimeHours !== undefined ||
-    input.completed !== undefined;
-  const hasBoostData = input.boostActivated || input.boostRuntimeHours !== undefined;
-  const hasSupportData = input.flowConfirmed !== undefined || input.filtrationRuntimeHours !== undefined;
+    input.completionStatus !== 'unknown';
+  const hasBoostData = input.boostStatus !== 'unknown' || input.boostRuntimeHours !== undefined;
+  const hasSupportData = input.flowStatus !== 'unknown' ||
+    input.pumpActive !== undefined ||
+    input.filtrationRuntimeHours !== undefined ||
+    input.alarms.length > 0 ||
+    input.interruptions.length > 0;
   if (!hasNormalData && !hasBoostData && !hasSupportData) return undefined;
 
   return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     chlorinatorId: chlorinator.equipment?.id ?? chlorinator.presetId ?? 'configured-chlorinator',
     intervalStartAt: input.measuredAt,
     intervalEndAt: input.measuredAt,
     source: 'user-reported',
     normalOperation: hasNormalData
       ? {
+          configuredRuntimeMinutes: hoursToMinutes(input.configuredRuntimeHours),
+          actualRuntimeMinutes: hoursToMinutes(input.runtimeHours),
+          averageOutputPercent: input.outputPercent,
+          completionStatus: input.completionStatus,
           runtimeHours: input.runtimeHours,
           configuredRuntimeHours: input.configuredRuntimeHours,
           outputPercent: input.outputPercent,
-          expectedCompleted: input.completed,
-          actuallyCompleted: input.completed,
+          expectedCompleted: input.completionStatus === 'completed',
+          actuallyCompleted: input.completionStatus === 'completed',
         }
       : undefined,
     boostOperation: hasBoostData
       ? {
-          activated: input.boostActivated,
+          status: input.boostStatus,
+          configuredRuntimeMinutes: hoursToMinutes(input.boostRuntimeHours),
+          actualRuntimeMinutes: hoursToMinutes(input.boostRuntimeHours),
+          outputKnowledge: 'unknown',
+          activated: input.boostStatus === 'used',
           runtimeHours: input.boostRuntimeHours,
           configuredRuntimeHours: input.boostRuntimeHours,
           productionKnown: false,
         }
       : undefined,
+    filtrationRuntimeMinutes: hoursToMinutes(input.filtrationRuntimeHours),
+    flowStatus: input.flowStatus,
     filtrationRuntimeHours: input.filtrationRuntimeHours,
-    flowConfirmed: input.flowConfirmed,
+    flowConfirmed: input.flowStatus === 'confirmed',
+    alarms: input.alarms,
+    interruptions: input.interruptions,
+    notes: input.pumpActive === undefined ? undefined : `pump-active:${input.pumpActive}`,
   };
 }
 
@@ -293,4 +320,41 @@ function parseBooleanSelect(value: string): boolean | undefined {
   if (value === 'true') return true;
   if (value === 'false') return false;
   return undefined;
+}
+
+function completionStatusFromSelect(value: string): 'completed' | 'interrupted' | 'unknown' {
+  if (value === 'true') return 'completed';
+  if (value === 'false') return 'interrupted';
+  return 'unknown';
+}
+
+function boostStatusFromSelect(value: string): 'not-used' | 'used' | 'unknown' {
+  if (value === 'used' || value === 'not-used') return value;
+  return 'unknown';
+}
+
+function flowStatusFromSelect(value: string): 'confirmed' | 'not-confirmed' | 'unknown' {
+  if (value === 'true') return 'confirmed';
+  if (value === 'false') return 'not-confirmed';
+  return 'unknown';
+}
+
+function hoursToMinutes(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) ? Math.round(value * 60) : undefined;
+}
+
+function parseAlarmList(value: string): Array<{ message: string; severity: 'unknown' }> {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((message) => ({ message, severity: 'unknown' }));
+}
+
+function parseInterruptionList(value: string): Array<{ reason: 'unknown'; notes: string }> {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((notes) => ({ reason: 'unknown', notes }));
 }
