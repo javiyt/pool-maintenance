@@ -150,6 +150,8 @@ export interface MaintenanceAssistantResult {
     | 'unsafe'
     | 'insufficient-data';
   summary: string;
+  summaryKey?: TranslationKey;
+  summaryParams?: TranslationParams;
   recommendations: MaintenanceRecommendation[];
   trends: MeasurementTrend[];
   nextCheckSuggestion: {
@@ -554,6 +556,7 @@ export function runAssistant(
     return {
       status: 'insufficient-data',
       summary: 'No hay mediciones almacenadas. Guarda al menos una medición para obtener recomendaciones.',
+      summaryKey: 'summary.noMeasurements',
       recommendations: [],
       trends: [],
       nextCheckSuggestion: {
@@ -576,6 +579,7 @@ export function runAssistant(
     return {
       status: 'insufficient-data',
       summary: 'La última medición no contiene los valores necesarios (pH y FAC).',
+      summaryKey: 'summary.missingRequiredFields',
       recommendations: [],
       trends,
       nextCheckSuggestion: {
@@ -1572,14 +1576,16 @@ export function runAssistant(
   enrichRecommendationKeys(recommendations, latest, phRange, facRange, saltRange, settings);
 
   // ── Build summary ─────────────────────────────────────────────
-  const summary = buildSummary(worstStatus, latest, settings);
+  const summaryMessage = buildSummary(worstStatus, latest, settings);
 
   // ── Next check suggestion ─────────────────────────────────────
   const nextCheck = determineNextCheck(recommendations, worstStatus);
 
   return {
     status: worstStatus,
-    summary,
+    summary: summaryMessage.text,
+    summaryKey: summaryMessage.key,
+    summaryParams: summaryMessage.params,
     recommendations,
     trends,
     nextCheckSuggestion: nextCheck,
@@ -1592,18 +1598,36 @@ function buildSummary(
   status: MaintenanceAssistantResult['status'],
   latest: Measurement,
   _settings: PoolSettings,
-): string {
+): { key: TranslationKey; params?: TranslationParams; text: string } {
   switch (status) {
-    case 'balanced':
-      return `El agua está en equilibrio. pH ${latest.ph.toFixed(1)}, FAC ${latest.fac.toFixed(1)} ppm — ambos dentro del rango. Sigue con el mantenimiento regular.`;
+    case 'balanced': {
+      const params = { ph: latest.ph.toFixed(1), fac: latest.fac.toFixed(1) };
+      return {
+        key: 'summary.balanced',
+        params,
+        text: `El agua está en equilibrio. pH ${params.ph}, FAC ${params.fac} ppm: ambos dentro del rango. Sigue con el mantenimiento regular.`,
+      };
+    }
     case 'needs-attention':
-      return `Algunos valores requieren atención. Se recomienda monitorear y tomar medidas preventivas.`;
+      return {
+        key: 'summary.needsAttention',
+        text: 'Algunos valores requieren atención. Se recomienda monitorear y tomar medidas preventivas.',
+      };
     case 'needs-correction':
-      return `Es necesario corregir algunos parámetros del agua. Revisa las recomendaciones detalladas a continuación.`;
+      return {
+        key: 'summary.needsCorrection',
+        text: 'Es necesario corregir algunos parámetros del agua. Revisa las recomendaciones detalladas a continuación.',
+      };
     case 'unsafe':
-      return `⚠️ El agua puede no ser segura. Toma medidas correctivas inmediatas y evita bañarte hasta que los valores estén dentro de los rangos seguros.`;
+      return {
+        key: 'summary.unsafe',
+        text: 'El agua puede no ser segura. Toma medidas correctivas inmediatas y evita bañarte hasta que los valores estén dentro de los rangos seguros.',
+      };
     case 'insufficient-data':
-      return 'No hay suficientes datos para generar recomendaciones.';
+      return {
+        key: 'summary.insufficientData',
+        text: 'No hay suficientes datos para generar recomendaciones.',
+      };
   }
 }
 

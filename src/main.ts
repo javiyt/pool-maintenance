@@ -12,7 +12,6 @@ import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
 import { createFollowUp } from './domain/followUp';
 import {
   setLanguage,
-  detectBrowserLanguage,
   validateLanguage,
   t,
   applyStaticTranslations,
@@ -41,10 +40,9 @@ function runAndShowRecommendations(
 function init(): void {
   // ── Initialize language ───────────────────────────────────────
   const savedSettings = loadSettings();
-  const browserLang = detectBrowserLanguage();
   const initialLang = savedSettings.language
     ? validateLanguage(savedSettings.language)
-    : browserLang;
+    : 'es';
   setLanguage(initialLang);
 
   // Persist browser-derived default on first visit so the selector

@@ -381,7 +381,7 @@ describe('confidence', () => {
     // With 2 intervening actions (0.3 each = 0.6 reduction) + no linked meas (0.2 reduction)
     // Base 0.8 - 0.2 (no link) - 0.6 (intervening) = 0.0, minimum clamped to 0.1
     expect(mainOutcome!.confidence).toBeLessThan(0.5);
-    expect(mainOutcome!.confidenceReasons.some((r) => r.includes('acción(es)'))).toBe(true);
+    expect(mainOutcome!.confidenceReasonCodes?.some((r) => r.code === 'outcome.confidenceReason.interveningActions')).toBe(true);
   });
 
   it('higher confidence with explicitly linked measurement', () => {
@@ -466,7 +466,7 @@ describe('fields already in range before action', () => {
     const outcomes = evaluateActionOutcomes(measurements, [action]);
     expect(outcomes).toHaveLength(1);
     expect(outcomes[0].effectiveness).toBe('inconclusive');
-    expect(outcomes[0].confidenceReasons.some((r) => r.includes('ya estaban en rango'))).toBe(true);
+    expect(outcomes[0].explanationDetails?.some((r) => r.code === 'outcome.reason.fieldsAlreadyInRange')).toBe(true);
   });
 
   it('is inconclusive when chlorine applied but FAC already in range', () => {
@@ -623,12 +623,12 @@ describe('edge cases', () => {
     // c1 should see 2 intervening (c2 and c3) between its before (m1, 10:00) and after (m2, 20:00)
     const o1 = findOutcome(outcomes, 'c1');
     expect(o1).toBeDefined();
-    expect(o1!.confidenceReasons.some((r) => r.includes('2 acción(es)'))).toBe(true);
+    expect(o1!.confidenceReasonCodes?.some((r) => r.code === 'outcome.confidenceReason.interveningActions' && r.params?.count === 2)).toBe(true);
 
     // c2 should see 2 intervening (c1 and c3) since all share the same before/after pair
     const o2 = findOutcome(outcomes, 'c2');
     expect(o2).toBeDefined();
-    expect(o2!.confidenceReasons.some((r) => r.includes('2 acción(es)'))).toBe(true);
+    expect(o2!.confidenceReasonCodes?.some((r) => r.code === 'outcome.confidenceReason.interveningActions' && r.params?.count === 2)).toBe(true);
   });
 });
 

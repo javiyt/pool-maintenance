@@ -9,7 +9,7 @@ const dictionaries: Record<AppLanguage, Record<TranslationKey, string>> = { en, 
 
 // ── Current language (mutable, updated by setLanguage) ────────────
 
-let currentLanguage: AppLanguage = 'en';
+let currentLanguage: AppLanguage = 'es';
 
 /**
  * Get the current application language.
@@ -46,16 +46,17 @@ export function detectBrowserLanguage(): AppLanguage {
 }
 
 /**
- * Validate a language value, falling back to English if invalid.
+ * Validate a language value, falling back to Spanish if invalid.
  */
 export function validateLanguage(lang: unknown): AppLanguage {
   if (lang === 'en' || lang === 'es') return lang;
-  return 'en';
+  return 'es';
 }
 
 /**
  * Apply current-language translations to all static DOM elements that
- * carry data-i18n, data-i18n-placeholder, or data-i18n-title attributes.
+ * carry data-i18n, data-i18n-placeholder, data-i18n-title, or
+ * data-i18n-aria-label attributes.
  *
  * - data-i18n          → element.textContent = t(key)
  * - data-i18n-placeholder → (input/textarea) element.placeholder = t(key)
@@ -109,6 +110,39 @@ export function applyStaticTranslations(): void {
       el.title = t(key as TranslationKey);
     }
   });
+
+  doc.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((el) => {
+    const key = el.dataset.i18nAriaLabel;
+    if (key) {
+      el.setAttribute('aria-label', t(key as TranslationKey));
+    }
+  });
+}
+
+export function findVisibleTextMatches(
+  root: ParentNode,
+  forbiddenLiterals: readonly string[],
+): string[] {
+  const doc = (root as Node).ownerDocument ?? (typeof document === 'undefined' ? undefined : document);
+  if (!doc) return [];
+  const matches: string[] = [];
+  const walker = doc.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const parent = node.parentElement;
+    const text = node.textContent?.trim() ?? '';
+    if (
+      text &&
+      parent &&
+      !['SCRIPT', 'STYLE', 'TEMPLATE'].includes(parent.tagName)
+    ) {
+      for (const literal of forbiddenLiterals) {
+        if (text.includes(literal)) matches.push(literal);
+      }
+    }
+    node = walker.nextNode();
+  }
+  return [...new Set(matches)];
 }
 
 // ── Translation function ─────────────────────────────────────────
@@ -256,6 +290,42 @@ export function formatAmount(
   }
 
   return `${formatNumber(value, language)} ${unit}`;
+}
+
+export function formatPercent(value: number, language?: AppLanguage): string {
+  return new Intl.NumberFormat(getLocale(language), {
+    style: 'percent',
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 1,
+  }).format(value / 100);
+}
+
+export function formatDelta(
+  value: number,
+  language?: AppLanguage,
+  options?: Intl.NumberFormatOptions,
+): string {
+  const formatted = formatNumber(Math.abs(value), language, options);
+  if (value > 0) return `+${formatted}`;
+  if (value < 0) return `-${formatted}`;
+  return formatted;
+}
+
+export function formatDurationHours(hours: number, language?: AppLanguage): string {
+  if (hours < 24) {
+    return t('unit.hour.short', { value: formatNumber(hours, language) }, language);
+  }
+  const days = Math.round(hours / 24);
+  return t('unit.day.short', { value: formatNumber(days, language) }, language);
+}
+
+export function formatRange(
+  min: number,
+  max: number,
+  unit?: string,
+  language?: AppLanguage,
+): string {
+  const value = `${formatNumber(min, language)}–${formatNumber(max, language)}`;
+  return unit ? `${value} ${unit}` : value;
 }
 
 /**

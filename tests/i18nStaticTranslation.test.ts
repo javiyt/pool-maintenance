@@ -7,6 +7,7 @@ import {
   applyStaticTranslations,
   validateLanguage,
   detectBrowserLanguage,
+  findVisibleTextMatches,
 } from '../src/i18n/index';
 import {
   saveSettings,
@@ -16,6 +17,9 @@ import {
 } from '../src/domain/storage';
 import { en } from '../src/i18n/en';
 import { es } from '../src/i18n/es';
+import { evaluateActionOutcomes } from '../src/domain/actionOutcomeEvaluator';
+import type { MaintenanceAction } from '../src/domain/actions';
+import type { Measurement } from '../src/domain/measurement';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -27,6 +31,8 @@ const HTML_DATA_I18N_KEYS: readonly string[] = [
   'app.title',
   'settings.title',
   'settings.language',
+  'settings.language.en',
+  'settings.language.es',
   'settings.volume',
   'settings.volumeUnit.liters',
   'settings.volumeUnit.cubicMeters',
@@ -149,6 +155,17 @@ const HTML_DATA_I18N_TITLE_KEYS: readonly string[] = [
   'settings.open',
   'settings.close',
   'actionForm.close',
+  'history.export',
+  'history.import',
+];
+
+const HTML_DATA_I18N_ARIA_LABEL_KEYS: readonly string[] = [
+  'settings.open',
+  'settings.title',
+  'settings.close',
+  'settings.volumeUnit',
+  'actionForm.title',
+  'actionForm.close',
 ];
 
 // ── Static translation key completeness ──────────────────────────
@@ -184,6 +201,16 @@ describe('HTML data-i18n keys exist in both dictionaries', () => {
     });
 
     it(`title key "${key}" exists in Spanish`, () => {
+      expect(es).toHaveProperty(key);
+    });
+  }
+
+  for (const key of HTML_DATA_I18N_ARIA_LABEL_KEYS) {
+    it(`aria-label key "${key}" exists in English`, () => {
+      expect(en).toHaveProperty(key);
+    });
+
+    it(`aria-label key "${key}" exists in Spanish`, () => {
       expect(es).toHaveProperty(key);
     });
   }
@@ -237,6 +264,13 @@ describe('applyStaticTranslations()', () => {
     expect(document.body.querySelector('button')!.title).toBe(
       'Abrir configuración',
     );
+  });
+
+  it('translates aria labels via data-i18n-aria-label', () => {
+    document.body.innerHTML = `<button data-i18n-aria-label="settings.open" aria-label="x">X</button>`;
+    setLanguage('es');
+    applyStaticTranslations();
+    expect(document.body.querySelector('button')!.getAttribute('aria-label')).toBe('Abrir configuración');
   });
 
   it('preserves child elements inside labels with data-i18n', () => {
@@ -322,6 +356,85 @@ describe('applyStaticTranslations()', () => {
   });
 });
 
+// ── Spanish UI regression guard ─────────────────────────────────
+
+describe('Spanish UI does not expose observed English literals', () => {
+  const observedEnglish = [
+    'CHLORINATOR',
+    'CHEMICAL',
+    'PARTIAL',
+    'EFFECTIVE',
+    'Output',
+    'expected increase',
+    'actual',
+    'Changes too small to be meaningful',
+    'Fields already in range before action',
+    'Disclaimer',
+  ];
+
+  it('does not translate known visible labels to the observed English strings in es', () => {
+    setLanguage('es');
+    const rendered = [
+      t('actionKind.chlorinator'),
+      t('actionKind.chemical'),
+      t('outcome.partiallyEffective'),
+      t('outcome.effective'),
+      t('actionDetails.chlorinator.outputChanged', { from: 60, to: 80 }),
+      t('outcome.reason.fieldExpected', {
+        field: t('field.fac'),
+        expectedDirection: t('outcome.direction.increase'),
+        actualChange: '-0,1',
+        unit: 'ppm',
+      }),
+      t('outcome.reason.changeWithinMeasurementError'),
+      t('outcome.reason.fieldsAlreadyInRange'),
+      t('footer.disclaimer'),
+    ].join(' ');
+
+    for (const literal of observedEnglish) {
+      expect(rendered).not.toContain(literal);
+    }
+  });
+
+  it('emits structured outcome explanations instead of rendered domain text', () => {
+    const measurements: Measurement[] = [
+      {
+        id: 'm1',
+        measuredAt: '2026-07-09T10:00:00.000Z',
+        ph: 7.4,
+        fac: 1.5,
+      },
+      {
+        id: 'm2',
+        measuredAt: '2026-07-09T16:00:00.000Z',
+        ph: 7.4,
+        fac: 1.5,
+      },
+    ];
+    const actions: MaintenanceAction[] = [{
+      id: 'a1',
+      performedAt: '2026-07-09T11:00:00.000Z',
+      kind: 'chemical',
+      description: 'ph-reducer',
+      chemical: { productType: 'ph-reducer', mainComponent: 'acid', amount: 750, unit: 'ml' },
+    }];
+
+    const [outcome] = evaluateActionOutcomes(measurements, actions);
+    expect(outcome.explanationCodes).toContain('FIELDS_ALREADY_IN_RANGE');
+    expect(outcome.explanationDetails?.some((d) => d.code === 'outcome.reason.fieldsAlreadyInRange')).toBe(true);
+    expect(outcome.confidenceReasons).toEqual([]);
+  });
+
+  it('detects forbidden English text in rendered DOM', () => {
+    setLanguage('es');
+    document.body.innerHTML = '<p>Output: 60%</p>';
+    expect(findVisibleTextMatches(document.body, observedEnglish)).toEqual(['Output']);
+
+    document.body.innerHTML = `<p>${t('actionDetails.chlorinator.outputChanged', { from: 60, to: 80 })}</p>`;
+    expect(findVisibleTextMatches(document.body, observedEnglish)).toEqual([]);
+  });
+});
+
 // ── Language dropdown / source of truth ──────────────────────────
 
 describe('Language source of truth', () => {
@@ -335,11 +448,11 @@ describe('Language source of truth', () => {
     expect(getLanguage()).toBe('es');
   });
 
-  it('validateLanguage normalizes invalid values to en', () => {
-    expect(validateLanguage('fr')).toBe('en');
-    expect(validateLanguage('')).toBe('en');
-    expect(validateLanguage(undefined)).toBe('en');
-    expect(validateLanguage(null)).toBe('en');
+  it('validateLanguage normalizes invalid values to es', () => {
+    expect(validateLanguage('fr')).toBe('es');
+    expect(validateLanguage('')).toBe('es');
+    expect(validateLanguage(undefined)).toBe('es');
+    expect(validateLanguage(null)).toBe('es');
   });
 
   it('detectBrowserLanguage picks es for Spanish browser', () => {
@@ -520,7 +633,7 @@ describe('Language persistence (storage-level)', () => {
     const loaded = loadSettings();
     // validateLanguage should normalize on use, not on load
     // The raw stored value is 'fr', but application code validates it
-    expect(validateLanguage(loaded.language)).toBe('en');
+    expect(validateLanguage(loaded.language)).toBe('es');
   });
 
   it('export/import round trip preserves language', () => {
