@@ -148,6 +148,18 @@ export class ActionForm {
     this.onSaveCb = cb;
   }
 
+  hasUnsavedChanges(): boolean {
+    if (this.panel.hidden) return false;
+    return Array.from(this.form.elements).some((element) => {
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)) {
+        return false;
+      }
+      if (element === this.dateTimeInput) return false;
+      if (element.type === 'checkbox') return (element as HTMLInputElement).checked;
+      return element.value.trim().length > 0;
+    });
+  }
+
   open(prefill?: ActionFormPrefill): void {
     this.previousFocused = document.activeElement as HTMLElement | null;
     this.currentPrefill = prefill ?? null;

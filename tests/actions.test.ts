@@ -132,6 +132,7 @@ const SAMPLE_POOL_CONFIG: PoolSettings = {
   volumeUnit: 'liters',
   poolType: 'chlorine',
   unitSystem: 'metric',
+  appearance: 'system',
 };
 
 const SAMPLE_MEASUREMENT: Measurement = {

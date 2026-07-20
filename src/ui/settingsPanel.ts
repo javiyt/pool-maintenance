@@ -1,6 +1,6 @@
 import type { PoolSettings } from '../domain/settings';
 import { DEFAULT_HISTORICAL_LEARNING, DEFAULT_SALT_CHLORINATOR } from '../domain/settings';
-import type { HistoricalLearningConfig, SaltChlorinatorConfig } from '../domain/settings';
+import type { HistoricalLearningConfig, SaltChlorinatorConfig, ThemePreference } from '../domain/settings';
 import {
   createChlorinatorConfigFromPreset,
   getChlorinatorModeDefinitions,
@@ -11,6 +11,7 @@ import type { ChlorinatorModeDefinition, ChlorinatorOutputControl, ChlorinatorPr
 import { loadSettings, saveSettings } from '../domain/storage';
 import { getLanguage, setLanguage, t, validateLanguage } from '../i18n/index';
 import type { AppLanguage } from '../i18n/types';
+import { applyThemePreference } from './theme';
 
 type SaveState = 'disabled' | 'enabled' | 'saving' | 'saved' | 'error';
 
@@ -53,6 +54,7 @@ export class SettingsPanel {
   private hlMaxFactor: HTMLInputElement;
   private hlFields: NodeListOf<HTMLElement>;
   private languageSelect: HTMLSelectElement;
+  private appearanceSelect: HTMLSelectElement;
   private saveBtn: HTMLButtonElement;
   private cancelBtn: HTMLButtonElement;
   private closeBtn: HTMLButtonElement;
@@ -92,12 +94,14 @@ export class SettingsPanel {
     this.hlMaxFactor = requiredElement<HTMLInputElement>('hlMaxFactor');
     this.hlFields = document.querySelectorAll('.hl-field') as NodeListOf<HTMLElement>;
     this.languageSelect = requiredElement<HTMLSelectElement>('appLanguage');
+    this.appearanceSelect = requiredElement<HTMLSelectElement>('appAppearance');
     this.saveBtn = requiredElement<HTMLButtonElement>('settingsSaveBtn');
     this.cancelBtn = requiredElement<HTMLButtonElement>('settingsCancelBtn');
     this.closeBtn = requiredElement<HTMLButtonElement>('settingsCloseBtn');
 
     const toggleBtn = document.getElementById('settingsToggleBtn') as HTMLButtonElement | null;
     toggleBtn?.addEventListener('click', () => this.open());
+    document.getElementById('settingsPageOpenBtn')?.addEventListener('click', () => this.open());
     this.closeBtn.addEventListener('click', () => this.requestClose());
     this.cancelBtn.addEventListener('click', () => this.requestClose());
     this.overlay.addEventListener('click', () => this.requestClose());
@@ -128,9 +132,13 @@ export class SettingsPanel {
       this.applyLanguage(this.languageSelect.value as AppLanguage);
       this.handleFieldChange();
     });
+    this.appearanceSelect.addEventListener('change', () => {
+      applyThemePreference(this.appearanceSelect.value as ThemePreference);
+      this.handleFieldChange();
+    });
 
     this.drawer.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((el) => {
-      if (el === this.scEnabled || el === this.hlEnabled || el === this.poolTypeSelect || el === this.languageSelect) return;
+      if (el === this.scEnabled || el === this.hlEnabled || el === this.poolTypeSelect || el === this.languageSelect || el === this.appearanceSelect) return;
       el.addEventListener('input', () => this.handleFieldChange());
       el.addEventListener('change', () => this.handleFieldChange());
     });
@@ -153,6 +161,7 @@ export class SettingsPanel {
     this.poolTypeSelect.value = s.poolType;
     this.unitSystemSelect.value = s.unitSystem;
     this.languageSelect.value = getLanguage();
+    this.appearanceSelect.value = s.appearance ?? 'system';
 
     const sc = s.saltChlorinator ?? DEFAULT_SALT_CHLORINATOR;
     this.scEnabled.checked = s.poolType === 'saltwater' ? sc.enabled : false;
@@ -279,6 +288,7 @@ export class SettingsPanel {
   private currentSnapshot(): string {
     return JSON.stringify({
       language: this.languageSelect.value,
+      appearance: this.appearanceSelect.value,
       volume: this.volumeInput.value,
       volumeUnit: this.volumeUnitSelect.value,
       poolType: this.poolTypeSelect.value,
@@ -403,6 +413,7 @@ export class SettingsPanel {
       poolType: this.poolTypeSelect.value as PoolSettings['poolType'],
       unitSystem: this.unitSystemSelect.value as PoolSettings['unitSystem'],
       language: existing.language,
+      appearance: this.appearanceSelect.value as ThemePreference,
     };
 
     if (this.scEnabled.checked) {
