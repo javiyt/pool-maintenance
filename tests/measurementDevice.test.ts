@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildMeasurementValueTrace,
   composeMeasurementForm,
   createMeasurementDevice,
   deriveTdsFromEc,
+  setMeasurementDeviceLifecycle,
+  updateMeasurementDevice,
+  validateMeasurementDevice,
   type MeasurementDevice,
 } from '../src/domain/measurementDevice';
 
@@ -91,5 +95,69 @@ describe('measurement device composition', () => {
     expect(tds?.devices[0].sourceParameterCode).toBe('ec');
     expect(tds?.devices[0].conversionFactor).toBe(0.5);
     expect(deriveTdsFromEc(6640, tds?.devices[0].conversionFactor)).toBe(3320);
+  });
+
+  it('ignores archived devices and archived parameters in new measurement composition', () => {
+    const archivedDevice = setMeasurementDeviceLifecycle(digitalMeter(), 'archived');
+    const withArchivedParameter = createMeasurementDevice({
+      customName: 'Tiras',
+      deviceType: 'test-strips',
+      enabled: true,
+      isPrimary: false,
+      parameters: [{ parameterCode: 'fac', capability: 'direct', enabled: false, archived: true, unit: 'ppm' }],
+    });
+
+    const composition = composeMeasurementForm({
+      devices: [archivedDevice, withArchivedParameter],
+      poolDisinfection: 'chlorine',
+    });
+
+    expect(composition.fields.find((field) => field.parameterCode === 'ph')?.devices).toEqual([]);
+    expect(composition.fields.find((field) => field.parameterCode === 'fac')?.devices).toEqual([]);
+  });
+
+  it('captures an immutable source snapshot for measurement values', () => {
+    const device = digitalMeter();
+    const composition = composeMeasurementForm({ devices: [device], poolDisinfection: 'chlorine' });
+    const field = composition.fields.find((item) => item.parameterCode === 'tds')!;
+
+    const trace = buildMeasurementValueTrace({ parameterCode: 'tds', field });
+    const renamed = updateMeasurementDevice(device, { ...device, customName: 'Medidor piscina exterior' });
+
+    expect(trace.deviceName).toBe('Multiparametro digital');
+    expect(trace.sourceSnapshot?.deviceName).toBe('Multiparametro digital');
+    expect(trace.sourceSnapshot?.derivationSnapshot?.sourceParameterCode).toBe('ec');
+    expect(renamed.customName).toBe('Medidor piscina exterior');
+  });
+
+  it('validates incoherent parameter configurations', () => {
+    const invalid = createMeasurementDevice({
+      customName: 'Medidor raro',
+      deviceType: 'digital-multiparameter',
+      enabled: true,
+      isPrimary: false,
+      parameters: [
+        {
+          parameterCode: 'tds',
+          capability: 'calculated',
+          enabled: true,
+          unit: 'ph',
+          resolution: 0,
+          minimum: 500,
+          maximum: 100,
+          derivation: { sourceParameterCode: 'tds', formulaCode: '', conversionFactor: -1 },
+        },
+      ],
+    });
+
+    const result = validateMeasurementDevice(invalid);
+
+    expect(result.valid).toBe(false);
+    expect(Object.values(result.errors)).toEqual(expect.arrayContaining([
+      'La unidad no es compatible con el parametro.',
+      'El minimo no puede ser mayor que el maximo.',
+      'La resolucion debe ser positiva.',
+      'Un parametro no puede derivar de si mismo.',
+    ]));
   });
 });

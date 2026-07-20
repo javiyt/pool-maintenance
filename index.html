@@ -850,9 +850,18 @@
       </div>
       <div class="quick-actions">
         <button type="button" id="settingsPageOpenBtn" class="btn-primary btn-inline" data-i18n="settings.open">Abrir configuración</button>
+        <a class="btn-secondary" href="/settings/measurement-devices" data-route-link>Medidores</a>
         <a class="btn-secondary" href="/settings/install" data-route-link data-i18n="pwa.install.title">Instala Pool Assistant</a>
         <a class="btn-secondary" href="/settings/backup" data-route-link data-i18n="pwa.backup.title">Copia local</a>
       </div>
+    </section>
+
+    <section class="page-section" data-route-section="/settings/measurement-devices" aria-labelledby="measurement-devices-heading">
+      <div class="page-header">
+        <p class="eyebrow">Configuración</p>
+        <h1 id="measurement-devices-heading">Medidores</h1>
+      </div>
+      <div id="measurementDevicesContent"></div>
     </section>
   </main>
 

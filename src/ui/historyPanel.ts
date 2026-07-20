@@ -51,6 +51,7 @@ export class HistoryPanel {
 
     // Reverse chronological order by measuredAt
     const sorted = [...list].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt));
+    const devicesById = new Map(loadMeasurementDevices().map((device) => [device.id, device]));
 
     const items = sorted.map((m) => {
       const vals: string[] = [];
@@ -61,6 +62,21 @@ export class HistoryPanel {
       if (typeof m.orp === 'number') vals.push(`ORP ${m.orp} mV`);
       if (typeof m.fac === 'number') vals.push(`FAC ${m.fac.toFixed(1)} ppm`);
       if (typeof m.temperature === 'number') vals.push(`${m.temperature.toFixed(1)} °C`);
+      const sourceLines = Object.entries(m.values ?? {})
+        .map(([code, trace]) => {
+          if (!trace) return '';
+          const snapshot = trace.sourceSnapshot;
+          const originalName = snapshot?.deviceName ?? trace.deviceName;
+          if (!originalName) return '';
+          const currentDevice = trace.deviceId ? devicesById.get(trace.deviceId) : undefined;
+          const currentName = currentDevice?.customName;
+          const currentNamePart = currentName && currentName !== originalName
+            ? ` · Nombre actual: ${currentName}`
+            : '';
+          return `<span>${escapeHtml(code)}: ${escapeHtml(originalName)}${escapeHtml(currentNamePart)} · ${escapeHtml(snapshot?.unit ?? trace.originalUnit)}</span>`;
+        })
+        .filter(Boolean)
+        .join('');
 
       return `
         <div class="history-item" data-id="${escapeHtml(m.id)}">
@@ -71,6 +87,7 @@ export class HistoryPanel {
           <div class="history-values">
             ${vals.map((v) => `<span class="history-value">${escapeHtml(v)}</span>`).join('')}
           </div>
+          ${sourceLines ? `<div class="history-source-snapshots">${sourceLines}</div>` : ''}
           ${m.notes ? `<div class="history-notes">${escapeHtml(m.notes)}</div>` : ''}
         </div>
       `;

@@ -7,6 +7,7 @@ import { ActionHistory } from './ui/actionHistory';
 import { HistoricalInsightsPanel } from './ui/historicalInsights';
 import { FollowUpDashboard } from './ui/followUpDashboard';
 import { DashboardPanel } from './ui/dashboardPanel';
+import { MeasurementDevicesPage } from './ui/measurementDevicesPage';
 import { AppShell } from './ui/appShell';
 import { PwaController } from './ui/pwaController';
 import { addMeasurement, addFollowUp } from './domain/storage';
@@ -78,6 +79,7 @@ function init(): void {
   const historicalInsights = new HistoricalInsightsPanel();
   const followUpDashboard = new FollowUpDashboard();
   const dashboardPanel = new DashboardPanel();
+  const measurementDevicesPage = new MeasurementDevicesPage();
   const pwaController = new PwaController({
     unsavedChanges: () => measurementForm.hasUnsavedChanges() || actionForm.hasUnsavedChanges(),
   });
@@ -88,6 +90,10 @@ function init(): void {
     }
     if (route === '/settings/backup') {
       document.getElementById('backupSettingsSection')?.scrollIntoView({ block: 'start' });
+    }
+  }, (route) => {
+    if (route === '/settings/measurement-devices' || route.startsWith('/settings/measurement-devices/')) {
+      measurementDevicesPage.render(route);
     }
   });
 
@@ -105,6 +111,7 @@ function init(): void {
     historicalInsights.render();
     followUpDashboard.render();
     dashboardPanel.render();
+    measurementDevicesPage.render(appShell.currentRoute());
     pwaController.renderInstall();
 
     // Re-run recommendations if there are measurements
