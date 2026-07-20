@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   detectInstallPlatform,
@@ -10,6 +8,7 @@ import {
 } from '../src/pwa/install';
 import { getConnectionStatus } from '../src/pwa/offline';
 import { canApplyUpdate, isServiceWorkerSupported } from '../src/pwa/update';
+import { createWebAppManifest } from '../src/pwa/manifest';
 
 describe('PWA install state', () => {
   it('detects standalone using display-mode or iOS navigator fallback', () => {
@@ -75,13 +74,7 @@ describe('PWA offline and update helpers', () => {
 
 describe('web app manifest', () => {
   it('declares installable app metadata and required icons', () => {
-    const manifestPath = join(process.cwd(), 'public/app.webmanifest');
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      display: string;
-      start_url: string;
-      scope: string;
-      icons: Array<{ src: string; sizes: string; purpose: string }>;
-    };
+    const manifest = createWebAppManifest('/');
 
     expect(manifest.display).toBe('standalone');
     expect(manifest.start_url).toBe('/?source=pwa');
@@ -90,5 +83,18 @@ describe('web app manifest', () => {
     expect(manifest.icons.some((icon) => icon.sizes === '512x512' && icon.purpose === 'any')).toBe(true);
     expect(manifest.icons.some((icon) => icon.sizes === '192x192' && icon.purpose === 'maskable')).toBe(true);
     expect(manifest.icons.some((icon) => icon.sizes === '512x512' && icon.purpose === 'maskable')).toBe(true);
+  });
+
+  it('scopes manifest URLs to the configured app base path', () => {
+    const manifest = createWebAppManifest('/pool-maintenance/');
+
+    expect(manifest.id).toBe('/pool-maintenance/');
+    expect(manifest.start_url).toBe('/pool-maintenance/?source=pwa');
+    expect(manifest.scope).toBe('/pool-maintenance/');
+    expect(manifest.icons[0].src).toBe('/pool-maintenance/icons/icon-32.png');
+    expect(manifest.shortcuts.map((shortcut) => shortcut.url)).toEqual([
+      '/pool-maintenance/measurements/new',
+      '/pool-maintenance/history',
+    ]);
   });
 });

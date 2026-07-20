@@ -18,6 +18,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      APP_BASE_PATH: /pool-maintenance/
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -42,8 +44,6 @@ jobs:
 
       - name: Build (GitHub Pages)
         run: pnpm build
-        env:
-          DEPLOY_TARGET: github-pages
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

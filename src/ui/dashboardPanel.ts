@@ -44,7 +44,6 @@ export class DashboardPanel {
       `;
       this.measurementsContent.innerHTML = `<p class="empty-state">${escapeHtml(t('dashboard.measurements.empty'))}</p>`;
       this.activityContent.innerHTML = `<p class="empty-state">${escapeHtml(t('dashboard.activity.empty'))}</p>`;
-      this.bindLocalLinks();
       return;
     }
 
@@ -73,17 +72,6 @@ export class DashboardPanel {
     `;
 
     this.activityContent.innerHTML = renderActivity(latest, actions.length);
-    this.bindLocalLinks();
-  }
-
-  private bindLocalLinks(): void {
-    this.statusContent.querySelectorAll<HTMLAnchorElement>('[data-route-link]').forEach((link) => {
-      link.addEventListener('click', (event) => {
-        event.preventDefault();
-        window.history.pushState({}, '', link.getAttribute('href') ?? '/');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      });
-    });
   }
 }
 

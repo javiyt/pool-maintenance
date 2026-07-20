@@ -11,6 +11,7 @@ describe('app shell routing', () => {
     expect(normalizeRoute('/settings/measurement-devices')).toBe('/settings/measurement-devices');
     expect(normalizeRoute('/settings/measurement-devices/device-1/edit')).toBe('/settings/measurement-devices/device-1/edit');
     expect(normalizeRoute('/unknown')).toBe('/');
+    expect(normalizeRoute('/pool-maintenance/history', '/pool-maintenance')).toBe('/history');
   });
 });
 

@@ -11,6 +11,7 @@ import {
 } from '../pwa/install';
 import { getConnectionStatus } from '../pwa/offline';
 import { canApplyUpdate, isServiceWorkerSupported, type UpdateState } from '../pwa/update';
+import { appBaseUrl, publicAssetUrl } from '../applicationRuntime';
 
 export class PwaController {
   private installEvent: BeforeInstallPromptEvent | null = null;
@@ -129,8 +130,7 @@ export class PwaController {
     }
     if (!import.meta.env.PROD) return;
 
-    const swUrl = `${import.meta.env.BASE_URL}service-worker.js`;
-    void window.navigator.serviceWorker.register(swUrl).then((registration) => {
+    void window.navigator.serviceWorker.register(publicAssetUrl('service-worker.js'), { scope: appBaseUrl }).then((registration) => {
       this.updateRegistration = registration;
       registration.addEventListener('updatefound', () => {
         const worker = registration.installing;

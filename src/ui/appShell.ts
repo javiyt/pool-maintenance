@@ -1,3 +1,5 @@
+import { appRouteUrl, currentApplicationPathname, routerBasename } from '../applicationRuntime';
+import { stripRouterBasename } from '../applicationBasePath';
 import { t } from '../i18n/index';
 
 export type AppRoute =
@@ -20,8 +22,9 @@ const routeAliases: Record<string, AppRoute> = {
   '/more': '/settings',
 };
 
-export function normalizeRoute(pathname: string): AppRoute {
-  const clean = pathname.split('?')[0]?.replace(/\/+$/, '') || '/';
+export function normalizeRoute(pathname: string, basename: string = routerBasename): AppRoute {
+  const pathWithoutBase = stripRouterBasename(pathname, basename);
+  const clean = pathWithoutBase.split('?')[0]?.replace(/\/+$/, '') || '/';
   const withLeadingSlash = clean.startsWith('/') ? clean : `/${clean}`;
   const aliased = routeAliases[withLeadingSlash] ?? withLeadingSlash;
   const routes: AppRoute[] = [
@@ -68,14 +71,15 @@ export class AppShell {
   }
 
   navigate(route: AppRoute): void {
-    if (window.location.pathname !== route) {
-      window.history.pushState({}, '', route);
+    const pathname = appRouteUrl(route);
+    if (window.location.pathname !== pathname) {
+      window.history.pushState({}, '', pathname);
     }
     this.render(route);
   }
 
   currentRoute(): AppRoute {
-    return normalizeRoute(window.location.pathname);
+    return normalizeRoute(currentApplicationPathname());
   }
 
   private syncFromLocation(): void {

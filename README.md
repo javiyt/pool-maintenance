@@ -410,7 +410,7 @@ Before the first deployment, configure the Pages source:
 
 1. Open the repository **Settings** → **Pages**.
 2. Under **Build and deployment**, select **GitHub Actions** as the source.
-3. No further configuration is needed — the workflow handles the rest.
+3. No further configuration is needed — the workflow sets `APP_BASE_PATH=/pool-maintenance/` during the build.
 
 ### Build locally for Pages
 
@@ -418,8 +418,9 @@ Before the first deployment, configure the Pages source:
 pnpm build:pages
 ```
 
-This sets the asset base path to `/pool-maintenance/` so all CSS and JavaScript
-load correctly on the Pages domain. Verify the output:
+This sets `APP_BASE_PATH=/pool-maintenance/` so application routes, PWA metadata,
+the service worker scope, and public asset URLs all target the Pages path.
+Verify the output:
 
 ```bash
 grep -o '/pool-maintenance/assets/' dist/index.html | head -1
