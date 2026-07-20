@@ -131,8 +131,15 @@ function init(): void {
   // Re-render history whenever measurements change
   historyPanel.onChange(() => {
     historyPanel.render();
+    actionHistory.render();
     historicalInsights.render();
+    followUpDashboard.render();
     dashboardPanel.render();
+    if (loadMeasurements().length > 0) {
+      runAndShowRecommendations(recommendationsPanel);
+    } else {
+      recommendationsPanel.hide();
+    }
   });
 
   // Re-render history when settings change (e.g. pool type affects display)

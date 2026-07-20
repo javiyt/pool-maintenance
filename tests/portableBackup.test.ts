@@ -101,8 +101,11 @@ describe('portable complete backup', () => {
 
     expect(backup.manifest.backupFormat).toBe('pool-maintenance-portable-backup');
     expect(backup.manifest.integrity.algorithm).toBe('sha-256');
+    expect(backup.manifest.counts.maintenanceActions).toBe(1);
     expect(backup.manifest.content.find((entry) => entry.path === 'data/measurements.json')?.recordCount).toBe(1);
+    expect(backup.manifest.content.find((entry) => entry.path === 'data/maintenance-actions.json')?.recordCount).toBe(1);
     expect(backup.checksums['data/measurements.json']).toMatch(/^[a-f0-9]{64}$/);
+    expect(backup.checksums['data/maintenance-actions.json']).toMatch(/^[a-f0-9]{64}$/);
     expect(backup.dataset.metadata.sourceInstallationId).toBe('install-1');
     expect(backup.dataset.pools[0].data.volume).toBe(50000);
     expect(backup.dataset.chlorinators).toHaveLength(1);
@@ -123,6 +126,24 @@ describe('portable complete backup', () => {
     expect(result.poolConfig?.poolType).toBe('saltwater');
     expect(result.measurements).toHaveLength(1);
     expect(result.measurements[0].id).toBe('m1');
+  });
+
+  it('rejects portable backups whose manifest action count does not match the dataset', async () => {
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveMeasurements([SAMPLE_MEASUREMENT]);
+    saveActions([{
+      id: 'act-1',
+      performedAt: '2026-07-09T11:00:00.000Z',
+      kind: 'cleaning',
+      description: 'Brush walls',
+    }]);
+
+    const backup = await exportPortableBackup({ now: FIXED_NOW });
+    backup.dataset.maintenanceActions = [];
+
+    expect(() => parseImportData(JSON.stringify(backup))).toThrow(
+      'manifest declares 1 maintenanceActions records but dataset contains 0',
+    );
   });
 });
 

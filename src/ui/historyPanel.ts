@@ -4,19 +4,9 @@ import {
   deleteMeasurement,
   exportData,
   parseImportData,
-  mergeMeasurements,
-  saveMeasurements,
+  applyImportResult,
   loadMeasurementDevices,
-  saveMeasurementDevices,
-  mergeMeasurementDevices,
-  saveSettings,
   loadActions,
-  saveActions,
-  mergeActions,
-  loadFollowUps,
-  saveFollowUps,
-  mergeFollowUps,
-  normalizeActionExclusionFlags,
 } from '../domain/storage';
 
 export class HistoryPanel {
@@ -110,7 +100,8 @@ export class HistoryPanel {
 
   private handleExport(): void {
     const measurements = loadMeasurements();
-    if (measurements.length === 0) {
+    const actions = loadActions();
+    if (measurements.length === 0 && actions.length === 0) {
       alert(t('history.export.empty'));
       return;
     }
@@ -133,56 +124,37 @@ export class HistoryPanel {
     reader.onload = () => {
       try {
         const result = parseImportData(reader.result as string);
-
-        const existing = loadMeasurements();
-        const merged = mergeMeasurements(existing, result.measurements);
-        saveMeasurements(merged);
+        const applied = applyImportResult(result);
 
         const messages: string[] = [];
         messages.push(t('history.import.success', { count: result.count }));
 
-        if (result.poolConfig) {
-          saveSettings(result.poolConfig);
+        if (applied.poolConfigUpdated) {
           messages.push(t('history.import.poolConfig'));
         }
 
-        if (result.measurementDevices.length > 0) {
-          const existingDevices = loadMeasurementDevices();
-          const mergedDevices = mergeMeasurementDevices(existingDevices, result.measurementDevices);
-          saveMeasurementDevices(mergedDevices);
-          messages.push(`Medidores importados: ${mergedDevices.length - existingDevices.length}`);
+        if (applied.measurementDevices.discovered > 0) {
+          messages.push(`Medidores importados: ${applied.measurementDevices.created}`);
         }
 
-        // Merge imported actions if present (v4+)
-        if (result.actions && result.actions.length > 0) {
-          const existingActions = loadActions();
-          const mergedActions = mergeActions(existingActions, result.actions);
-          saveActions(mergedActions);
-          messages.push(t('history.import.actions', { count: result.actions.length }));
-        }
-
-        // Merge imported follow-ups if present (v6+)
-        if (result.followUps && result.followUps.length > 0) {
-          const existingFus = loadFollowUps();
-          const mergedFus = mergeFollowUps(existingFus, result.followUps);
-          saveFollowUps(mergedFus);
-          messages.push(t('history.import.followUps', { count: result.followUps.length }));
-
-          // Normalize exclusion flags: sync follow-up exclusions to actions
-          // so imported exclusion state takes effect without UI interaction.
-          const currentActions = loadActions();
-          const allFollowUps = loadFollowUps();
-          const normalizedActions = normalizeActionExclusionFlags(currentActions, allFollowUps);
-          if (normalizedActions !== currentActions) {
-            saveActions(normalizedActions);
-            messages.push(t('history.import.exclusions'));
+        if (applied.actions.discovered > 0) {
+          messages.push(t('history.import.actions', { count: applied.actions.created }));
+          if (applied.actions.skipped > 0) {
+            messages.push(`Acciones duplicadas omitidas: ${applied.actions.skipped}`);
           }
         }
 
+        if (applied.followUps.discovered > 0) {
+          messages.push(t('history.import.followUps', { count: applied.followUps.created }));
+        }
+
+        if (applied.actionExclusionsNormalized) {
+          messages.push(t('history.import.exclusions'));
+        }
+
         // Notify the user if duplicate measurements were skipped
-        const skipped = result.count - (merged.length - existing.length);
-        if (skipped > 0) {
-          messages.push(t('history.import.duplicates', { count: skipped }));
+        if (applied.measurements.skipped > 0) {
+          messages.push(t('history.import.duplicates', { count: applied.measurements.skipped }));
         }
 
         this.render();

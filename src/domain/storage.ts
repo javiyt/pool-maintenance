@@ -31,6 +31,7 @@ import {
   isPortableBackupObject,
   portableDatasetFromBackupObject,
   portableDatasetToImportObject,
+  validatePortableBackupManifest,
   type CompleteExportOptions,
   type PortableBackup,
   type PortableDataset,
@@ -522,6 +523,21 @@ export interface ImportResult {
   count: number;
 }
 
+export interface AppliedImportResult {
+  measurements: { discovered: number; created: number; skipped: number };
+  measurementDevices: { discovered: number; created: number; skipped: number };
+  actions: { discovered: number; created: number; skipped: number; failed: number };
+  followUps: { discovered: number; created: number; skipped: number };
+  experiments: { discovered: number; created: number; skipped: number };
+  userChemicalProducts: { discovered: number; created: number; skipped: number };
+  actionExclusionsNormalized: boolean;
+  poolConfigUpdated: boolean;
+}
+
+export interface ApplyImportOptions {
+  mode?: 'merge' | 'replace';
+}
+
 /**
  * Build the full export payload including pool configuration,
  * measurement history, schema metadata, and diagnostic experiments.
@@ -638,6 +654,7 @@ export function parseImportData(jsonString: string): ImportResult {
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
   if (typeof data === 'object' && data !== null) {
     if (isPortableBackupObject(data)) {
+      validatePortableBackupManifest(data);
       data = portableDatasetToImportObject(portableDatasetFromBackupObject(data));
     }
 
@@ -739,6 +756,72 @@ export function parseImportData(jsonString: string): ImportResult {
   );
 }
 
+export function applyImportResult(result: ImportResult, options: ApplyImportOptions = {}): AppliedImportResult {
+  const mode = options.mode ?? 'merge';
+  const persistentKeys = [
+    key('settings'),
+    key('measurements'),
+    key('measurementDevices'),
+    key('actions'),
+    key('followUps'),
+    key('experiments'),
+    key('userChemicalProducts'),
+  ];
+  const before = new Map(persistentKeys.map((storageKeyName) => [storageKeyName, localStorage.getItem(storageKeyName)]));
+
+  const existingMeasurements = loadMeasurements();
+  const existingMeasurementDevices = loadMeasurementDevices();
+  const existingActions = loadActions();
+  const existingFollowUps = loadFollowUps();
+  const existingExperiments = loadExperiments();
+  const existingUserChemicalProducts = loadUserChemicalProducts();
+
+  const mergedMeasurements = mode === 'replace' ? result.measurements : mergeMeasurements(existingMeasurements, result.measurements);
+  const mergedMeasurementDevices = mode === 'replace' ? result.measurementDevices : mergeMeasurementDevices(existingMeasurementDevices, result.measurementDevices);
+  const mergedActions = mode === 'replace' ? result.actions : mergeActions(existingActions, result.actions);
+  const mergedFollowUps = mode === 'replace' ? result.followUps : mergeFollowUps(existingFollowUps, result.followUps);
+  const mergedExperiments = mode === 'replace' ? result.experiments : mergeExperiments(existingExperiments, result.experiments);
+  const mergedUserChemicalProducts = mode === 'replace' ? result.userChemicalProducts : mergeUserChemicalProducts(existingUserChemicalProducts, result.userChemicalProducts);
+  const normalizedActions = normalizeActionExclusionFlags(mergedActions, mergedFollowUps);
+  const actionExclusionsNormalized = normalizedActions !== mergedActions;
+
+  try {
+    if (result.poolConfig) {
+      saveSettings(result.poolConfig);
+    }
+    saveUserChemicalProducts(mergedUserChemicalProducts);
+    saveMeasurementDevices(mergedMeasurementDevices);
+    saveMeasurements(mergedMeasurements);
+    saveActions(normalizedActions);
+    verifyPersistedActions(normalizedActions, result.actions);
+    saveFollowUps(mergedFollowUps);
+    saveExperiments(mergedExperiments);
+
+    return {
+      measurements: countApplied(mode, existingMeasurements, result.measurements),
+      measurementDevices: countApplied(mode, existingMeasurementDevices, result.measurementDevices),
+      actions: {
+        ...countApplied(mode, existingActions, result.actions),
+        failed: 0,
+      },
+      followUps: countApplied(mode, existingFollowUps, result.followUps),
+      experiments: countApplied(mode, existingExperiments, result.experiments),
+      userChemicalProducts: countApplied(mode, existingUserChemicalProducts, result.userChemicalProducts),
+      actionExclusionsNormalized,
+      poolConfigUpdated: Boolean(result.poolConfig),
+    };
+  } catch (error) {
+    for (const [storageKeyName, value] of before) {
+      if (value === null) {
+        localStorage.removeItem(storageKeyName);
+      } else {
+        localStorage.setItem(storageKeyName, value);
+      }
+    }
+    throw error;
+  }
+}
+
 /**
  * Merge imported measurements into an existing list, avoiding
  * duplicates by measurement id.
@@ -758,6 +841,15 @@ export function mergeMeasurementDevices(
 ): MeasurementDevice[] {
   const existingIds = new Set(existing.map((device) => device.id));
   const deduped = incoming.filter((device) => !existingIds.has(device.id));
+  return [...existing, ...deduped];
+}
+
+export function mergeUserChemicalProducts(
+  existing: UserChemicalProduct[],
+  incoming: UserChemicalProduct[],
+): UserChemicalProduct[] {
+  const existingIds = new Set(existing.map((product) => product.id));
+  const deduped = incoming.filter((product) => !existingIds.has(product.id));
   return [...existing, ...deduped];
 }
 
@@ -821,4 +913,35 @@ export function normalizeActionExclusionFlags(
   });
 
   return changed ? result : actions;
+}
+
+function countApplied<T extends { id: string }>(
+  mode: 'merge' | 'replace',
+  existing: T[],
+  incoming: T[],
+): { discovered: number; created: number; skipped: number } {
+  if (mode === 'replace') {
+    return {
+      discovered: incoming.length,
+      created: incoming.length,
+      skipped: 0,
+    };
+  }
+  const existingIds = new Set(existing.map((item) => item.id));
+  const created = incoming.filter((item) => !existingIds.has(item.id)).length;
+  return {
+    discovered: incoming.length,
+    created,
+    skipped: incoming.length - created,
+  };
+}
+
+function verifyPersistedActions(expectedMergedActions: MaintenanceAction[], importedActions: MaintenanceAction[]): void {
+  if (importedActions.length === 0) return;
+  const savedById = new Map(loadActions().map((action) => [action.id, action]));
+  for (const action of expectedMergedActions) {
+    if (!savedById.has(action.id)) {
+      throw new Error(`Import failed: maintenance action ${action.id} was not persisted.`);
+    }
+  }
 }
