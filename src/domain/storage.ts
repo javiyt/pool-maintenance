@@ -23,6 +23,18 @@ import type { FollowUp } from './followUp';
 import type { DiagnosticExperiment } from './latentStateEstimator';
 import { buildExportSnapshots, type ExportSnapshots } from './exportSnapshots';
 import {
+  buildPortableBackup,
+  buildPortableDataset,
+  buildPortableBackupJson,
+  isPortableBackupObject,
+  portableDatasetFromBackupObject,
+  portableDatasetToImportObject,
+  type CompleteExportOptions,
+  type PortableBackup,
+  type PortableDataset,
+} from './portableBackup';
+import { storageKey } from './persistenceInventory';
+import {
   APPLICATION_VERSION,
   CHEMICAL_CATALOG_VERSION,
   DIAGNOSIS_ENGINE_VERSION,
@@ -31,10 +43,8 @@ import {
   STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
 } from './recommendation/versions';
 
-const KEY_PREFIX = 'pool-maintenance:';
-
 function key(name: string): string {
-  return `${KEY_PREFIX}${name}`;
+  return storageKey(name);
 }
 
 // ── PoolSettings ───────────────────────────────────────────────────
@@ -449,6 +459,7 @@ export function exportData(now?: Date): ExportData {
     followUps,
     settings: poolConfig,
     capturedAt: exportedAt,
+    userChemicalProducts,
   });
 
   return {
@@ -471,6 +482,18 @@ export function exportData(now?: Date): ExportData {
     userChemicalProducts,
     ...snapshots,
   };
+}
+
+export function exportPortableDataset(now?: Date): PortableDataset {
+  return buildPortableDataset(exportData(now));
+}
+
+export function exportPortableBackup(options?: CompleteExportOptions & { now?: Date }): Promise<PortableBackup> {
+  return buildPortableBackup(exportData(options?.now), options);
+}
+
+export function exportPortableBackupJson(options?: CompleteExportOptions & { now?: Date }): Promise<string> {
+  return buildPortableBackupJson(exportData(options?.now), options);
 }
 
 /**
@@ -528,6 +551,10 @@ export function parseImportData(jsonString: string): ImportResult {
 
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
   if (typeof data === 'object' && data !== null) {
+    if (isPortableBackupObject(data)) {
+      data = portableDatasetToImportObject(portableDatasetFromBackupObject(data));
+    }
+
     const obj = data as Record<string, unknown>;
 
     // Heuristic: if it looks like a single measurement object, reject with a helpful message
