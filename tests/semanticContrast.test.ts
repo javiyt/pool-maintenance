@@ -1,12 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 type ThemeName = 'light' | 'dark';
 type Severity = 'info' | 'success' | 'warning' | 'danger' | 'neutral';
 
 const severities: Severity[] = ['info', 'success', 'warning', 'danger', 'neutral'];
-const css = readFileSync(resolve(process.cwd(), 'src/styles/main.css'), 'utf8');
+const css = readFileSync(`${process.cwd()}/src/styles/main.css`, 'utf8');
 
 describe('semantic alert color tokens', () => {
   it.each(['light', 'dark'] as ThemeName[])('meets WCAG AA contrast in %s theme', (theme) => {
