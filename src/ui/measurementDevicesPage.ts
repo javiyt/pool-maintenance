@@ -20,6 +20,7 @@ import {
   saveMeasurementDevices,
 } from '../domain/storage';
 import { formatDateTime } from '../i18n/index';
+import { appRouteUrl, currentApplicationPathname } from '../applicationRuntime';
 import type { AppRoute } from './appShell';
 
 const PARAMETERS: MeasurementParameterCode[] = [
@@ -70,7 +71,7 @@ export class MeasurementDevicesPage {
     });
   }
 
-  render(route: AppRoute = window.location.pathname as AppRoute): void {
+  render(route: AppRoute = currentApplicationPathname() as AppRoute): void {
     const editId = editDeviceIdFromRoute(route);
     if (editId) {
       this.renderEditor(editId);
@@ -606,8 +607,9 @@ export class MeasurementDevicesPage {
   }
 
   private navigate(route: string): void {
-    if (window.location.pathname !== route) {
-      window.history.pushState({}, '', route);
+    const pathname = appRouteUrl(route);
+    if (window.location.pathname !== pathname) {
+      window.history.pushState({}, '', pathname);
     }
   }
 }

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --project tsconfig.app.json --noEmit && vite build",
-    "build:pages": "DEPLOY_TARGET=github-pages tsc --project tsconfig.app.json --noEmit && DEPLOY_TARGET=github-pages vite build",
+    "build:pages": "APP_BASE_PATH=/pool-maintenance/ tsc --project tsconfig.app.json --noEmit && APP_BASE_PATH=/pool-maintenance/ vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

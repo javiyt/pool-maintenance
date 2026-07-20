@@ -11,12 +11,15 @@ FROM node:22-alpine AS builder
 RUN corepack enable
 
 WORKDIR /app
+ARG APP_BASE_PATH=/
+ENV APP_BASE_PATH=${APP_BASE_PATH}
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json tsconfig.app.json vite.config.ts ./
 COPY src/ src/
+COPY public/ public/
 COPY index.html .
 
 RUN pnpm build
