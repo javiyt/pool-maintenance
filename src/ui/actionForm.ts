@@ -20,6 +20,7 @@ import {
   RECOMMENDATION_ENGINE_VERSION,
 } from '../domain/recommendation/versions';
 import { t } from '../i18n/index';
+import { renderAlert } from './alert';
 
 function localDatetimeToISO(localValue: string): string {
   return new Date(localValue).toISOString();
@@ -428,7 +429,12 @@ export class ActionForm {
   }
 
   private showError(msg: string): void {
-    this.errorsEl.innerHTML = `<div class="form-error">${escapeHtml(msg)}</div>`;
+    this.errorsEl.innerHTML = renderAlert({
+      severity: 'danger',
+      description: msg,
+      className: 'form-error',
+      role: 'alert',
+    });
   }
 
   private clearErrors(): void {
@@ -585,10 +591,4 @@ function categoryFromSystemProduct(productId: string, fallback: string): Chemica
   if (productId.includes('stabilizer') || fallback === 'chlorine-stabilizer') return 'stabilizer';
   if (productId.includes('salt') || fallback === 'pool-salt') return 'salt';
   return 'other';
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
 }

@@ -6,6 +6,7 @@ import {
   type LearningConfidence,
 } from '../domain/historicalLearning';
 import { loadMeasurements, loadActions, loadSettings } from '../domain/storage';
+import { renderAlert } from './alert';
 
 export class HistoricalInsightsPanel {
   private content: HTMLElement;
@@ -35,7 +36,11 @@ export class HistoricalInsightsPanel {
     const items = insights.map((insight) => this.renderInsightCard(insight)).join('\n');
 
     this.content.innerHTML = `
-      <div class="insights-disclaimer">${t('insights.disclaimer')}</div>
+      ${renderAlert({
+        severity: 'warning',
+        description: t('insights.disclaimer'),
+        className: 'insights-disclaimer',
+      })}
       <div class="insights-grid">
         ${items}
       </div>

@@ -3,6 +3,7 @@ import type { TranslationKey } from '../i18n/types';
 import type { Measurement, MeasurementContext, MeasurementContextFieldOrigin, MeasurementParameterCode, MeasurementValueTrace } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
 import { loadMeasurementDevices, loadSettings } from '../domain/storage';
+import { renderAlert } from './alert';
 import {
   buildMeasurementValueTrace,
   composeMeasurementForm,
@@ -194,7 +195,12 @@ export class MeasurementForm {
 
   private showErrors(errors: Record<string, string>): void {
     this.errorsEl.innerHTML = Object.values(errors)
-      .map((msg) => `<div class="form-error">${escapeHtml(translateError(msg))}</div>`)
+      .map((msg) => renderAlert({
+        severity: 'danger',
+        description: translateError(msg),
+        className: 'form-error',
+        role: 'alert',
+      }))
       .join('');
 
     // Mark invalid fields
@@ -258,10 +264,12 @@ export class MeasurementForm {
       return;
     }
     this.capabilitiesEl.innerHTML = `
-      <div class="form-warning">
-        Falta un metodo configurado para ${escapeHtml(missing.map(parameterLabel).join(', '))}.
-        Puede registrar una entrada manual o guardar una medicion parcial; la evaluacion sanitaria completa quedara bloqueada.
-      </div>
+      ${renderAlert({
+        severity: 'warning',
+        title: 'Metodo de medicion incompleto',
+        description: `Falta un metodo configurado para ${missing.map(parameterLabel).join(', ')}. Puede registrar una entrada manual o guardar una medicion parcial; la evaluacion sanitaria completa quedara bloqueada.`,
+        className: 'form-warning',
+      })}
     `;
   }
 
@@ -329,11 +337,6 @@ function parameterLabel(code: MeasurementParameterCode): string {
   return labels[code] ?? code;
 }
 
-function escapeHtml(s: string): string {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-}
 
 /**
  * Read measurement context fields from the form.

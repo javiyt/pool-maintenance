@@ -9,6 +9,7 @@ import type { Measurement } from '../domain/measurement';
 import type { MaintenanceAction } from '../domain/actions';
 import type { PoolSettings } from '../domain/settings';
 import { buildRecommendationSnapshot } from '../domain/recommendation/recommendationSnapshot';
+import { renderAlert } from './alert';
 
 export class RecommendationsPanel {
   private section: HTMLElement;
@@ -62,11 +63,11 @@ export class RecommendationsPanel {
       parts.push(this.renderLatentEstimates());
     }
 
-    parts.push(`
-      <div class="rec-disclaimer">
-        ${escapeHtml(t('rec.disclaimer'))}
-      </div>
-    `);
+    parts.push(renderAlert({
+      severity: 'warning',
+      description: t('rec.disclaimer'),
+      className: 'rec-disclaimer',
+    }));
 
     this.content.innerHTML = parts.join('');
 
@@ -89,11 +90,22 @@ export class RecommendationsPanel {
       'insufficient-data': 'status.insufficientData',
     };
 
-    const statusClass = `as-status-${result.status}`;
+    const statusClass = `as-status-banner as-status-${result.status}`;
     const key = statusLabels[result.status] as TranslationKey | undefined;
     const label = key ? t(key) : result.status;
+    const severity = result.status === 'balanced'
+      ? 'success'
+      : result.status === 'unsafe'
+        ? 'danger'
+        : result.status === 'insufficient-data'
+          ? 'neutral'
+          : 'warning';
 
-    return `<div class="as-status-banner ${statusClass}">${escapeHtml(label)}</div>`;
+    return renderAlert({
+      severity,
+      title: label,
+      className: statusClass,
+    });
   }
 
   // ── Next check ────────────────────────────────────────────────
@@ -540,7 +552,12 @@ export class RecommendationsPanel {
     const parts: string[] = [
       `<div class="as-estimates">`,
       `<h3 class="as-subtitle">${escapeHtml(t('estimate.section.title'))}</h3>`,
-      `<div class="estimate-disclaimer">${escapeHtml(t('estimate.section.disclaimer'))}</div>`,
+      renderAlert({
+        severity: 'warning',
+        title: t('estimate.section.title'),
+        description: t('estimate.section.disclaimer'),
+        className: 'estimate-disclaimer',
+      }),
     ];
 
     parts.push(this.renderAlkalinityCard(alkEstimate, alkStateKey, alkConfidenceKey));
