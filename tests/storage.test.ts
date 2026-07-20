@@ -8,6 +8,8 @@ import {
   deleteMeasurement,
   loadMeasurementDevices,
   saveMeasurementDevices,
+  deleteMeasurementDeviceSafely,
+  getMeasurementDeviceUsage,
   mergeMeasurementDevices,
   saveActions,
   exportData,
@@ -189,6 +191,57 @@ describe('measurement device persistence', () => {
     store.clear();
     saveMeasurementDevices(mergeMeasurementDevices(loadMeasurementDevices(), imported.measurementDevices));
     expect(loadMeasurementDevices()[0].model).toBe('2.0');
+  });
+
+  it('counts linked measurements and archives instead of deleting used meters', () => {
+    const device = createMeasurementDevice({
+      id: 'device-1',
+      customName: 'Medidor digital principal',
+      deviceType: 'digital-multiparameter',
+      enabled: true,
+      isPrimary: true,
+      parameters: [{ parameterCode: 'ph', capability: 'direct', enabled: true, unit: 'ph' }],
+    }, new Date('2026-07-10T10:00:00.000Z'));
+    saveMeasurementDevices([device]);
+    saveMeasurements([{
+      ...SAMPLE_MEASUREMENT,
+      id: 'm-linked',
+      values: {
+        ph: {
+          parameterCode: 'ph',
+          deviceId: 'device-1',
+          deviceName: 'Medidor digital principal',
+          method: 'digital-multiparameter',
+          capability: 'direct',
+          originalUnit: 'ph',
+        },
+      },
+    }]);
+
+    const usage = getMeasurementDeviceUsage('device-1');
+    const result = deleteMeasurementDeviceSafely('device-1', new Date('2026-07-20T10:00:00.000Z'));
+
+    expect(usage.measurementCount).toBe(1);
+    expect(result.deleted).toBe(false);
+    expect(result.archived).toBe(true);
+    expect(loadMeasurementDevices()[0].archived).toBe(true);
+  });
+
+  it('deletes meters with no linked measurements', () => {
+    const device = createMeasurementDevice({
+      id: 'unused-device',
+      customName: 'Sin uso',
+      deviceType: 'manual',
+      enabled: true,
+      isPrimary: false,
+      parameters: [{ parameterCode: 'ph', capability: 'manual-entry', enabled: true, unit: 'ph' }],
+    });
+    saveMeasurementDevices([device]);
+
+    const result = deleteMeasurementDeviceSafely('unused-device');
+
+    expect(result.deleted).toBe(true);
+    expect(loadMeasurementDevices()).toEqual([]);
   });
 });
 

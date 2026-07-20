@@ -8,6 +8,8 @@ describe('app shell routing', () => {
     expect(normalizeRoute('/')).toBe('/');
     expect(normalizeRoute('/measure')).toBe('/measurements/new');
     expect(normalizeRoute('/settings/install?source=pwa')).toBe('/settings/install');
+    expect(normalizeRoute('/settings/measurement-devices')).toBe('/settings/measurement-devices');
+    expect(normalizeRoute('/settings/measurement-devices/device-1/edit')).toBe('/settings/measurement-devices/device-1/edit');
     expect(normalizeRoute('/unknown')).toBe('/');
   });
 });

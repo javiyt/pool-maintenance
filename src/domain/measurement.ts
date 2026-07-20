@@ -49,15 +49,42 @@ export interface MeasurementValueTrace {
   parameterCode: MeasurementParameterCode;
   deviceId?: string;
   deviceName?: string;
+  manufacturer?: string;
+  model?: string;
+  deviceType?: MeasurementMethod;
   method: MeasurementMethod;
   capability: Exclude<MeasurementCapability, 'unsupported'>;
   originalUnit: MeasurementUnit;
   precision?: number;
   calibrationLastAt?: string;
+  calibrationStatus?: string;
   conversionFactor?: number;
+  formulaCode?: string;
   sourceParameterCode?: MeasurementParameterCode;
   sourceValue?: number;
   derived?: boolean;
+  sourceSnapshot?: MeasurementSourceSnapshot;
+}
+
+export interface MeasurementSourceSnapshot {
+  deviceId?: string;
+  deviceName: string;
+  manufacturer?: string;
+  model?: string;
+  deviceType: MeasurementMethod;
+  parameterCode: MeasurementParameterCode;
+  capability: Exclude<MeasurementCapability, 'unsupported'>;
+  unit: MeasurementUnit;
+  resolution?: number;
+  calibrationSnapshot?: {
+    lastCalibrationAt?: string;
+    calibrationStatus?: string;
+  };
+  derivationSnapshot?: {
+    sourceParameterCode?: MeasurementParameterCode;
+    formulaCode?: string;
+    conversionFactor?: number;
+  };
 }
 
 export type MeasurementContextDataField =

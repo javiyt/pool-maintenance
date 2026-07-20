@@ -11,7 +11,7 @@ import {
   migrateSaltChlorinatorConfig,
 } from '../domain/saltChlorinator';
 import type { ChlorinatorModeDefinition, ChlorinatorOutputControl, ChlorinatorPresetId } from '../domain/saltChlorinator';
-import { loadMeasurementDevices, loadSettings, saveMeasurementDevices, saveSettings } from '../domain/storage';
+import { deleteMeasurementDeviceSafely, loadMeasurementDevices, loadSettings, saveMeasurementDevices, saveSettings } from '../domain/storage';
 import { getLanguage, setLanguage, t, validateLanguage } from '../i18n/index';
 import type { AppLanguage } from '../i18n/types';
 import { applyThemePreference } from './theme';
@@ -125,6 +125,12 @@ export class SettingsPanel {
     this.cancelBtn.addEventListener('click', () => this.requestClose());
     this.overlay.addEventListener('click', () => this.requestClose());
     this.drawer.addEventListener('click', (e) => e.stopPropagation());
+    this.drawer.addEventListener('click', (event) => {
+      const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[data-route-link]');
+      if (link?.getAttribute('href')?.startsWith('/settings/measurement-devices')) {
+        this.close();
+      }
+    });
     this.saveBtn.addEventListener('click', () => this.handleSave());
     this.mdAddBtn?.addEventListener('click', () => this.handleAddMeasurementDevice());
     this.deviceList?.addEventListener('click', (event) => this.handleMeasurementDeviceListClick(event));
@@ -274,7 +280,11 @@ export class SettingsPanel {
     if (!button) return;
     const id = button.dataset.deviceRemove;
     if (!id) return;
-    saveMeasurementDevices(loadMeasurementDevices().filter((device) => device.id !== id));
+    const result = deleteMeasurementDeviceSafely(id);
+    if (result.reason) {
+      this.statusEl.textContent = result.reason;
+      this.statusEl.className = result.archived ? 'status-msg success' : 'status-msg error';
+    }
     this.renderMeasurementDevices();
     window.dispatchEvent(new StorageEvent('storage', { key: 'pool-maintenance:measurementDevices' }));
   }
@@ -290,9 +300,12 @@ export class SettingsPanel {
       <div class="device-list-item">
         <div>
           <strong>${escapeHtml(device.customName)}</strong>
-          <span>${escapeHtml(device.deviceType)} · ${escapeHtml(device.parameters.filter((parameter) => parameter.enabled).map((parameter) => parameter.parameterCode).join(', '))}</span>
+          <span>${escapeHtml(device.archived ? 'archivado' : device.enabled ? 'activo' : 'inactivo')} · ${escapeHtml(device.deviceType)} · ${escapeHtml(device.parameters.filter((parameter) => parameter.enabled && !parameter.archived).map((parameter) => parameter.parameterCode).join(', '))}</span>
         </div>
-        <button type="button" class="btn-text" data-device-remove="${escapeHtml(device.id)}">Eliminar</button>
+        <div class="device-list-actions">
+          <a class="btn-text" href="/settings/measurement-devices/${encodeURIComponent(device.id)}/edit" data-route-link>Editar</a>
+          <button type="button" class="btn-text" data-device-remove="${escapeHtml(device.id)}">Eliminar</button>
+        </div>
       </div>
     `).join('');
   }

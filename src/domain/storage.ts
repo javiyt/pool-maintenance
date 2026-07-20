@@ -1,6 +1,6 @@
 import type { Measurement } from './measurement';
 import type { MeasurementDevice } from './measurementDevice';
-import { normalizeMeasurementDevice } from './measurementDevice';
+import { normalizeMeasurementDevice, setMeasurementDeviceLifecycle } from './measurementDevice';
 import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import {
@@ -159,6 +159,61 @@ export function loadMeasurementDevices(): MeasurementDevice[] {
 
 export function saveMeasurementDevices(devices: MeasurementDevice[]): void {
   localStorage.setItem(key('measurementDevices'), JSON.stringify(devices.map((device) => normalizeMeasurementDevice(device))));
+}
+
+export interface MeasurementDeviceUsage {
+  measurementCount: number;
+  lastUsedAt?: string;
+  parameterCounts: Record<string, number>;
+}
+
+export interface DeleteMeasurementDeviceResult {
+  deleted: boolean;
+  archived: boolean;
+  reason?: string;
+  device?: MeasurementDevice;
+}
+
+export function getMeasurementDeviceUsage(deviceId: string, measurements = loadMeasurements()): MeasurementDeviceUsage {
+  const linkedMeasurements = measurements.filter((measurement) =>
+    Object.values(measurement.values ?? {}).some((trace) => trace?.deviceId === deviceId || trace?.sourceSnapshot?.deviceId === deviceId),
+  );
+  const parameterCounts: Record<string, number> = {};
+  for (const measurement of linkedMeasurements) {
+    for (const trace of Object.values(measurement.values ?? {})) {
+      if (trace?.deviceId !== deviceId && trace?.sourceSnapshot?.deviceId !== deviceId) continue;
+      parameterCounts[trace.parameterCode] = (parameterCounts[trace.parameterCode] ?? 0) + 1;
+    }
+  }
+  return {
+    measurementCount: linkedMeasurements.length,
+    lastUsedAt: linkedMeasurements
+      .map((measurement) => measurement.measuredAt)
+      .sort()
+      .at(-1),
+    parameterCounts,
+  };
+}
+
+export function deleteMeasurementDeviceSafely(deviceId: string, now = new Date()): DeleteMeasurementDeviceResult {
+  const devices = loadMeasurementDevices();
+  const device = devices.find((candidate) => candidate.id === deviceId);
+  if (!device) return { deleted: false, archived: false, reason: 'El medidor no existe.' };
+
+  const usage = getMeasurementDeviceUsage(deviceId);
+  if (usage.measurementCount > 0) {
+    const archivedDevice = setMeasurementDeviceLifecycle(device, 'archived', now);
+    saveMeasurementDevices(devices.map((candidate) => candidate.id === deviceId ? archivedDevice : candidate));
+    return {
+      deleted: false,
+      archived: true,
+      device: archivedDevice,
+      reason: `Este medidor aparece en ${usage.measurementCount} mediciones anteriores. Se ha archivado para conservar el historico.`,
+    };
+  }
+
+  saveMeasurementDevices(devices.filter((candidate) => candidate.id !== deviceId));
+  return { deleted: true, archived: false };
 }
 
 // ── Maintenance Actions ────────────────────────────────────────────
