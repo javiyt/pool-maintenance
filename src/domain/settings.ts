@@ -2,6 +2,7 @@ export type PoolType = 'chlorine' | 'saltwater';
 export type VolumeUnit = 'liters' | 'cubicMeters';
 export type UnitSystem = 'metric' | 'imperial';
 export type AppLanguage = 'en' | 'es';
+export type ThemePreference = 'system' | 'light' | 'dark';
 
 export type {
   ChlorinatorOutputControl,
@@ -37,6 +38,7 @@ export interface PoolSettings {
   poolType: PoolType;
   unitSystem: UnitSystem;
   language?: AppLanguage;
+  appearance?: ThemePreference;
   saltChlorinator?: SaltChlorinatorConfig;
   historicalLearning?: HistoricalLearningConfig;
 }
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: PoolSettings = {
   volumeUnit: 'liters',
   poolType: 'chlorine',
   unitSystem: 'metric',
+  appearance: 'system',
 };
 
 export const DEFAULT_HISTORICAL_LEARNING: HistoricalLearningConfig = {

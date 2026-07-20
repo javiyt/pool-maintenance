@@ -6,6 +6,9 @@ import { ActionForm } from './ui/actionForm';
 import { ActionHistory } from './ui/actionHistory';
 import { HistoricalInsightsPanel } from './ui/historicalInsights';
 import { FollowUpDashboard } from './ui/followUpDashboard';
+import { DashboardPanel } from './ui/dashboardPanel';
+import { AppShell } from './ui/appShell';
+import { PwaController } from './ui/pwaController';
 import { addMeasurement, addFollowUp } from './domain/storage';
 import { loadSettings, saveSettings, loadMeasurements, loadActions } from './domain/storage';
 import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
@@ -16,6 +19,7 @@ import {
   t,
   applyStaticTranslations,
 } from './i18n/index';
+import { applyThemePreference } from './ui/theme';
 
 function toLocalDatetime(d: Date): string {
   const y = d.getFullYear();
@@ -44,6 +48,7 @@ function init(): void {
     ? validateLanguage(savedSettings.language)
     : 'es';
   setLanguage(initialLang);
+  applyThemePreference(savedSettings.appearance ?? 'system');
 
   // Persist browser-derived default on first visit so the selector
   // and reload behaviour remain deterministic
@@ -72,6 +77,19 @@ function init(): void {
   const actionHistory = new ActionHistory();
   const historicalInsights = new HistoricalInsightsPanel();
   const followUpDashboard = new FollowUpDashboard();
+  const dashboardPanel = new DashboardPanel();
+  const pwaController = new PwaController({
+    unsavedChanges: () => measurementForm.hasUnsavedChanges() || actionForm.hasUnsavedChanges(),
+  });
+  const appShell = new AppShell((route) => {
+    settingsPanel.open();
+    if (route === '/settings/install') {
+      document.getElementById('installSettingsSection')?.scrollIntoView({ block: 'start' });
+    }
+    if (route === '/settings/backup') {
+      document.getElementById('backupSettingsSection')?.scrollIntoView({ block: 'start' });
+    }
+  });
 
   // ── Full re-render function (used on language change) ─────────
   function fullReRender(): void {
@@ -86,6 +104,8 @@ function init(): void {
     actionHistory.render();
     historicalInsights.render();
     followUpDashboard.render();
+    dashboardPanel.render();
+    pwaController.renderInstall();
 
     // Re-run recommendations if there are measurements
     const measurements = loadMeasurements();
@@ -105,6 +125,7 @@ function init(): void {
   historyPanel.onChange(() => {
     historyPanel.render();
     historicalInsights.render();
+    dashboardPanel.render();
   });
 
   // Re-render history when settings change (e.g. pool type affects display)
@@ -112,6 +133,8 @@ function init(): void {
     measurementForm.refreshChlorinatorContextFields();
     historyPanel.render();
     historicalInsights.render();
+    applyThemePreference(loadSettings().appearance ?? 'system');
+    dashboardPanel.render();
   });
 
   // Handle measurement submission
@@ -119,6 +142,8 @@ function init(): void {
     addMeasurement(measurement);
     historyPanel.render();
     historicalInsights.render();
+    dashboardPanel.render();
+    pwaController.noteMeaningfulAction();
 
     // Evaluate pending follow-ups against new measurement
     followUpDashboard.evaluatePending();
@@ -146,6 +171,7 @@ function init(): void {
   actionForm.onSave((action, followUpInfo) => {
     actionHistory.render();
     historicalInsights.render();
+    dashboardPanel.render();
 
     // Create a follow-up record for this action
     const followUp = createFollowUp(
@@ -161,13 +187,20 @@ function init(): void {
 
     // Re-run recommendations to reflect the recorded action
     runAndShowRecommendations(recommendationsPanel);
+    dashboardPanel.render();
   });
 
   // Initial render
+  dashboardPanel.render();
   historyPanel.render();
   actionHistory.render();
   historicalInsights.render();
   followUpDashboard.render();
+  if (loadMeasurements().length > 0) {
+    runAndShowRecommendations(recommendationsPanel);
+  }
+  appShell.start();
+  pwaController.start();
 }
 
 document.addEventListener('DOMContentLoaded', init);

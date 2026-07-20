@@ -24,6 +24,14 @@ function createSettingsPanelHTML(): void {
             </select>
           </div>
           <div class="field">
+            <label for="appAppearance">Apariencia</label>
+            <select id="appAppearance">
+              <option value="system">Seguir sistema</option>
+              <option value="light">Claro</option>
+              <option value="dark">Oscuro</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="poolVolume">Volumen</label>
             <input type="number" id="poolVolume" />
           </div>

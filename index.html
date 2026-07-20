@@ -2,16 +2,38 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="description" content="Asistente de mantenimiento de piscina: registra la química del agua, analiza tendencias y recibe recomendaciones para piscinas salinas o de cloro." />
+  <meta name="theme-color" content="#087f8c" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Pool Assistant" />
   <title>Asistente de mantenimiento de piscina</title>
+  <link rel="manifest" href="/app.webmanifest" />
+  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
   <link rel="stylesheet" href="/src/styles/main.css" />
 </head>
 <body>
+  <div id="offlineIndicator" class="offline-indicator" role="status" aria-live="polite" hidden></div>
+  <div id="updateBanner" class="update-banner" role="status" aria-live="polite" hidden>
+    <div>
+      <strong data-i18n="pwa.update.title">Nueva versión disponible</strong>
+      <p data-update-detail data-i18n="pwa.update.detail">La actualización está lista. Tus datos locales no se perderán.</p>
+    </div>
+    <div class="update-actions">
+      <button id="updateLaterBtn" type="button" class="btn-secondary" data-i18n="pwa.update.later">Más tarde</button>
+      <button id="updateNowBtn" type="button" class="btn-primary btn-inline" data-i18n="pwa.update.now">Actualizar ahora</button>
+    </div>
+  </div>
   <!-- ═══ Header ═══════════════════════════════════════════════════ -->
   <header class="app-header">
     <div class="header-inner">
-      <h1 class="app-title" data-i18n="app.title">Asistente de mantenimiento de piscina</h1>
+      <a class="app-brand" href="/" data-route-link>
+        <span class="app-logo" aria-hidden="true"></span>
+        <span class="app-title" data-i18n="app.title">Asistente de mantenimiento de piscina</span>
+      </a>
       <button id="settingsToggleBtn" class="btn-icon" data-i18n-title="settings.open" data-i18n-aria-label="settings.open" aria-label="Abrir configuración" title="Abrir configuración">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1.08 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1.08z"/>
@@ -19,6 +41,15 @@
       </button>
     </div>
   </header>
+
+  <nav class="side-nav" data-i18n-aria-label="nav.primary" aria-label="Principal">
+    <a href="/" data-route-link><span aria-hidden="true">⌂</span><span data-i18n="nav.home">Inicio</span></a>
+    <a href="/measurements/new" data-route-link><span aria-hidden="true">＋</span><span data-i18n="nav.measure">Medir</span></a>
+    <a href="/actions" data-route-link><span aria-hidden="true">✓</span><span data-i18n="nav.actions">Acciones</span></a>
+    <a href="/history" data-route-link><span aria-hidden="true">◷</span><span data-i18n="nav.history">Historial</span></a>
+    <a href="/products" data-route-link><span aria-hidden="true">▦</span><span data-i18n="nav.productsEquipment">Equipos y productos</span></a>
+    <a href="/settings" data-route-link><span aria-hidden="true">⚙</span><span data-i18n="nav.more">Más</span></a>
+  </nav>
 
   <!-- ═══ Settings Panel ═══════════════════════════════════════════ -->
   <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" data-i18n-aria-label="settings.title" aria-label="Configuración" hidden>
@@ -36,6 +67,34 @@
             <option value="es" data-i18n="settings.language.es">Español</option>
           </select>
         </div>
+        <div class="field">
+          <label for="appAppearance" data-i18n="settings.appearance">Apariencia</label>
+          <select id="appAppearance">
+            <option value="system" data-i18n="settings.appearance.system">Seguir sistema</option>
+            <option value="light" data-i18n="settings.appearance.light">Claro</option>
+            <option value="dark" data-i18n="settings.appearance.dark">Oscuro</option>
+          </select>
+        </div>
+        <section id="installSettingsSection" class="settings-section">
+          <h3 class="settings-subtitle" data-i18n="pwa.install.title">Instala Pool Assistant</h3>
+          <div id="installAppCard" class="install-card">
+            <p data-i18n="pwa.install.detail">Accede desde tu pantalla de inicio y consulta tus datos incluso sin conexión.</p>
+            <p id="installStatusText" class="install-status"></p>
+            <ol id="installInstructions" class="install-steps" hidden>
+              <li data-i18n="pwa.install.ios.step1">Pulsa Compartir.</li>
+              <li data-i18n="pwa.install.ios.step2">Selecciona Añadir a pantalla de inicio.</li>
+              <li data-i18n="pwa.install.ios.step3">Confirma con Añadir.</li>
+            </ol>
+            <div class="install-actions">
+              <button id="installDismissBtn" type="button" class="btn-secondary" data-i18n="pwa.install.dismiss">Ahora no</button>
+              <button id="installActionBtn" type="button" class="btn-primary btn-inline" data-i18n="pwa.install.action" hidden>Instalar</button>
+            </div>
+          </div>
+        </section>
+        <section id="backupSettingsSection" class="settings-section">
+          <h3 class="settings-subtitle" data-i18n="pwa.backup.title">Copia local</h3>
+          <p class="field-hint" data-i18n="pwa.backup.detail">Exporta una copia completa antes de borrar datos del navegador o cambiar de dispositivo.</p>
+        </section>
         <div class="field">
           <label for="poolVolume" data-i18n="settings.volume">Volumen de la piscina</label>
           <div class="field-row">
@@ -167,11 +226,37 @@
 
   <!-- ═══ Main Content ═════════════════════════════════════════════ -->
   <main class="app-main">
+    <section class="page-section" data-route-section="/" aria-labelledby="dashboard-heading">
+      <div class="page-header">
+        <p class="eyebrow" data-i18n="dashboard.eyebrow">Resumen</p>
+        <h1 id="dashboard-heading" data-i18n="dashboard.title">Estado de la piscina</h1>
+      </div>
+      <div id="dashboardStatusContent"></div>
+      <section class="section-block" aria-labelledby="dashboard-measurements-heading">
+        <div class="section-header">
+          <h2 id="dashboard-measurements-heading" data-i18n="dashboard.measurements.title">Mediciones principales</h2>
+          <a href="/measurements/new" data-route-link data-i18n="dashboard.measureAgain">Medir de nuevo</a>
+        </div>
+        <div id="dashboardMeasurementsContent"></div>
+      </section>
+      <section class="section-block" aria-labelledby="dashboard-activity-heading">
+        <div class="section-header">
+          <h2 id="dashboard-activity-heading" data-i18n="dashboard.activity.title">Actividad reciente</h2>
+          <a href="/history" data-route-link data-i18n="nav.history">Historial</a>
+        </div>
+        <div id="dashboardActivityContent"></div>
+      </section>
+    </section>
 
     <!-- ── New Measurement ──────────────────────────────────────── -->
-    <section class="card" aria-labelledby="measurement-heading">
-      <h2 id="measurement-heading" class="card-title" data-i18n="measurement.title">Nueva medición</h2>
+    <section class="page-section form-page" data-route-section="/measurements/new" aria-labelledby="measurement-heading">
+      <div class="page-header">
+        <p class="eyebrow" data-i18n="nav.measure">Medir</p>
+        <h1 id="measurement-heading" data-i18n="measurement.title">Nueva medición</h1>
+      </div>
       <form id="measurementForm" novalidate>
+        <section class="form-section" aria-labelledby="measurement-core-heading">
+          <h2 id="measurement-core-heading" data-i18n="measurement.section.core">Lectura del agua</h2>
         <div class="field">
           <label for="mDateTime" data-i18n="measurement.dateTime">Fecha y hora</label>
           <input type="datetime-local" id="mDateTime" required />
@@ -212,6 +297,7 @@
           <label for="mNotes" data-i18n="measurement.notes">Notas <span class="optional" data-i18n="measurement.notes.optional">opcional</span></label>
           <textarea id="mNotes" rows="2"></textarea>
         </div>
+        </section>
 
         <!-- ── Context ────────────────────────────────────────────── -->
         <details class="context-section">
@@ -220,7 +306,7 @@
             <div class="field">
               <label for="ctxSunlight" data-i18n="context.sunlight">Sol</label>
               <select id="ctxSunlight">
-                <option value="" data-i18n="">—</option>
+                <option value="">—</option>
                 <option value="none" data-i18n="context.sunlight.none">Ninguno</option>
                 <option value="low" data-i18n="context.sunlight.low">Bajo</option>
                 <option value="medium" data-i18n="context.sunlight.medium">Medio</option>
@@ -230,7 +316,7 @@
             <div class="field">
               <label for="ctxPoolCovered" data-i18n="context.poolCovered">Piscina cubierta</label>
               <select id="ctxPoolCovered">
-                <option value="" data-i18n="">—</option>
+                <option value="">—</option>
                 <option value="true" data-i18n="context.poolCovered.yes">Sí</option>
                 <option value="false" data-i18n="context.poolCovered.no">No</option>
               </select>
@@ -238,7 +324,7 @@
             <div class="field">
               <label for="ctxBatherLoad" data-i18n="context.batherLoad">Carga de bañistas</label>
               <select id="ctxBatherLoad">
-                <option value="" data-i18n="">—</option>
+                <option value="">—</option>
                 <option value="none" data-i18n="context.batherLoad.none">Ninguna</option>
                 <option value="low" data-i18n="context.batherLoad.low">Baja</option>
                 <option value="medium" data-i18n="context.batherLoad.medium">Media</option>
@@ -331,7 +417,7 @@
             <div class="field">
               <label for="ctxClarity" data-i18n="context.waterClarity">Claridad del agua</label>
               <select id="ctxClarity">
-                <option value="" data-i18n="">—</option>
+                <option value="">—</option>
                 <option value="clear" data-i18n="context.waterClarity.clear">Clara</option>
                 <option value="slightly-cloudy" data-i18n="context.waterClarity.slightlyCloudy">Ligeramente turbia</option>
                 <option value="cloudy" data-i18n="context.waterClarity.cloudy">Turbia</option>
@@ -342,14 +428,14 @@
 
         <div id="formErrors" class="form-errors" aria-live="polite" role="alert"></div>
 
-        <div class="form-actions">
+        <div class="form-actions sticky-form-footer">
           <button type="submit" class="btn-primary" data-i18n="measurement.save">Guardar y calcular</button>
         </div>
       </form>
     </section>
 
     <!-- ── Recommendations ──────────────────────────────────────── -->
-    <section id="recommendationsSection" class="card" aria-labelledby="rec-heading" hidden>
+    <section id="recommendationsSection" class="page-section" data-route-section="/actions" aria-labelledby="rec-heading" hidden>
       <h2 id="rec-heading" class="card-title" data-i18n="rec.section.title">Recomendaciones</h2>
       <div id="recContent"></div>
     </section>
@@ -528,11 +614,11 @@
                 </select>
               </div>
               <div class="field-row">
-                <div class="field" style="flex:1">
+                <div class="field field-fluid">
                   <label for="actionChemicalAmount" data-i18n="actionForm.amount">Cantidad</label>
                   <input type="number" id="actionChemicalAmount" min="0" step="0.1" />
                 </div>
-                <div class="field" style="flex:0 0 auto; min-width:80px">
+                <div class="field field-unit">
                   <label for="actionChemicalUnit" data-i18n="actionForm.unit">Unidad</label>
                   <select id="actionChemicalUnit">
                     <option value=""></option>
@@ -651,7 +737,7 @@
     </aside>
 
     <!-- ── Follow-Up Dashboard ──────────────────────────────────── -->
-    <section class="card" aria-labelledby="followup-heading">
+    <section class="page-section" data-route-section="/actions" aria-labelledby="followup-heading">
       <h2 id="followup-heading" class="card-title" data-i18n="followup.title">Seguimiento de acciones</h2>
       <div id="followUpDashboardContent">
         <p class="empty-state" data-i18n="followup.empty">No hay acciones de seguimiento. Cuando marques una recomendación como realizada, aparecerá aquí un seguimiento.</p>
@@ -659,7 +745,7 @@
     </section>
 
     <!-- ── Measurement History ──────────────────────────────────────── -->
-    <section class="card" aria-labelledby="history-heading">
+    <section class="page-section" data-route-section="/history" aria-labelledby="history-heading">
       <h2 id="history-heading" class="card-title" data-i18n="history.title">Historial de mediciones</h2>
 
       <div class="history-toolbar">
@@ -674,7 +760,7 @@
     </section>
 
     <!-- ── Action History ───────────────────────────────────────── -->
-    <section class="card" aria-labelledby="action-history-heading">
+    <section class="page-section" data-route-section="/actions" aria-labelledby="action-history-heading">
       <h2 id="action-history-heading" class="card-title" data-i18n="actionHistory.title">Historial de acciones de mantenimiento</h2>
       <div class="history-toolbar">
         <button id="recordActionBtn" class="btn-secondary" data-i18n="actionHistory.record">Registrar acción de mantenimiento</button>
@@ -685,10 +771,32 @@
     </section>
 
     <!-- ── Historical Insights ──────────────────────────────────── -->
-    <section class="card" aria-labelledby="insights-heading">
+    <section class="page-section" data-route-section="/history" aria-labelledby="insights-heading">
       <h2 id="insights-heading" class="card-title" data-i18n="insights.title">Información histórica</h2>
       <div id="insightsContent">
         <p class="empty-state" data-i18n="insights.empty">Aún no hay información histórica disponible. Continúa registrando datos para acumular observaciones estadísticamente significativas.</p>
+      </div>
+    </section>
+
+    <section class="page-section" data-route-section="/products" aria-labelledby="products-heading">
+      <div class="page-header">
+        <p class="eyebrow" data-i18n="nav.productsEquipment">Equipos y productos</p>
+        <h1 id="products-heading" data-i18n="products.title">Equipos y productos</h1>
+      </div>
+      <div class="empty-state panel-empty">
+        <p data-i18n="products.empty">Los productos guardados y los datos del clorador se gestionan desde los formularios de acción y configuración.</p>
+      </div>
+    </section>
+
+    <section class="page-section" data-route-section="/settings" aria-labelledby="more-heading">
+      <div class="page-header">
+        <p class="eyebrow" data-i18n="nav.more">Más</p>
+        <h1 id="more-heading" data-i18n="settings.title">Configuración</h1>
+      </div>
+      <div class="quick-actions">
+        <button type="button" id="settingsPageOpenBtn" class="btn-primary btn-inline" data-i18n="settings.open">Abrir configuración</button>
+        <a class="btn-secondary" href="/settings/install" data-route-link data-i18n="pwa.install.title">Instala Pool Assistant</a>
+        <a class="btn-secondary" href="/settings/backup" data-route-link data-i18n="pwa.backup.title">Copia local</a>
       </div>
     </section>
   </main>
@@ -701,6 +809,14 @@
       de piscinas.
     </p>
   </footer>
+
+  <nav class="bottom-nav" data-i18n-aria-label="nav.primary" aria-label="Principal">
+    <a href="/" data-route-link><span aria-hidden="true">⌂</span><span data-i18n="nav.home">Inicio</span></a>
+    <a class="bottom-nav-primary" href="/measurements/new" data-route-link><span aria-hidden="true">＋</span><span data-i18n="nav.measure">Medir</span></a>
+    <a href="/actions" data-route-link><span aria-hidden="true">✓</span><span data-i18n="nav.actions">Acciones</span></a>
+    <a href="/history" data-route-link><span aria-hidden="true">◷</span><span data-i18n="nav.history">Historial</span></a>
+    <a href="/settings" data-route-link><span aria-hidden="true">⋯</span><span data-i18n="nav.more">Más</span></a>
+  </nav>
 
   <script type="module" src="/src/main.ts"></script>
 </body>
