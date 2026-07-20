@@ -11,9 +11,11 @@ import {
   deleteMeasurementDeviceSafely,
   getMeasurementDeviceUsage,
   mergeMeasurementDevices,
+  loadActions,
   saveActions,
   exportData,
   parseImportData,
+  applyImportResult,
   mergeMeasurements,
   loadFollowUps,
   saveFollowUps,
@@ -856,6 +858,159 @@ const SAMPLE_FOLLOW_UP_EXCLUDED: FollowUp = {
   actionId: SAMPLE_ACTION.id,
   excludedFromLearning: true,
 };
+
+describe('applyImportResult maintenance action persistence', () => {
+  it('imports exported maintenance actions into empty storage and keeps them readable after reload', () => {
+    const actions: MaintenanceAction[] = [
+      {
+        id: 'act-manual-pending',
+        performedAt: '2026-07-09T11:00:00.000Z',
+        kind: 'cleaning',
+        description: 'Cepillado manual',
+        origin: 'manual',
+        notes: 'Pendiente de revisar la linea de flotacion.',
+      },
+      {
+        id: 'act-recommendation-completed',
+        performedAt: '2026-07-09T12:00:00.000Z',
+        kind: 'chemical',
+        description: 'Cloro desde recomendacion',
+        origin: 'recommendation',
+        recommendationId: 'rec-1',
+        relatedRecommendationId: 'rec-1',
+        relatedMeasurementId: 'm1',
+        chemical: {
+          amount: 250,
+          unit: 'g',
+          product: {
+            source: 'system-catalog',
+            productId: 'chlorine-granules',
+            snapshot: {
+              productId: 'chlorine-granules',
+              name: 'Cloro granulado',
+              category: 'fast-chlorine',
+              activeIngredients: [{ name: 'Dicloro', concentrationPercent: 55, userProvided: false }],
+              concentrationPercent: 55,
+            },
+          },
+        },
+        performedComparison: {
+          recommendationId: 'rec-1',
+          recommended: { amount: 250, unit: 'g' },
+          performed: { amount: 250, unit: 'g' },
+        },
+        evaluationResult: { effectiveness: 'effective' },
+      },
+      {
+        id: 'act-cancelled-legacy',
+        performedAt: '2026-07-08T09:00:00.000Z',
+        kind: 'other',
+        description: 'Accion cancelada legacy',
+        origin: 'imported',
+        status: 'cancelled',
+      } as MaintenanceAction & { status: string },
+      {
+        id: 'act-professional-outcome',
+        performedAt: '2026-06-01T10:00:00.000Z',
+        kind: 'equipment-maintenance',
+        description: 'Revision profesional',
+        origin: 'professional',
+        performedBy: 'Servicio tecnico',
+        evaluationResult: { effectiveness: 'partially-effective', notes: 'Mejoro el caudal.' },
+      },
+    ];
+
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveMeasurements([
+      SAMPLE_MEASUREMENT,
+      { ...SAMPLE_MEASUREMENT, id: 'm2', measuredAt: '2026-07-09T18:00:00.000Z', fac: 2.2 },
+      { ...SAMPLE_MEASUREMENT, id: 'm3', measuredAt: '2026-07-10T10:00:00.000Z', fac: 1.8 },
+    ]);
+    saveActions(actions);
+    saveFollowUps([{ ...SAMPLE_FOLLOW_UP, actionId: 'act-recommendation-completed', recommendationId: 'rec-1' }]);
+
+    const exported = exportData(FIXED_NOW);
+    const parsed = parseImportData(JSON.stringify(exported));
+
+    store.clear();
+    const applied = applyImportResult(parsed);
+
+    expect(applied.actions).toEqual({ discovered: 4, created: 4, skipped: 0, failed: 0 });
+    expect(loadActions()).toHaveLength(4);
+
+    const reloaded = loadActions();
+    expect(reloaded.map((action) => action.id)).toEqual([
+      'act-manual-pending',
+      'act-recommendation-completed',
+      'act-cancelled-legacy',
+      'act-professional-outcome',
+    ]);
+    expect(reloaded[1].origin).toBe('recommendation');
+    expect(reloaded[1].chemical?.product?.snapshot.name).toBe('Cloro granulado');
+    expect(reloaded[1].relatedMeasurementId).toBe('m1');
+    expect(reloaded[1].recommendationId).toBe('rec-1');
+    expect(reloaded[1].evaluationResult).toEqual({ effectiveness: 'effective' });
+    expect((reloaded[2] as MaintenanceAction & { status?: string }).status).toBe('cancelled');
+    expect(loadFollowUps()[0].actionId).toBe('act-recommendation-completed');
+  });
+
+  it('rolls back the whole import when maintenance actions cannot be persisted', () => {
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveMeasurements([SAMPLE_MEASUREMENT]);
+
+    const incoming = parseImportData(JSON.stringify({
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAt: '2026-07-09T10:35:00.000Z',
+      poolConfig: { ...SAMPLE_POOL_CONFIG, volume: 60000 },
+      measurements: [{ ...SAMPLE_MEASUREMENT, id: 'm-new' }],
+      actions: [{ ...SAMPLE_ACTION, id: 'act-new' }],
+    }));
+
+    let failNextActionWrite = true;
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (storageKeyName: string) => store.get(storageKeyName) ?? null,
+        setItem: (storageKeyName: string, val: string) => {
+          if (storageKeyName === 'pool-maintenance:actions' && failNextActionWrite) {
+            failNextActionWrite = false;
+            throw new Error('actions write failed');
+          }
+          store.set(storageKeyName, val);
+        },
+        removeItem: (storageKeyName: string) => store.delete(storageKeyName),
+        clear: () => store.clear(),
+      },
+      writable: true,
+      configurable: true,
+    });
+
+    expect(() => applyImportResult(incoming)).toThrow('actions write failed');
+    expect(loadSettings().volume).toBe(50000);
+    expect(loadMeasurements()).toHaveLength(1);
+    expect(loadMeasurements()[0].id).toBe('m1');
+    expect(loadActions()).toEqual([]);
+  });
+
+  it('replaces existing maintenance actions in replace mode', () => {
+    saveSettings(SAMPLE_POOL_CONFIG);
+    saveMeasurements([SAMPLE_MEASUREMENT]);
+    saveActions([{ ...SAMPLE_ACTION, id: 'act-existing' }]);
+
+    const incoming = parseImportData(JSON.stringify({
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAt: '2026-07-09T10:35:00.000Z',
+      poolConfig: SAMPLE_POOL_CONFIG,
+      measurements: [{ ...SAMPLE_MEASUREMENT, id: 'm-imported' }],
+      actions: [{ ...SAMPLE_ACTION, id: 'act-imported', description: 'Imported action' }],
+    }));
+
+    const applied = applyImportResult(incoming, { mode: 'replace' });
+
+    expect(applied.actions).toEqual({ discovered: 1, created: 1, skipped: 0, failed: 0 });
+    expect(loadActions().map((action) => action.id)).toEqual(['act-imported']);
+    expect(loadMeasurements().map((measurement) => measurement.id)).toEqual(['m-imported']);
+  });
+});
 
 describe('normalizeActionExclusionFlags', () => {
   it('sets excludedFromLearning on action when follow-up has it', () => {

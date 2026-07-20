@@ -34,6 +34,7 @@ export interface BackupManifest {
   locale: string;
   timezone: string;
   schemaVersions: Record<string, string>;
+  counts: Record<string, number>;
   content: Array<{
     path: string;
     entityType: string;
@@ -71,6 +72,8 @@ export interface PortableSnapshot<T> {
   exportBatchId: string;
   data: T;
 }
+
+export type PortableMaintenanceAction = PortableSnapshot<MaintenanceAction>;
 
 export interface ApplicationSnapshot {
   schemaVersion: number;
@@ -120,7 +123,7 @@ export interface PortableDataset {
   diagnoses: Array<PortableSnapshot<unknown>>;
   recommendations: Array<PortableSnapshot<unknown>>;
   recommendationPlans: Array<PortableSnapshot<unknown>>;
-  maintenanceActions: Array<PortableSnapshot<MaintenanceAction>>;
+  maintenanceActions: PortableMaintenanceAction[];
   products: Array<PortableSnapshot<ProductSnapshot | UserChemicalProduct>>;
   followUps: Array<PortableSnapshot<unknown>>;
   outcomes: Array<PortableSnapshot<ActionOutcomeSnapshot>>;
@@ -340,6 +343,7 @@ export async function buildPortableBackup(data: ExportLike, options: CompleteExp
   const dataset = buildPortableDataset(data, options);
   const sections = portableSections(dataset);
   const checksums = await buildChecksums(sections);
+  const counts = portableEntityCounts(dataset);
   const content = Object.entries(sections).map(([path, value]) => ({
     path,
     entityType: entityTypeForPath(path),
@@ -360,6 +364,7 @@ export async function buildPortableBackup(data: ExportLike, options: CompleteExp
       locale: dataset.application.locale,
       timezone: dataset.application.timezone,
       schemaVersions: Object.fromEntries(PERSISTENCE_INVENTORY.map((entry) => [entry.entity, entry.schemaVersion])),
+      counts,
       content,
       integrity: {
         algorithm: 'sha-256',
@@ -396,6 +401,28 @@ export function isPortableBackupObject(value: unknown): value is PortableBackup 
 export function portableDatasetFromBackupObject(value: PortableBackup | PortableDataset): PortableDataset {
   if ('dataset' in value) return value.dataset;
   return value;
+}
+
+export function validatePortableBackupManifest(value: PortableBackup | PortableDataset): void {
+  if (!('manifest' in value)) return;
+
+  const manifest = value.manifest;
+  const dataset = value.dataset;
+  const counts = portableEntityCounts(dataset);
+
+  for (const [entityType, count] of Object.entries(manifest.counts ?? {})) {
+    if (counts[entityType] !== count) {
+      throw new Error(`Invalid portable backup: manifest declares ${count} ${entityType} records but dataset contains ${counts[entityType] ?? 0}.`);
+    }
+  }
+
+  for (const entry of manifest.content) {
+    const section = portableSections(dataset)[entry.path];
+    const actualCount = recordCount(section);
+    if (entry.recordCount !== actualCount) {
+      throw new Error(`Invalid portable backup: manifest declares ${entry.recordCount} records for ${entry.path} but dataset contains ${actualCount}.`);
+    }
+  }
 }
 
 export function portableDatasetToImportObject(dataset: PortableDataset): {
@@ -463,6 +490,15 @@ function portableSections(dataset: PortableDataset): Record<string, unknown> {
     [DATA_PATHS.customCatalogs]: dataset.customCatalogs,
     [DATA_PATHS.audit]: dataset.audit,
   };
+}
+
+function portableEntityCounts(dataset: PortableDataset): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(portableSections(dataset)).map(([path, section]) => [
+      entityTypeForPath(path),
+      recordCount(section),
+    ]),
+  );
 }
 
 async function buildChecksums(sections: Record<string, unknown>): Promise<Record<string, string>> {
