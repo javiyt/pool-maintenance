@@ -16,6 +16,8 @@ export interface MeasurementTrend {
 
 const TREND_THRESHOLDS: Partial<Record<keyof Measurement, number>> = {
   ph: 0.2,
+  ec: 100,
+  tds: 50,
   fac: 0.3,
   orp: 30,
   salt: 200,

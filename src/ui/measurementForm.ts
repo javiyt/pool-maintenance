@@ -1,8 +1,15 @@
 import { t } from '../i18n/index';
 import type { TranslationKey } from '../i18n/types';
-import type { Measurement, MeasurementContext, MeasurementContextFieldOrigin } from '../domain/measurement';
+import type { Measurement, MeasurementContext, MeasurementContextFieldOrigin, MeasurementParameterCode, MeasurementValueTrace } from '../domain/measurement';
 import { generateId, validateMeasurement } from '../domain/measurement';
-import { loadSettings } from '../domain/storage';
+import { loadMeasurementDevices, loadSettings } from '../domain/storage';
+import {
+  buildMeasurementValueTrace,
+  composeMeasurementForm,
+  deriveTdsFromEc,
+  type MeasurementFormComposition,
+  type MeasurementFormField,
+} from '../domain/measurementDevice';
 import { getChlorinatorModeDefinitions, getChlorinatorOutputControl } from '../domain/saltChlorinator';
 
 /**
@@ -26,8 +33,11 @@ function dateToLocalDatetime(d: Date): string {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
-function getNum(id: string): number {
-  return parseFloat((document.getElementById(id) as HTMLInputElement).value);
+function getOptionalNum(id: string): number | undefined {
+  const value = (document.getElementById(id) as HTMLInputElement | null)?.value.trim();
+  if (!value) return undefined;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /**
@@ -55,16 +65,24 @@ export class MeasurementForm {
   private form: HTMLFormElement;
   private errorsEl: HTMLElement;
   private dateTimeInput: HTMLInputElement;
+  private capabilitiesEl: HTMLElement;
+  private composition: MeasurementFormComposition;
   private onSubmitCb: ((m: Measurement) => void) | null = null;
 
   constructor() {
     this.form = document.getElementById('measurementForm') as HTMLFormElement;
     this.errorsEl = document.getElementById('formErrors') as HTMLElement;
     this.dateTimeInput = document.getElementById('mDateTime') as HTMLInputElement;
+    this.capabilitiesEl = this.ensureCapabilitiesElement();
+    this.composition = this.buildComposition();
 
     this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+    this.refreshMeasurementFields();
     this.refreshChlorinatorContextFields();
-    window.addEventListener('storage', () => this.refreshChlorinatorContextFields());
+    window.addEventListener('storage', () => {
+      this.refreshMeasurementFields();
+      this.refreshChlorinatorContextFields();
+    });
   }
 
   onSubmit(cb: (m: Measurement) => void): void {
@@ -107,6 +125,7 @@ export class MeasurementForm {
 
   private handleSubmit(e: Event): void {
     e.preventDefault();
+    this.refreshMeasurementFields();
     this.refreshChlorinatorContextFields();
 
     const dateTimeLocal = this.dateTimeInput.value;
@@ -118,18 +137,28 @@ export class MeasurementForm {
 
     const partial: Partial<Measurement> = {
       measuredAt,
-      ph: getNum('mPh'),
-      ec: getNum('mEc'),
-      tds: getNum('mTds'),
-      salt: getNum('mSalt'),
-      orp: getNum('mOrp'),
-      fac: getNum('mFac'),
-      temperature: getNum('mTemperature'),
       notes: notes || undefined,
       context: context || undefined,
     };
+    const values: Partial<Record<MeasurementParameterCode, MeasurementValueTrace>> = {};
+    for (const field of this.composition.fields) {
+      const id = inputIdForParameter(field.parameterCode);
+      if (!id) continue;
+      let value = getOptionalNum(id);
+      if (value === undefined && field.parameterCode === 'tds' && typeof partial.ec === 'number') {
+        const derivedDevice = field.devices.find((device) => device.sourceParameterCode === 'ec');
+        if (derivedDevice) value = deriveTdsFromEc(partial.ec, derivedDevice.conversionFactor ?? 0.5);
+      }
+      if (value === undefined) continue;
+      setMeasurementNumber(partial, field.parameterCode, value);
+      const trace = buildMeasurementValueTrace({ parameterCode: field.parameterCode, field });
+      if (trace.derived && trace.sourceParameterCode && typeof partial[trace.sourceParameterCode as keyof Measurement] === 'number') {
+        trace.sourceValue = partial[trace.sourceParameterCode as keyof Measurement] as number;
+      }
+      values[field.parameterCode] = trace;
+    }
 
-    const validation = validateMeasurement(partial);
+    const validation = validateMeasurement(partial, { allowPartial: true });
     this.clearErrors();
 
     if (!validation.valid) {
@@ -137,19 +166,25 @@ export class MeasurementForm {
       return;
     }
 
+    const missingBasicParameters = ['fac', 'ph'].filter((code) =>
+      this.composition.missingBasicParameters.includes(code as MeasurementParameterCode)
+      || typeof partial[code as keyof Measurement] !== 'number',
+    ) as MeasurementParameterCode[];
+
     const measurement: Measurement = {
       id: generateId(),
       measuredAt,
-      ph: partial.ph!,
-      ec: partial.ec!,
-      tds: partial.tds!,
-      salt: partial.salt!,
-      orp: partial.orp!,
-      fac: partial.fac!,
-      temperature: partial.temperature!,
+      ...partial,
       notes: partial.notes,
       context: partial.context,
-    };
+      values,
+      completeness: {
+        kind: missingBasicParameters.length === 0 ? 'complete-control' : 'partial',
+        missingBasicParameters,
+        blockedConclusions: blockedConclusionsForMissing(missingBasicParameters),
+      },
+      schemaVersion: '2.0.0',
+    } as Measurement;
 
     this.form.reset();
     // Reset to current date-time
@@ -174,6 +209,124 @@ export class MeasurementForm {
     this.form.querySelectorAll('.error').forEach((el) => el.classList.remove('error'));
   }
 
+  private buildComposition(): MeasurementFormComposition {
+    const settings = loadSettings();
+    const devices = loadMeasurementDevices();
+    return composeMeasurementForm({
+      devices,
+      poolDisinfection: settings.poolType === 'saltwater' ? 'saltwater' : 'chlorine',
+      periodicParameters: settings.poolType === 'saltwater' ? ['salt'] : [],
+    });
+  }
+
+  private refreshMeasurementFields(): void {
+    this.composition = this.buildComposition();
+    const visibleCodes = new Set(this.composition.fields.map((field) => field.parameterCode));
+    for (const [code, id] of Object.entries(PARAMETER_INPUT_IDS) as Array<[MeasurementParameterCode, string]>) {
+      const input = document.getElementById(id) as HTMLInputElement | null;
+      const wrapper = input?.closest('.field') as HTMLElement | null;
+      const field = this.composition.fields.find((item) => item.parameterCode === code);
+      const visible = visibleCodes.has(code);
+      if (wrapper) {
+        wrapper.hidden = !visible;
+        wrapper.style.display = visible ? '' : 'none';
+      }
+      if (input) {
+        input.required = Boolean(field?.required && !field.missingBasicMethod);
+        input.title = field?.legend ?? '';
+      }
+      this.applyFieldLegend(id, field);
+    }
+    this.renderCapabilitiesInfo();
+  }
+
+  private ensureCapabilitiesElement(): HTMLElement {
+    const existing = document.getElementById('measurementCapabilitiesInfo');
+    if (existing) return existing;
+    const el = document.createElement('div');
+    el.id = 'measurementCapabilitiesInfo';
+    el.className = 'measurement-capabilities-info';
+    const coreHeading = document.getElementById('measurement-core-heading');
+    coreHeading?.insertAdjacentElement('afterend', el);
+    return el;
+  }
+
+  private renderCapabilitiesInfo(): void {
+    const missing = this.composition.missingBasicParameters;
+    if (missing.length === 0) {
+      this.capabilitiesEl.innerHTML = '';
+      return;
+    }
+    this.capabilitiesEl.innerHTML = `
+      <div class="form-warning">
+        Falta un metodo configurado para ${escapeHtml(missing.map(parameterLabel).join(', '))}.
+        Puede registrar una entrada manual o guardar una medicion parcial; la evaluacion sanitaria completa quedara bloqueada.
+      </div>
+    `;
+  }
+
+  private applyFieldLegend(inputId: string, field: MeasurementFormField | undefined): void {
+    const input = document.getElementById(inputId) as HTMLInputElement | null;
+    const wrapper = input?.closest('.field') as HTMLElement | null;
+    if (!wrapper || !field) return;
+    let legend = wrapper.querySelector<HTMLElement>('.measurement-parameter-legend');
+    if (!legend) {
+      legend = document.createElement('span');
+      legend.className = 'field-hint measurement-parameter-legend';
+      wrapper.appendChild(legend);
+    }
+    legend.textContent = field.legend;
+  }
+}
+
+const PARAMETER_INPUT_IDS: Partial<Record<MeasurementParameterCode, string>> = {
+  ph: 'mPh',
+  ec: 'mEc',
+  tds: 'mTds',
+  salt: 'mSalt',
+  orp: 'mOrp',
+  fac: 'mFac',
+  temperature: 'mTemperature',
+};
+
+function inputIdForParameter(code: MeasurementParameterCode): string | undefined {
+  return PARAMETER_INPUT_IDS[code];
+}
+
+function setMeasurementNumber(target: Partial<Measurement>, code: MeasurementParameterCode, value: number): void {
+  switch (code) {
+    case 'ph':
+    case 'ec':
+    case 'tds':
+    case 'salt':
+    case 'orp':
+    case 'fac':
+    case 'temperature':
+      target[code] = value;
+      break;
+    default:
+      break;
+  }
+}
+
+function blockedConclusionsForMissing(missing: MeasurementParameterCode[]): string[] {
+  const blocked: string[] = [];
+  if (missing.includes('fac')) blocked.push('seguridad sanitaria completa', 'ajuste de cloro o clorador');
+  if (missing.includes('ph')) blocked.push('correccion de pH', 'eficacia completa de la desinfeccion');
+  return blocked;
+}
+
+function parameterLabel(code: MeasurementParameterCode): string {
+  const labels: Partial<Record<MeasurementParameterCode, string>> = {
+    ph: 'pH',
+    fac: 'FAC',
+    ec: 'CE',
+    tds: 'TDS',
+    salt: 'sal',
+    orp: 'ORP',
+    temperature: 'temperatura',
+  };
+  return labels[code] ?? code;
 }
 
 function escapeHtml(s: string): string {

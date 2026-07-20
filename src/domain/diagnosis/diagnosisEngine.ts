@@ -107,41 +107,49 @@ function buildAtomicDiagnoses(context: DiagnosisContext, latest: Measurement): D
   const drafts: DiagnosisDraft[] = [];
   const { ph, fac, salt, orp } = context.ranges;
 
-  drafts.push(valueDiagnosis({
-    code: latest.ph < ph.min ? 'PH_LOW' : latest.ph > ph.max ? 'PH_HIGH' : 'PH_IN_RANGE',
-    severity: latest.ph < ph.min || latest.ph > ph.max ? 'medium' : 'informational',
-    field: 'ph',
-    observedValue: latest.ph,
-    expectedRange: ph,
-    latest,
-    ruleId: 'atomic.ph.range',
-  }));
+  if (typeof latest.ph === 'number') {
+    drafts.push(valueDiagnosis({
+      code: latest.ph < ph.min ? 'PH_LOW' : latest.ph > ph.max ? 'PH_HIGH' : 'PH_IN_RANGE',
+      severity: latest.ph < ph.min || latest.ph > ph.max ? 'medium' : 'informational',
+      field: 'ph',
+      observedValue: latest.ph,
+      expectedRange: ph,
+      latest,
+      ruleId: 'atomic.ph.range',
+    }));
+  } else {
+    drafts.push(missingInputDiagnosis('INSUFFICIENT_EVIDENCE', 'ph', latest, 'atomic.ph.missing', 'ph'));
+  }
 
-  const facCode: DiagnosisCode = latest.fac <= fac.min * 0.25
-    ? 'FAC_CRITICALLY_LOW'
-    : latest.fac < fac.min * 0.5
-      ? 'FAC_VERY_LOW'
-      : latest.fac < fac.min
-        ? 'FAC_LOW'
-        : 'FAC_IN_RANGE';
-  const facSeverity: DiagnosisSeverity = facCode === 'FAC_CRITICALLY_LOW'
-    ? 'critical'
-    : facCode === 'FAC_VERY_LOW'
-      ? 'high'
-      : facCode === 'FAC_LOW'
-        ? 'medium'
-        : 'informational';
-  drafts.push(valueDiagnosis({
-    code: facCode,
-    severity: facSeverity,
-    field: 'fac',
-    observedValue: latest.fac,
-    expectedRange: fac,
-    latest,
-    ruleId: 'atomic.fac.range',
-  }));
+  if (typeof latest.fac === 'number') {
+    const facCode: DiagnosisCode = latest.fac <= fac.min * 0.25
+      ? 'FAC_CRITICALLY_LOW'
+      : latest.fac < fac.min * 0.5
+        ? 'FAC_VERY_LOW'
+        : latest.fac < fac.min
+          ? 'FAC_LOW'
+          : 'FAC_IN_RANGE';
+    const facSeverity: DiagnosisSeverity = facCode === 'FAC_CRITICALLY_LOW'
+      ? 'critical'
+      : facCode === 'FAC_VERY_LOW'
+        ? 'high'
+        : facCode === 'FAC_LOW'
+          ? 'medium'
+          : 'informational';
+    drafts.push(valueDiagnosis({
+      code: facCode,
+      severity: facSeverity,
+      field: 'fac',
+      observedValue: latest.fac,
+      expectedRange: fac,
+      latest,
+      ruleId: 'atomic.fac.range',
+    }));
+  } else {
+    drafts.push(missingInputDiagnosis('INSUFFICIENT_EVIDENCE', 'fac', latest, 'atomic.fac.missing', 'fac'));
+  }
 
-  if (latest.orp < 600) {
+  if (typeof latest.orp === 'number' && latest.orp < 600) {
     drafts.push(valueDiagnosis({
       code: 'ORP_VERY_LOW',
       severity: 'high',
@@ -151,7 +159,7 @@ function buildAtomicDiagnoses(context: DiagnosisContext, latest: Measurement): D
       latest,
       ruleId: 'atomic.orp.very-low',
     }));
-  } else if (latest.orp < orp.min) {
+  } else if (typeof latest.orp === 'number' && latest.orp < orp.min) {
     drafts.push(valueDiagnosis({
       code: 'ORP_LOW',
       severity: 'medium',
@@ -163,7 +171,7 @@ function buildAtomicDiagnoses(context: DiagnosisContext, latest: Measurement): D
     }));
   }
 
-  if (context.settings.poolType === 'saltwater') {
+  if (context.settings.poolType === 'saltwater' && typeof latest.salt === 'number') {
     if (latest.salt < salt.min) {
       drafts.push(valueDiagnosis({
         code: 'SALT_LOW',
@@ -247,6 +255,77 @@ function buildTrendDiagnoses(context: DiagnosisContext, latest: Measurement): Di
       evidence: [{ type: 'trend', code: 'FAC_TREND_STABLE', field: 'fac', measurementId: latest.id, weight: 0.2 }],
       sourceMeasurementIds: context.measurements.slice(-3).map((m) => m.id),
       ruleIds: ['trend.fac.stable'],
+    });
+  }
+
+  const ecTrend = trends.find((trend) => trend.field === 'ec');
+  const tdsTrend = trends.find((trend) => trend.field === 'tds');
+  const saltTrend = trends.find((trend) => trend.field === 'salt');
+  const tdsDerivedFromEc = latest.values?.tds?.sourceParameterCode === 'ec';
+  const primaryDissolvedSolidsTrend = ecTrend?.direction === 'rising'
+    ? ecTrend
+    : !tdsDerivedFromEc && tdsTrend?.direction === 'rising'
+      ? tdsTrend
+      : undefined;
+
+  if (
+    primaryDissolvedSolidsTrend &&
+    (saltTrend?.direction === 'stable' || saltTrend?.direction === 'falling' || saltTrend === undefined)
+  ) {
+    drafts.push({
+      code: 'EC_TDS_ACCUMULATION_SUSPECTED',
+      status: 'suspected',
+      severity: 'informational',
+      relatedFields: tdsDerivedFromEc ? ['ec', 'salt'] : ['ec', 'tds', 'salt'],
+      evidence: [{
+        type: 'trend',
+        code: tdsDerivedFromEc ? 'EC_PRIMARY_TDS_DERIVED_RISING' : 'DISSOLVED_SOLIDS_RISING',
+        field: primaryDissolvedSolidsTrend.field as MeasurementField,
+        observedValue: primaryDissolvedSolidsTrend.latestValue,
+        measurementId: latest.id,
+        weight: 0.25,
+      }],
+      missingInputs: [
+        { code: 'TOTAL_ALKALINITY', field: 'alkalinity', requiredFor: 'specific-dissolved-solids-investigation' },
+        { code: 'CALCIUM_HARDNESS', field: 'calciumHardness', requiredFor: 'specific-dissolved-solids-investigation' },
+        { code: 'CYA', field: 'cya', requiredFor: 'specific-dissolved-solids-investigation' },
+      ],
+      sourceMeasurementIds: context.measurements.slice(-5).map((m) => m.id),
+      ruleIds: ['trend.ec-tds.accumulation-context'],
+    });
+  }
+
+  if (
+    saltTrend?.direction === 'falling' &&
+    Math.abs(saltTrend.delta ?? 0) >= 200 &&
+    ecTrend?.direction === 'stable'
+  ) {
+    drafts.push({
+      code: 'SALT_EC_INCONSISTENCY_SUSPECTED',
+      status: 'suspected',
+      severity: 'informational',
+      relatedFields: ['salt', 'ec'],
+      evidence: [
+        {
+          type: 'trend',
+          code: 'SALT_FALLING_WHILE_EC_STABLE',
+          field: 'salt',
+          observedValue: saltTrend.latestValue,
+          measurementId: latest.id,
+          weight: 0.3,
+        },
+        {
+          type: 'trend',
+          code: 'EC_STABLE_CONTRADICTS_SALT_DROP',
+          field: 'ec',
+          observedValue: ecTrend.latestValue,
+          measurementId: latest.id,
+          weight: 0.2,
+        },
+      ],
+      missingInputs: [{ code: 'REPEATED_SALT_EC_MEASUREMENT', requiredFor: 'measurement-consistency' }],
+      sourceMeasurementIds: context.measurements.slice(-3).map((m) => m.id),
+      ruleIds: ['trend.salt-ec.inconsistency'],
     });
   }
   return drafts;
@@ -364,6 +443,36 @@ function buildActionOutcomeDiagnoses(context: DiagnosisContext, latest: Measurem
       })),
       sourceActionIds: pending.map((action) => action.id),
       ruleIds: ['actions.awaiting-retest'],
+    });
+  }
+
+  const recentChemicalActions = context.actions.filter((action) =>
+    action.kind === 'chemical' &&
+    action.performedAt <= latest.measuredAt,
+  );
+  const trends = analyzeTrends(context.measurements);
+  const ecRising = trends.find((trend) => trend.field === 'ec')?.direction === 'rising';
+  const tdsRising = latest.values?.tds?.sourceParameterCode === 'ec'
+    ? false
+    : trends.find((trend) => trend.field === 'tds')?.direction === 'rising';
+  if (recentChemicalActions.length >= 3 && (ecRising || tdsRising)) {
+    drafts.push({
+      code: 'EC_TDS_DOSING_ESCALATION_RISK',
+      status: 'suspected',
+      severity: 'medium',
+      relatedFields: latest.values?.tds?.sourceParameterCode === 'ec' ? ['ec'] : ['ec', 'tds'],
+      evidence: [{
+        type: 'derived',
+        code: 'DISSOLVED_SOLIDS_RISING_AFTER_REPEATED_CHEMICAL_CORRECTIONS',
+        field: ecRising ? 'ec' : 'tds',
+        observedValue: recentChemicalActions.length,
+        measurementId: latest.id,
+        weight: 0.35,
+      }],
+      sourceMeasurementIds: context.measurements.slice(-5).map((m) => m.id),
+      sourceActionIds: recentChemicalActions.map((action) => action.id),
+      missingInputs: [{ code: 'FRESH_SPECIFIC_MEASUREMENTS', requiredFor: 'avoid-adding-products-blindly' }],
+      ruleIds: ['actions.ec-tds.stop-escalation'],
     });
   }
 
@@ -561,6 +670,7 @@ function collectConsecutiveLowFac(
   const low: Measurement[] = [];
   for (let index = measurements.length - 1; index >= 0; index -= 1) {
     const measurement = measurements[index];
+    if (typeof measurement.fac !== 'number') break;
     if (measurement.fac >= minFac) break;
     low.unshift(measurement);
   }

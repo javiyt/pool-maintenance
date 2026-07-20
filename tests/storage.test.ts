@@ -6,6 +6,9 @@ import {
   saveMeasurements,
   addMeasurement,
   deleteMeasurement,
+  loadMeasurementDevices,
+  saveMeasurementDevices,
+  mergeMeasurementDevices,
   saveActions,
   exportData,
   parseImportData,
@@ -26,6 +29,7 @@ import type { PoolSettings } from '../src/domain/settings';
 import type { Measurement } from '../src/domain/measurement';
 import type { FollowUp } from '../src/domain/followUp';
 import type { MaintenanceAction } from '../src/domain/actions';
+import { createMeasurementDevice } from '../src/domain/measurementDevice';
 
 // Minimal localStorage mock for testing
 const store = new Map<string, string>();
@@ -149,6 +153,42 @@ describe('measurements persistence', () => {
   it('handles corrupted storage gracefully', () => {
     store.set('pool-maintenance:measurements', 'not-json');
     expect(loadMeasurements()).toEqual([]);
+  });
+});
+
+describe('measurement device persistence', () => {
+  it('exports and imports configured meters with calibration metadata', () => {
+    const device = createMeasurementDevice({
+      customName: 'Fotometro',
+      manufacturer: 'PoolLab',
+      model: '2.0',
+      deviceType: 'photometer',
+      enabled: true,
+      isPrimary: true,
+      parameters: [{
+        parameterCode: 'fac',
+        capability: 'direct',
+        enabled: true,
+        unit: 'ppm',
+        resolution: 0.01,
+        calibration: {
+          supported: true,
+          lastCalibrationAt: '2026-07-01T10:00:00.000Z',
+          recommendedIntervalDays: 30,
+        },
+      }],
+    }, new Date('2026-07-10T10:00:00.000Z'));
+
+    saveMeasurementDevices([device]);
+    const exported = exportData(FIXED_NOW);
+    const imported = parseImportData(JSON.stringify(exported));
+
+    expect(imported.measurementDevices).toHaveLength(1);
+    expect(imported.measurementDevices[0].parameters[0].calibration?.lastCalibrationAt).toBe('2026-07-01T10:00:00.000Z');
+
+    store.clear();
+    saveMeasurementDevices(mergeMeasurementDevices(loadMeasurementDevices(), imported.measurementDevices));
+    expect(loadMeasurementDevices()[0].model).toBe('2.0');
   });
 });
 
@@ -600,10 +640,10 @@ describe('export includes follow-ups (v6)', () => {
     expect(data.followUps[0].id).toBe('fu-1');
   });
 
-  it('sets schemaVersion to 10 and separates algorithm versions', () => {
+  it('sets schemaVersion to 11 and separates algorithm versions', () => {
     saveSettings(SAMPLE_POOL_CONFIG);
     const data = exportData(FIXED_NOW);
-    expect(data.schemaVersion).toBe(10);
+    expect(data.schemaVersion).toBe(11);
     expect(data.applicationVersion).toBeDefined();
     expect(data.recommendationEngineVersion).toBeDefined();
     expect(data.outcomeEvaluatorVersion).toBeDefined();

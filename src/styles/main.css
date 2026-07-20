@@ -199,6 +199,13 @@ body {
   gap: 0.5rem;
 }
 
+.field-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
 .field-row input {
   flex: 1;
 }
@@ -221,8 +228,62 @@ body {
   margin-bottom: 0.25rem;
 }
 
+.measurement-capabilities-info {
+  margin-bottom: 0.75rem;
+}
+
+.form-warning {
+  font-size: 0.85rem;
+  color: #7c2d12;
+  background: #ffedd5;
+  border: 1px solid #fed7aa;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+}
+
 .form-actions {
   margin-top: 0.5rem;
+}
+
+.device-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.device-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.device-list-item span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.device-editor {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.device-parameters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.65rem;
+}
+
+.device-parameters legend {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
 }
 
 /* ═══ Settings Panel ═════════════════════════════════════════════ */

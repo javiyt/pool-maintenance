@@ -65,6 +65,14 @@ export interface Recommendation {
   followUp?: FollowUpPlan;
   safetyCodes: string[];
   explanationCodes: string[];
+  decisionTrace?: {
+    determinantParameters: MeasurementField[];
+    contextualParameters: MeasurementField[];
+    requestedParameters: string[];
+    ignoredParameters: string[];
+    derivedValues: string[];
+    redundantValues: string[];
+  };
   version: string;
   conflictResolutionCodes: string[];
 }
@@ -76,4 +84,3 @@ export interface RecommendationEngineResult {
   version: string;
   resolverEvents: string[];
 }
-

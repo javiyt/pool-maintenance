@@ -408,8 +408,8 @@ describe('action sorting', () => {
 // ── Schema version ────────────────────────────────────────────────
 
 describe('schema version', () => {
-  it('is version 10', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(10);
+  it('is version 11', () => {
+    expect(EXPORT_SCHEMA_VERSION).toBe(11);
   });
 });
 

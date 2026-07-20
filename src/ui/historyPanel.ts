@@ -6,6 +6,9 @@ import {
   parseImportData,
   mergeMeasurements,
   saveMeasurements,
+  loadMeasurementDevices,
+  saveMeasurementDevices,
+  mergeMeasurementDevices,
   saveSettings,
   loadActions,
   saveActions,
@@ -51,13 +54,13 @@ export class HistoryPanel {
 
     const items = sorted.map((m) => {
       const vals: string[] = [];
-      vals.push(`pH ${m.ph.toFixed(1)}`);
-      vals.push(`EC ${m.ec} µS/cm`);
-      vals.push(`TDS ${m.tds} ppm`);
-      vals.push(`Salt ${m.salt} ppm`);
-      vals.push(`ORP ${m.orp} mV`);
-      vals.push(`FAC ${m.fac.toFixed(1)} ppm`);
-      vals.push(`${m.temperature.toFixed(1)} °C`);
+      if (typeof m.ph === 'number') vals.push(`pH ${m.ph.toFixed(1)}`);
+      if (typeof m.ec === 'number') vals.push(`EC ${m.ec} µS/cm`);
+      if (typeof m.tds === 'number') vals.push(`TDS ${m.tds} ppm`);
+      if (typeof m.salt === 'number') vals.push(`Salt ${m.salt} ppm`);
+      if (typeof m.orp === 'number') vals.push(`ORP ${m.orp} mV`);
+      if (typeof m.fac === 'number') vals.push(`FAC ${m.fac.toFixed(1)} ppm`);
+      if (typeof m.temperature === 'number') vals.push(`${m.temperature.toFixed(1)} °C`);
 
       return `
         <div class="history-item" data-id="${escapeHtml(m.id)}">
@@ -124,6 +127,13 @@ export class HistoryPanel {
         if (result.poolConfig) {
           saveSettings(result.poolConfig);
           messages.push(t('history.import.poolConfig'));
+        }
+
+        if (result.measurementDevices.length > 0) {
+          const existingDevices = loadMeasurementDevices();
+          const mergedDevices = mergeMeasurementDevices(existingDevices, result.measurementDevices);
+          saveMeasurementDevices(mergedDevices);
+          messages.push(`Medidores importados: ${mergedDevices.length - existingDevices.length}`);
         }
 
         // Merge imported actions if present (v4+)
