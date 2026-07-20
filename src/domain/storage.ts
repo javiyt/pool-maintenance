@@ -1,4 +1,6 @@
 import type { Measurement } from './measurement';
+import type { MeasurementDevice } from './measurementDevice';
+import { normalizeMeasurementDevice } from './measurementDevice';
 import type { PoolSettings } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
 import {
@@ -133,6 +135,30 @@ export function deleteMeasurement(id: string): Measurement[] {
   const list = loadMeasurements().filter((m) => m.id !== id);
   saveMeasurements(list);
   return list;
+}
+
+// ── Measurement Devices ───────────────────────────────────────────
+
+function migrateMeasurementDevice(raw: Record<string, unknown>): MeasurementDevice {
+  return normalizeMeasurementDevice(raw as unknown as MeasurementDevice);
+}
+
+export function loadMeasurementDevices(): MeasurementDevice[] {
+  try {
+    const raw = localStorage.getItem(key('measurementDevices'));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map(migrateMeasurementDevice);
+  } catch {
+    return [];
+  }
+}
+
+export function saveMeasurementDevices(devices: MeasurementDevice[]): void {
+  localStorage.setItem(key('measurementDevices'), JSON.stringify(devices.map((device) => normalizeMeasurementDevice(device))));
 }
 
 // ── Maintenance Actions ────────────────────────────────────────────
@@ -407,7 +433,7 @@ export function mergeExperiments(
   return [...existing, ...deduped];
 }
 
-export const EXPORT_SCHEMA_VERSION = 10;
+export const EXPORT_SCHEMA_VERSION = 11;
 
 export interface ExportData extends ExportSnapshots {
   schemaVersion: number;
@@ -423,6 +449,7 @@ export interface ExportData extends ExportSnapshots {
   exportedAt: string;
   poolConfig: PoolSettings;
   measurements: Measurement[];
+  measurementDevices: MeasurementDevice[];
   actions: MaintenanceAction[];
   followUps: FollowUp[];
   experiments?: DiagnosticExperiment[];
@@ -431,6 +458,7 @@ export interface ExportData extends ExportSnapshots {
 
 export interface ImportResult {
   measurements: Measurement[];
+  measurementDevices: MeasurementDevice[];
   actions: MaintenanceAction[];
   followUps: FollowUp[];
   experiments: DiagnosticExperiment[];
@@ -449,6 +477,7 @@ export function exportData(now?: Date): ExportData {
   const exportedAt = (now ?? new Date()).toISOString();
   const poolConfig = loadSettings();
   const measurements = loadMeasurements();
+  const measurementDevices = loadMeasurementDevices();
   const actions = loadActions();
   const followUps = loadFollowUps();
   const experiments = loadExperiments();
@@ -476,6 +505,7 @@ export function exportData(now?: Date): ExportData {
     exportedAt,
     poolConfig,
     measurements,
+    measurementDevices,
     actions,
     followUps,
     experiments,
@@ -500,6 +530,7 @@ export function exportPortableBackupJson(options?: CompleteExportOptions & { now
  * Parse and validate an import JSON string.
  *
  * Supports:
+ * - v11: v10 plus configured measurement devices, capabilities, derivations, and calibration metadata
  * - v10: v9 plus independent manual maintenance actions, performed/recommended comparison, and user chemical products
  * - v9: v8 plus structured versioned snapshots for export auditability
  * - v8: `{ schemaVersion: 8, applicationVersion, recommendationEngineVersion, outcomeEvaluatorVersion, chemicalCatalogVersion, poolConfig, measurements, actions, followUps, experiments }`
@@ -529,7 +560,7 @@ export function parseImportData(jsonString: string): ImportResult {
   // ── Legacy format: plain array of measurements ────────────────
   if (Array.isArray(data)) {
     if (data.length === 0) {
-      return { measurements: [], actions: [], followUps: [], experiments: [], userChemicalProducts: [], poolConfig: null, count: 0 };
+      return { measurements: [], measurementDevices: [], actions: [], followUps: [], experiments: [], userChemicalProducts: [], poolConfig: null, count: 0 };
     }
 
     for (const item of data) {
@@ -546,7 +577,7 @@ export function parseImportData(jsonString: string): ImportResult {
     }
 
     const measurements = data.map(migrateMeasurement);
-    return { measurements, actions: [], followUps: [], experiments: [], userChemicalProducts: [], poolConfig: null, count: measurements.length };
+    return { measurements, measurementDevices: [], actions: [], followUps: [], experiments: [], userChemicalProducts: [], poolConfig: null, count: measurements.length };
   }
 
   // ── Versioned format: { schemaVersion, measurements, poolConfig? } ──
@@ -576,6 +607,18 @@ export function parseImportData(jsonString: string): ImportResult {
     }
 
     const measurements = rawMeasurements.map(migrateMeasurement);
+
+    let measurementDevices: MeasurementDevice[] = [];
+    if (Array.isArray(obj.measurementDevices)) {
+      for (const item of obj.measurementDevices) {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error(
+            'Invalid JSON format: measurementDevices must be an array of objects.',
+          );
+        }
+      }
+      measurementDevices = obj.measurementDevices.map((device) => migrateMeasurementDevice(device as Record<string, unknown>));
+    }
 
     // Parse actions (v4+); v3 and older exports won't have this field
     let actions: MaintenanceAction[] = [];
@@ -633,7 +676,7 @@ export function parseImportData(jsonString: string): ImportResult {
       poolConfig = migrateSettings({ ...DEFAULT_SETTINGS, ...(obj.poolConfig as Record<string, unknown>) } as PoolSettings);
     }
 
-    return { measurements, actions, followUps, experiments, userChemicalProducts, poolConfig, count: measurements.length };
+    return { measurements, measurementDevices, actions, followUps, experiments, userChemicalProducts, poolConfig, count: measurements.length };
   }
 
   throw new Error(
@@ -651,6 +694,15 @@ export function mergeMeasurements(
 ): Measurement[] {
   const existingIds = new Set(existing.map((m) => m.id));
   const deduped = incoming.filter((m) => !existingIds.has(m.id));
+  return [...existing, ...deduped];
+}
+
+export function mergeMeasurementDevices(
+  existing: MeasurementDevice[],
+  incoming: MeasurementDevice[],
+): MeasurementDevice[] {
+  const existingIds = new Set(existing.map((device) => device.id));
+  const deduped = incoming.filter((device) => !existingIds.has(device.id));
   return [...existing, ...deduped];
 }
 

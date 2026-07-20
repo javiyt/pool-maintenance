@@ -1,6 +1,9 @@
 import type { PoolSettings } from '../domain/settings';
 import { DEFAULT_HISTORICAL_LEARNING, DEFAULT_SALT_CHLORINATOR } from '../domain/settings';
 import type { HistoricalLearningConfig, SaltChlorinatorConfig, ThemePreference } from '../domain/settings';
+import type { MeasurementParameterCode, MeasurementUnit } from '../domain/measurement';
+import { createMeasurementDevice } from '../domain/measurementDevice';
+import type { MeasurementDeviceType } from '../domain/measurementDevice';
 import {
   createChlorinatorConfigFromPreset,
   getChlorinatorModeDefinitions,
@@ -8,7 +11,7 @@ import {
   migrateSaltChlorinatorConfig,
 } from '../domain/saltChlorinator';
 import type { ChlorinatorModeDefinition, ChlorinatorOutputControl, ChlorinatorPresetId } from '../domain/saltChlorinator';
-import { loadSettings, saveSettings } from '../domain/storage';
+import { loadMeasurementDevices, loadSettings, saveMeasurementDevices, saveSettings } from '../domain/storage';
 import { getLanguage, setLanguage, t, validateLanguage } from '../i18n/index';
 import type { AppLanguage } from '../i18n/types';
 import { applyThemePreference } from './theme';
@@ -53,6 +56,14 @@ export class SettingsPanel {
   private hlMinFactor: HTMLInputElement;
   private hlMaxFactor: HTMLInputElement;
   private hlFields: NodeListOf<HTMLElement>;
+  private deviceList: HTMLElement | null = null;
+  private mdCustomName: HTMLInputElement | null = null;
+  private mdDeviceType: HTMLSelectElement | null = null;
+  private mdManufacturer: HTMLInputElement | null = null;
+  private mdModel: HTMLInputElement | null = null;
+  private mdTdsDerived: HTMLInputElement | null = null;
+  private mdTdsFactor: HTMLInputElement | null = null;
+  private mdAddBtn: HTMLButtonElement | null = null;
   private languageSelect: HTMLSelectElement;
   private appearanceSelect: HTMLSelectElement;
   private saveBtn: HTMLButtonElement;
@@ -93,6 +104,14 @@ export class SettingsPanel {
     this.hlMinFactor = requiredElement<HTMLInputElement>('hlMinFactor');
     this.hlMaxFactor = requiredElement<HTMLInputElement>('hlMaxFactor');
     this.hlFields = document.querySelectorAll('.hl-field') as NodeListOf<HTMLElement>;
+    this.deviceList = document.getElementById('measurementDeviceList');
+    this.mdCustomName = document.getElementById('mdCustomName') as HTMLInputElement | null;
+    this.mdDeviceType = document.getElementById('mdDeviceType') as HTMLSelectElement | null;
+    this.mdManufacturer = document.getElementById('mdManufacturer') as HTMLInputElement | null;
+    this.mdModel = document.getElementById('mdModel') as HTMLInputElement | null;
+    this.mdTdsDerived = document.getElementById('mdTdsDerived') as HTMLInputElement | null;
+    this.mdTdsFactor = document.getElementById('mdTdsFactor') as HTMLInputElement | null;
+    this.mdAddBtn = document.getElementById('measurementDeviceAddBtn') as HTMLButtonElement | null;
     this.languageSelect = requiredElement<HTMLSelectElement>('appLanguage');
     this.appearanceSelect = requiredElement<HTMLSelectElement>('appAppearance');
     this.saveBtn = requiredElement<HTMLButtonElement>('settingsSaveBtn');
@@ -107,6 +126,8 @@ export class SettingsPanel {
     this.overlay.addEventListener('click', () => this.requestClose());
     this.drawer.addEventListener('click', (e) => e.stopPropagation());
     this.saveBtn.addEventListener('click', () => this.handleSave());
+    this.mdAddBtn?.addEventListener('click', () => this.handleAddMeasurementDevice());
+    this.deviceList?.addEventListener('click', (event) => this.handleMeasurementDeviceListClick(event));
 
     document.addEventListener('keydown', (e) => this.handleDocumentKeydown(e));
 
@@ -186,6 +207,7 @@ export class SettingsPanel {
     this.hlMinFactor.value = String(hl.minCorrectionFactor);
     this.hlMaxFactor.value = String(hl.maxCorrectionFactor);
     this.toggleHlFields();
+    this.renderMeasurementDevices();
 
     this.clearValidation();
     this.statusEl.textContent = '';
@@ -197,6 +219,93 @@ export class SettingsPanel {
     this.initialSnapshot = this.currentSnapshot();
     this.setSaveState('disabled');
     window.setTimeout(() => this.firstFocusable()?.focus(), 0);
+  }
+
+  private handleAddMeasurementDevice(): void {
+    if (!this.mdCustomName || !this.mdDeviceType) return;
+    const name = this.mdCustomName.value.trim();
+    const parameterCodes = Array.from(document.querySelectorAll<HTMLInputElement>('[data-md-param]:checked'))
+      .map((input) => input.dataset.mdParam)
+      .filter((code): code is MeasurementParameterCode => isMeasurementParameterCode(code));
+
+    if (!name || parameterCodes.length === 0) {
+      this.statusEl.textContent = 'Indica nombre y al menos un parametro del medidor.';
+      this.statusEl.className = 'status-msg error';
+      return;
+    }
+
+    const tdsDerived = Boolean(this.mdTdsDerived?.checked);
+    const tdsFactor = parseFloat(this.mdTdsFactor?.value ?? '0.5');
+    const device = createMeasurementDevice({
+      customName: name,
+      manufacturer: this.mdManufacturer?.value.trim() || undefined,
+      model: this.mdModel?.value.trim() || undefined,
+      deviceType: this.mdDeviceType.value as MeasurementDeviceType,
+      enabled: true,
+      isPrimary: loadMeasurementDevices().length === 0,
+      parameters: parameterCodes.map((parameterCode) => ({
+        parameterCode,
+        capability: parameterCode === 'tds' && tdsDerived ? 'calculated' : 'direct',
+        enabled: true,
+        unit: unitForParameter(parameterCode),
+        derivation: parameterCode === 'tds' && tdsDerived
+          ? {
+              sourceParameterCode: 'ec',
+              formulaCode: 'tds-from-ec-linear',
+              conversionFactor: Number.isFinite(tdsFactor) ? tdsFactor : 0.5,
+            }
+          : undefined,
+        temperatureCompensation: parameterCode === 'ec' || parameterCode === 'tds'
+          ? { supported: true, enabled: true, referenceTemperatureCelsius: 25 }
+          : undefined,
+        calibration: { supported: true },
+      })),
+    });
+
+    saveMeasurementDevices([...loadMeasurementDevices(), device]);
+    this.clearMeasurementDeviceForm();
+    this.renderMeasurementDevices();
+    window.dispatchEvent(new StorageEvent('storage', { key: 'pool-maintenance:measurementDevices' }));
+  }
+
+  private handleMeasurementDeviceListClick(event: Event): void {
+    const target = event.target as HTMLElement | null;
+    const button = target?.closest<HTMLButtonElement>('[data-device-remove]');
+    if (!button) return;
+    const id = button.dataset.deviceRemove;
+    if (!id) return;
+    saveMeasurementDevices(loadMeasurementDevices().filter((device) => device.id !== id));
+    this.renderMeasurementDevices();
+    window.dispatchEvent(new StorageEvent('storage', { key: 'pool-maintenance:measurementDevices' }));
+  }
+
+  private renderMeasurementDevices(): void {
+    if (!this.deviceList) return;
+    const devices = loadMeasurementDevices();
+    if (devices.length === 0) {
+      this.deviceList.innerHTML = '<p class="empty-state">No hay medidores configurados.</p>';
+      return;
+    }
+    this.deviceList.innerHTML = devices.map((device) => `
+      <div class="device-list-item">
+        <div>
+          <strong>${escapeHtml(device.customName)}</strong>
+          <span>${escapeHtml(device.deviceType)} · ${escapeHtml(device.parameters.filter((parameter) => parameter.enabled).map((parameter) => parameter.parameterCode).join(', '))}</span>
+        </div>
+        <button type="button" class="btn-text" data-device-remove="${escapeHtml(device.id)}">Eliminar</button>
+      </div>
+    `).join('');
+  }
+
+  private clearMeasurementDeviceForm(): void {
+    if (this.mdCustomName) this.mdCustomName.value = '';
+    if (this.mdManufacturer) this.mdManufacturer.value = '';
+    if (this.mdModel) this.mdModel.value = '';
+    if (this.mdTdsDerived) this.mdTdsDerived.checked = false;
+    if (this.mdTdsFactor) this.mdTdsFactor.value = '0.5';
+    document.querySelectorAll<HTMLInputElement>('[data-md-param]').forEach((input) => {
+      input.checked = false;
+    });
   }
 
   close(): void {
@@ -608,4 +717,35 @@ function controlSelectValue(control: ChlorinatorOutputControl): string {
     return control.controlBasis === 'free-chlorine' ? 'automatic-free-chlorine' : 'automatic-orp';
   }
   return control.kind;
+}
+
+function isMeasurementParameterCode(value: string | undefined): value is MeasurementParameterCode {
+  return value === 'ph' ||
+    value === 'ec' ||
+    value === 'tds' ||
+    value === 'salt' ||
+    value === 'orp' ||
+    value === 'fac' ||
+    value === 'temperature';
+}
+
+function unitForParameter(code: MeasurementParameterCode): MeasurementUnit {
+  switch (code) {
+    case 'ph':
+      return 'ph';
+    case 'ec':
+      return 'us-cm';
+    case 'orp':
+      return 'mv';
+    case 'temperature':
+      return 'celsius';
+    default:
+      return 'ppm';
+  }
+}
+
+function escapeHtml(s: string): string {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
 }

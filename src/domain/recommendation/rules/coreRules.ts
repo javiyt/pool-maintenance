@@ -250,6 +250,77 @@ export const alkalinityManualTestRule: RecommendationRule = {
   })],
 };
 
+export const dissolvedSolidsInvestigationRule: RecommendationRule = {
+  id: 'rule.monitoring.ec-tds-investigation',
+  version: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
+  priority: 32,
+  requiredDiagnosisCodes: ['EC_TDS_ACCUMULATION_SUSPECTED'],
+  excludedDiagnosisCodes: [],
+  matches: (context) => context.hasDiagnosis('EC_TDS_ACCUMULATION_SUSPECTED'),
+  generate: (context) => [baseRecommendation(context, {
+    code: 'MEASURE_SATURATION_PARAMETERS',
+    sourceCodes: ['EC_TDS_ACCUMULATION_SUSPECTED'],
+    ruleId: dissolvedSolidsInvestigationRule.id,
+    category: 'manual-test',
+    severity: 'informational',
+    priority: 32,
+    relatedFields: ['ec', 'tds', 'salt'],
+    explanationCodes: ['EC_TDS_CONTEXT_REQUESTS_SPECIFIC_MEASUREMENTS'],
+  })].map((recommendation) => ({
+    ...recommendation,
+    followUp: {
+      preferredAfterHours: 24,
+      measurementFields: ['ec', 'tds', 'salt'],
+    },
+    decisionTrace: {
+      determinantParameters: [],
+      contextualParameters: ['ec', 'tds', 'salt'],
+      requestedParameters: ['total-alkalinity', 'calcium-hardness', 'cya', 'product-history'],
+      ignoredParameters: ['ec/tds-alone-for-chemical-selection'],
+      derivedValues: context.getDiagnosis('EC_TDS_ACCUMULATION_SUSPECTED')?.evidence.some((item) => item.code === 'EC_PRIMARY_TDS_DERIVED_RISING') ? ['tds-from-ec'] : [],
+      redundantValues: context.getDiagnosis('EC_TDS_ACCUMULATION_SUSPECTED')?.evidence.some((item) => item.code === 'EC_PRIMARY_TDS_DERIVED_RISING') ? ['tds'] : [],
+    },
+  })),
+};
+
+export const saltEcConsistencyRule: RecommendationRule = {
+  id: 'rule.monitoring.repeat-salt-ec',
+  version: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
+  priority: 18,
+  requiredDiagnosisCodes: ['SALT_EC_INCONSISTENCY_SUSPECTED'],
+  excludedDiagnosisCodes: [],
+  matches: (context) => context.hasDiagnosis('SALT_EC_INCONSISTENCY_SUSPECTED'),
+  generate: (context) => [baseRecommendation(context, {
+    code: 'REPEAT_SALT_EC_MEASUREMENT',
+    sourceCodes: ['SALT_EC_INCONSISTENCY_SUSPECTED'],
+    ruleId: saltEcConsistencyRule.id,
+    category: 'manual-test',
+    severity: 'medium',
+    priority: 18,
+    relatedFields: ['salt', 'ec'],
+    explanationCodes: ['SALT_EC_INCONSISTENCY_REQUIRES_RETEST_BEFORE_ADDING_SALT'],
+  })],
+};
+
+export const pauseChemicalEscalationRule: RecommendationRule = {
+  id: 'rule.monitoring.pause-chemical-escalation',
+  version: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
+  priority: 7,
+  requiredDiagnosisCodes: ['EC_TDS_DOSING_ESCALATION_RISK'],
+  excludedDiagnosisCodes: [],
+  matches: (context) => context.hasDiagnosis('EC_TDS_DOSING_ESCALATION_RISK'),
+  generate: (context) => [baseRecommendation(context, {
+    code: 'PAUSE_CHEMICAL_ESCALATION_RETEST',
+    sourceCodes: ['EC_TDS_DOSING_ESCALATION_RISK'],
+    ruleId: pauseChemicalEscalationRule.id,
+    category: 'monitoring',
+    severity: 'medium',
+    priority: 7,
+    relatedFields: ['ec', 'tds'],
+    explanationCodes: ['RISING_EC_TDS_AFTER_CORRECTIONS_STOPS_AUTOMATIC_PRODUCT_ESCALATION'],
+  })],
+};
+
 export const moderateChlorinatorRule: RecommendationRule = {
   id: 'rule.equipment.moderate-chlorinator-adjustment',
   version: STRUCTURED_RECOMMENDATION_ENGINE_VERSION,
@@ -301,5 +372,8 @@ export const CORE_RECOMMENDATION_RULES: RecommendationRule[] = [
   cyaManualTestRule,
   totalChlorineManualTestRule,
   alkalinityManualTestRule,
+  dissolvedSolidsInvestigationRule,
+  saltEcConsistencyRule,
+  pauseChemicalEscalationRule,
   moderateChlorinatorRule,
 ];

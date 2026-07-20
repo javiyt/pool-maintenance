@@ -187,6 +187,61 @@
           <input type="number" id="scBoostDuration" min="0" step="0.5" />
         </div>
         <hr class="settings-divider" />
+        <h3 class="settings-subtitle">Medidores</h3>
+        <div id="measurementDeviceList" class="device-list"></div>
+        <div class="device-editor" aria-label="Registrar medidor">
+          <div class="field">
+            <label for="mdCustomName">Nombre del medidor</label>
+            <input type="text" id="mdCustomName" placeholder="Fotometro, tiras, laboratorio..." />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="mdDeviceType">Tipo</label>
+              <select id="mdDeviceType">
+                <option value="photometer">Fotometro</option>
+                <option value="reagent-kit">Kit de reactivos</option>
+                <option value="test-strips">Tiras</option>
+                <option value="digital-multiparameter">Digital multiparametro</option>
+                <option value="fixed-sensor">Sonda fija</option>
+                <option value="chlorinator">Lectura del clorador</option>
+                <option value="controller">Controlador</option>
+                <option value="laboratory">Laboratorio</option>
+                <option value="manual">Entrada manual</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="mdManufacturer">Fabricante</label>
+              <input type="text" id="mdManufacturer" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="mdModel">Modelo</label>
+            <input type="text" id="mdModel" />
+          </div>
+          <fieldset class="device-parameters">
+            <legend>Parametros medidos</legend>
+            <label><input type="checkbox" data-md-param="ph" /> pH</label>
+            <label><input type="checkbox" data-md-param="fac" /> FAC</label>
+            <label><input type="checkbox" data-md-param="orp" /> ORP</label>
+            <label><input type="checkbox" data-md-param="salt" /> Sal</label>
+            <label><input type="checkbox" data-md-param="ec" /> CE</label>
+            <label><input type="checkbox" data-md-param="tds" /> TDS</label>
+            <label><input type="checkbox" data-md-param="temperature" /> Temperatura</label>
+          </fieldset>
+          <div class="field-row">
+            <label class="field-inline">
+              <input type="checkbox" id="mdTdsDerived" />
+              TDS calculado desde CE
+            </label>
+            <div class="field">
+              <label for="mdTdsFactor">Factor TDS</label>
+              <input type="number" id="mdTdsFactor" min="0.1" max="1" step="0.01" value="0.5" />
+            </div>
+          </div>
+          <button id="measurementDeviceAddBtn" type="button" class="btn-secondary">Añadir medidor</button>
+        </div>
+        <hr class="settings-divider" />
         <h3 class="settings-subtitle" data-i18n="settings.learning.title">Aprendizaje histórico</h3>
         <div class="field">
           <label for="hlEnabled" data-i18n="settings.learning.enabled">

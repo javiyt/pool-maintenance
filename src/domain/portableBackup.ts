@@ -2,6 +2,7 @@ import type { MaintenanceAction, UserChemicalProduct } from './actions';
 import type { ActionOutcomeSnapshot, ExportSnapshots, LearningStateSnapshot, ProductSnapshot, UnusualEventSnapshot } from './exportSnapshots';
 import type { DiagnosticExperiment } from './latentStateEstimator';
 import type { Measurement } from './measurement';
+import type { MeasurementDevice } from './measurementDevice';
 import type { PoolSettings } from './settings';
 import { PERSISTENCE_INVENTORY } from './persistenceInventory';
 
@@ -15,6 +16,7 @@ interface ExportLike extends ExportSnapshots {
   exportedAt: string;
   poolConfig: PoolSettings;
   measurements: Measurement[];
+  measurementDevices?: MeasurementDevice[];
   actions: MaintenanceAction[];
   followUps: unknown[];
   experiments?: DiagnosticExperiment[];
@@ -285,7 +287,7 @@ export function buildPortableDataset(data: ExportLike, options: CompleteExportOp
       poolId: 'default-pool',
       data: data.poolConfig,
     }],
-    equipment: [],
+    equipment: wrapList(data.measurementDevices ?? [], data.exportedAt, exportBatchId, (device) => device.id),
     chlorinators: data.poolConfig.saltChlorinator
       ? [{
           schemaVersion: 1,
@@ -401,6 +403,7 @@ export function portableDatasetToImportObject(dataset: PortableDataset): {
   exportedAt: string;
   poolConfig?: PoolSettings;
   measurements: Measurement[];
+  measurementDevices: MeasurementDevice[];
   actions: MaintenanceAction[];
   followUps: unknown[];
   experiments: DiagnosticExperiment[];
@@ -411,6 +414,7 @@ export function portableDatasetToImportObject(dataset: PortableDataset): {
     exportedAt: dataset.metadata.createdAt,
     poolConfig: dataset.pools[0]?.data,
     measurements: dataset.measurements.map((snapshot) => snapshot.data),
+    measurementDevices: dataset.equipment.map((snapshot) => snapshot.data as MeasurementDevice),
     actions: dataset.maintenanceActions.map((snapshot) => snapshot.data),
     followUps: dataset.followUps.map((snapshot) => snapshot.data),
     experiments: dataset.application.experiments.map((snapshot) => snapshot.data),
