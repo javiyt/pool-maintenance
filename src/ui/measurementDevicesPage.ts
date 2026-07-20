@@ -22,6 +22,7 @@ import {
 import { formatDateTime } from '../i18n/index';
 import { appRouteUrl, currentApplicationPathname } from '../applicationRuntime';
 import type { AppRoute } from './appShell';
+import { renderAlert } from './alert';
 
 const PARAMETERS: MeasurementParameterCode[] = [
   'ph',
@@ -154,7 +155,7 @@ export class MeasurementDevicesPage {
 
     if (devices.length === 0) {
       this.content.innerHTML = `
-        ${message ? `<div class="status-msg success">${escapeHtml(message)}</div>` : ''}
+        ${message ? renderAlert({ severity: 'success', description: message, className: 'status-msg success' }) : ''}
         <div class="section-block">
           <div class="section-header">
             <h2>Medidores configurados</h2>
@@ -195,7 +196,7 @@ export class MeasurementDevicesPage {
     }).join('');
 
     this.content.innerHTML = `
-      ${message ? `<div class="status-msg success">${escapeHtml(message)}</div>` : ''}
+      ${message ? renderAlert({ severity: 'success', description: message, className: 'status-msg success' }) : ''}
       <div class="section-block">
         <div class="section-header">
           <h2>Medidores configurados</h2>
@@ -362,7 +363,12 @@ export class MeasurementDevicesPage {
           <h3>${parameterLabel(parameter.parameterCode)}</h3>
           <button type="button" class="btn-secondary danger-action" data-param-action="remove" data-param-code="${escapeHtml(parameter.parameterCode)}">Retirar</button>
         </div>
-        ${archivedText ? `<div class="form-warning">${escapeHtml(archivedText)}</div>` : ''}
+        ${archivedText ? renderAlert({
+          severity: 'warning',
+          title: 'Parametro con historico',
+          description: archivedText,
+          className: 'form-warning',
+        }) : ''}
         <div class="measurement-device-param-grid">
           <div class="field">
             <label>Codigo</label>
@@ -562,7 +568,12 @@ export class MeasurementDevicesPage {
     this.content.querySelectorAll('[aria-invalid="true"]').forEach((element) => element.removeAttribute('aria-invalid'));
     const errorsEl = document.getElementById('measurementDeviceErrors');
     if (!errorsEl) return;
-    errorsEl.innerHTML = Object.values(errors).map((message) => `<div class="form-error">${escapeHtml(message)}</div>`).join('');
+    errorsEl.innerHTML = Object.values(errors).map((message) => renderAlert({
+      severity: 'danger',
+      description: message,
+      className: 'form-error',
+      role: 'alert',
+    })).join('');
     const firstKey = Object.keys(errors)[0];
     const firstInput = inputForError(this.content, firstKey);
     if (firstInput) {
