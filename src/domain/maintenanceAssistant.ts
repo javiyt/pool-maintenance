@@ -583,6 +583,11 @@ function enrichRecommendationKeys(
       rec.summaryParams = { value: String(orpVal) };
       rec.reasonKey = 'rec.orp.below650.reason';
       rec.reasonParams = { value: String(orpVal) };
+    } else if (rec.kind === 'retest' && rec.diagnosisCode === 'PH_LOW') {
+      rec.titleKey = 'rec.ph.waitSaltwater.title';
+      rec.summaryKey = 'rec.ph.waitSaltwater.summary';
+      rec.summaryParams = { value: phVal };
+      rec.reasonKey = 'rec.ph.waitSaltwater.reason';
     } else if (rec.kind === 'monitor' && rec.severity === 'low' && rec.relatedFields.includes('temperature')) {
       rec.titleKey = 'rec.temp.high.title';
       rec.summaryKey = 'rec.temp.high.summary';
@@ -887,51 +892,87 @@ export function runAssistant(
 
   // ── 1. pH correction ──────────────────────────────────────────
   if (latest.ph < phRange.min) {
-    updateStatus('needs-correction');
-    const delta = phRange.ideal - latest.ph;
-    const capped = Math.min(delta, 0.2);
-    const isCapped = capped < delta;
-    const amountMl = hasVolume ? Math.round((capped / 0.1) * 1000 * (volM3 / 50)) : 0;
+    const phTrend = trends.find((trend) => trend.field === 'ph');
+    const slightlyLow = phRange.min - latest.ph <= 0.2;
+    const canWaitInSaltwaterPool = settings.poolType === 'saltwater'
+      && phClass.label !== 'danger'
+      && slightlyLow
+      && phTrend?.direction === 'rising';
 
-    const notes: string[] = [];
-    if (isCapped) {
-      notes.push(`Corrección limitada a 0.2 unidades de pH por ciclo. Dosis calculada para subir de ${latest.ph.toFixed(1)} a ${(latest.ph + capped).toFixed(1)}.`);
-      notes.push('Volver a medir y repetir si es necesario.');
+    if (canWaitInSaltwaterPool) {
+      updateStatus('needs-attention');
+      recommendations.push({
+        id: nextId(),
+        kind: 'retest',
+        severity: 'low',
+        title: 'Esperar y volver a medir',
+        summary: `El pH (${latest.ph.toFixed(1)}) está ligeramente bajo, pero la tendencia reciente es ascendente.`,
+        reason: 'En piscinas salinas el pH suele aumentar durante el funcionamiento. Espera 12–24 horas y vuelve a medir antes de añadir incrementador de pH.',
+        priority: 1,
+        relatedFields: ['ph'],
+        targetRange: makeRange(phRange.min, phRange.max, ''),
+        currentValue: latest.ph,
+        diagnosisCode: 'PH_LOW',
+        calculationNotes: [
+          'Piscina salina con tendencia ascendente de pH.',
+          'No se recomienda dosificar todavía mientras no haya urgencia.',
+        ],
+        safetyNotes: [],
+        followUpActions: [
+          'Esperar 12–24 horas.',
+          'Volver a medir el pH antes de añadir incrementador.',
+        ],
+        retestAfterHours: 24,
+        state: 'pending-retest',
+        stage: 1,
+      });
     } else {
-      notes.push(`Dosis calculada para subir de ${latest.ph.toFixed(1)} al valor objetivo de ${phRange.ideal.toFixed(1)}.`);
-    }
-    if (!hasVolume) notes.push('Ingresa el volumen de la piscina en Configuración para obtener una dosis estimada.');
+      updateStatus('needs-correction');
+      const delta = phRange.ideal - latest.ph;
+      const capped = Math.min(delta, 0.2);
+      const isCapped = capped < delta;
+      const amountMl = hasVolume ? Math.round((capped / 0.1) * 1000 * (volM3 / 50)) : 0;
 
-    recommendations.push({
-      id: nextId(),
-      kind: 'chemical',
-      severity: phClass.label === 'danger' ? 'high' : 'medium',
-      title: 'Subir el pH',
-      summary: `El pH (${latest.ph.toFixed(1)}) está por debajo del rango (${phRange.min}–${phRange.max}).`,
-      reason: `El pH (${latest.ph.toFixed(1)}) está por debajo del rango objetivo de ${phRange.min}–${phRange.max}.`,
-      priority: 1,
-      relatedFields: ['ph'],
-      chemicalProductId: 'ph-increaser-liquid',
-      genericProductName: 'Incrementador de pH líquido',
-      mainComponent: 'Base alcalina incrementadora de pH',
-      estimatedAmount: hasVolume ? amountMl : undefined,
-      unit: hasVolume ? 'ml' : undefined,
-      targetRange: makeRange(phRange.min, phRange.max, ''),
-      currentValue: latest.ph,
-      calculationNotes: notes,
-      safetyNotes: [
-        'Manejar con guantes y gafas de protección.',
-        'Añadir gradualmente cerca del retorno de agua.',
-        'No mezclar con otros productos químicos.',
-      ],
-      followUpActions: [
-        'Medir el pH después de 4–6 horas.',
-        'Repetir la dosis si el pH sigue bajo.',
-      ],
-      retestAfterHours: 6,
-      state: 'actionable',
-      stage: 1,
-    });
+      const notes: string[] = [];
+      if (isCapped) {
+        notes.push(`Corrección limitada a 0.2 unidades de pH por ciclo. Dosis calculada para subir de ${latest.ph.toFixed(1)} a ${(latest.ph + capped).toFixed(1)}.`);
+        notes.push('Volver a medir y repetir si es necesario.');
+      } else {
+        notes.push(`Dosis calculada para subir de ${latest.ph.toFixed(1)} al valor objetivo de ${phRange.ideal.toFixed(1)}.`);
+      }
+      if (!hasVolume) notes.push('Ingresa el volumen de la piscina en Configuración para obtener una dosis estimada.');
+
+      recommendations.push({
+        id: nextId(),
+        kind: 'chemical',
+        severity: phClass.label === 'danger' ? 'high' : 'medium',
+        title: 'Subir el pH',
+        summary: `El pH (${latest.ph.toFixed(1)}) está por debajo del rango (${phRange.min}–${phRange.max}).`,
+        reason: `El pH (${latest.ph.toFixed(1)}) está por debajo del rango objetivo de ${phRange.min}–${phRange.max}.`,
+        priority: 1,
+        relatedFields: ['ph'],
+        chemicalProductId: 'ph-increaser-liquid',
+        genericProductName: 'Incrementador de pH líquido',
+        mainComponent: 'Base alcalina incrementadora de pH',
+        estimatedAmount: hasVolume ? amountMl : undefined,
+        unit: hasVolume ? 'ml' : undefined,
+        targetRange: makeRange(phRange.min, phRange.max, ''),
+        currentValue: latest.ph,
+        calculationNotes: notes,
+        safetyNotes: [
+          'Manejar con guantes y gafas de protección.',
+          'Añadir gradualmente cerca del retorno de agua.',
+          'No mezclar con otros productos químicos.',
+        ],
+        followUpActions: [
+          'Medir el pH después de 4–6 horas.',
+          'Repetir la dosis si el pH sigue bajo.',
+        ],
+        retestAfterHours: 6,
+        state: 'actionable',
+        stage: 1,
+      });
+    }
   } else if (latest.ph > phRange.max) {
     updateStatus('needs-correction');
     const delta = latest.ph - phRange.ideal;

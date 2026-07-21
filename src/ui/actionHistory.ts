@@ -1,5 +1,6 @@
 import { loadActions, deleteAction, loadMeasurements } from '../domain/storage';
-import type { MaintenanceAction, MaintenanceActionKind } from '../domain/actions';
+import type { DiscardOutcome, MaintenanceAction, MaintenanceActionDiscardReason, MaintenanceActionKind, MaintenanceActionStatus } from '../domain/actions';
+import { reactivateDiscardedRecommendation } from '../application/discardMaintenanceAction';
 import { evaluateActionOutcomes } from '../domain/actionOutcomeEvaluator';
 import type { ActionOutcome, OutcomeEffectiveness } from '../domain/actionOutcomeEvaluator';
 import { t, formatAmount, formatDateTime, formatDelta as formatLocalizedDelta, formatNumber } from '../i18n/index';
@@ -38,6 +39,16 @@ export class ActionHistory {
     const items = sorted.map((a) => this.renderActionItem(a, outcomeMap.get(a.id))).join('');
     this.content.innerHTML = items;
 
+    this.content.querySelectorAll('.action-reactivate').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.id;
+        if (!id) return;
+        reactivateDiscardedRecommendation(id);
+        this.render();
+        this.onChangeCb?.();
+      });
+    });
+
     // Bind delete buttons
     this.content.querySelectorAll('.action-delete').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -54,6 +65,7 @@ export class ActionHistory {
   private renderActionItem(a: MaintenanceAction, outcome?: ActionOutcome): string {
     const kindLabel = t(actionKindKey(a.kind));
     let detailsHtml = '';
+    const status = a.status ?? 'completed';
 
     if (a.chemical) {
       const c = a.chemical;
@@ -104,13 +116,24 @@ export class ActionHistory {
       relatedHtml = `<div class="action-related">${escapeHtml(t('outcome.linkedTo', { id: a.relatedMeasurementId.slice(0, 12) + '…' }))}</div>`;
     }
 
-    if (a.notes) {
+    if (a.notes && status !== 'discarded') {
       detailsHtml += `<div class="action-details">${escapeHtml(a.notes)}</div>`;
+    }
+
+    if (a.discard) {
+      const discardDetails = [
+        t('actionHistory.discard.reason', { reason: t(discardReasonKey(a.discard.reason)) }),
+        a.discard.notes ? t('actionHistory.discard.notes', { notes: a.discard.notes }) : '',
+        t('actionHistory.discard.date', { date: formatDateTime(a.discard.discardedAt) }),
+        a.discard.expectedReviewAt ? t('actionHistory.discard.review', { date: formatDateTime(a.discard.expectedReviewAt) }) : '',
+        a.discardEvaluation ? t('actionHistory.discard.outcome', { outcome: t(discardOutcomeKey(a.discardEvaluation.outcome)) }) : '',
+      ].filter(Boolean);
+      detailsHtml += `<div class="action-discard-details">${discardDetails.map((detail) => `<div>${escapeHtml(detail)}</div>`).join('')}</div>`;
     }
 
     // Outcome display
     let outcomeHtml = '';
-    if (outcome) {
+    if (outcome && status === 'completed') {
       const o = outcomeDisplay(outcome.effectiveness);
       const changesHtml = renderChanges(outcome.changes);
       const reasons = renderOutcomeReasons(outcome);
@@ -130,7 +153,9 @@ export class ActionHistory {
       <div class="action-item" data-id="${escapeHtml(a.id)}">
         <div class="action-meta">
           <span class="action-kind-badge">${escapeHtml(kindLabel)}</span>
+          <span class="action-status-badge action-status-${escapeHtml(status)}">${escapeHtml(t(actionStatusKey(status)))}</span>
           <span class="history-date">${escapeHtml(formatDateTime(a.performedAt))}</span>
+          ${status === 'discarded' ? `<button class="action-reactivate" data-id="${escapeHtml(a.id)}">${escapeHtml(t('actionHistory.reactivate'))}</button>` : ''}
           <button class="action-delete" data-id="${escapeHtml(a.id)}">${escapeHtml(t('actionHistory.delete'))}</button>
         </div>
         <div class="action-description">${escapeHtml(a.description)}</div>
@@ -204,6 +229,45 @@ function actionKindKey(kind: MaintenanceActionKind): TranslationKey {
     other: 'actionKind.other',
   };
   return keyMap[kind] ?? 'actionKind.other';
+}
+
+function actionStatusKey(status: MaintenanceActionStatus): TranslationKey {
+  const keyMap: Record<MaintenanceActionStatus, TranslationKey> = {
+    recommended: 'actionStatus.recommended',
+    planned: 'actionStatus.planned',
+    'in-progress': 'actionStatus.inProgress',
+    completed: 'actionStatus.completed',
+    discarded: 'actionStatus.discarded',
+    cancelled: 'actionStatus.cancelled',
+    archived: 'actionStatus.archived',
+  };
+  return keyMap[status];
+}
+
+function discardReasonKey(reason: MaintenanceActionDiscardReason): TranslationKey {
+  const keyMap: Record<MaintenanceActionDiscardReason, TranslationKey> = {
+    'natural-evolution-expected': 'rec.discard.reason.naturalEvolution',
+    'not-needed-now': 'rec.discard.reason.notNeededNow',
+    'measurement-uncertain': 'rec.discard.reason.measurementUncertain',
+    'retest-first': 'rec.discard.reason.retestFirst',
+    'alternative-action-applied': 'rec.discard.reason.alternativeAction',
+    'professional-advice': 'rec.discard.reason.professionalAdvice',
+    'product-unavailable': 'rec.discard.reason.productUnavailable',
+    'not-applicable-to-pool': 'rec.discard.reason.notApplicable',
+    other: 'rec.discard.reason.other',
+  };
+  return keyMap[reason];
+}
+
+function discardOutcomeKey(outcome: DiscardOutcome): TranslationKey {
+  const keyMap: Record<DiscardOutcome, TranslationKey> = {
+    appropriate: 'discardOutcome.appropriate',
+    'partially-appropriate': 'discardOutcome.partiallyAppropriate',
+    inappropriate: 'discardOutcome.inappropriate',
+    inconclusive: 'discardOutcome.inconclusive',
+    unknown: 'discardOutcome.unknown',
+  };
+  return keyMap[outcome];
 }
 
 function outcomeDisplay(effectiveness: OutcomeEffectiveness): { label: string; cssClass: string } {

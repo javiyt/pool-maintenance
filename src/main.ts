@@ -13,6 +13,7 @@ import { PwaController } from './ui/pwaController';
 import { addMeasurement, addFollowUp } from './domain/storage';
 import { loadSettings, saveSettings, loadMeasurements, loadActions } from './domain/storage';
 import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
+import { discardRecommendation, filterDiscardedRecommendations } from './application/discardMaintenanceAction';
 import { createFollowUp } from './domain/followUp';
 import {
   setLanguage,
@@ -39,7 +40,11 @@ function runAndShowRecommendations(
   const actions = loadActions();
   recommendationsPanel.setHistory(measurements, actions, settings);
   const result = runPersonalizedAssistant(measurements, actions, settings);
-  recommendationsPanel.show(result);
+  const latest = [...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
+  recommendationsPanel.show({
+    ...result,
+    recommendations: filterDiscardedRecommendations(result.recommendations, actions, latest),
+  });
 }
 
 function init(): void {
@@ -175,6 +180,21 @@ function init(): void {
   // "Mark as performed" from recommendations → open action form with prefill
   recommendationsPanel.onMarkAsPerformed((prefill) => {
     actionForm.open(prefill);
+  });
+
+  recommendationsPanel.onDiscardRecommendation((request) => {
+    const measurements = loadMeasurements();
+    const latest = [...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
+    if (!latest) return;
+    discardRecommendation({
+      ...request,
+      latestMeasurement: latest,
+      settings: loadSettings(),
+    });
+    actionHistory.render();
+    followUpDashboard.render();
+    dashboardPanel.render();
+    runAndShowRecommendations(recommendationsPanel);
   });
 
   document.getElementById('recordActionBtn')?.addEventListener('click', () => {
