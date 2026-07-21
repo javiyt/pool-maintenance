@@ -34,6 +34,11 @@ describe('semantic alert color tokens', () => {
     const tokens = themeTokens(theme);
     expect(contrastRatio(token(tokens, '--color-focus'), token(tokens, '--color-background'))).toBeGreaterThanOrEqual(3);
   });
+
+  it.each(['light', 'dark'] as ThemeName[])('has a visible checked checkbox mark in %s theme', (theme) => {
+    const tokens = themeTokens(theme);
+    expect(contrastRatio(token(tokens, '--checkbox-checked-mark'), token(tokens, '--checkbox-checked-bg'))).toBeGreaterThanOrEqual(3);
+  });
 });
 
 function expectRatio(
@@ -68,9 +73,13 @@ function collectDeclarations(selectorPattern: string): Record<string, string> {
   return declarations;
 }
 
-function token(tokens: Record<string, string>, name: string): string {
+function token(tokens: Record<string, string>, name: string, seen = new Set<string>()): string {
+  if (seen.has(name)) throw new Error(`Circular token reference ${name}`);
+  seen.add(name);
   const value = tokens[name];
   if (!value) throw new Error(`Missing token ${name}`);
+  const varMatch = value.match(/^var\((--[\w-]+)\)$/);
+  if (varMatch) return token(tokens, varMatch[1]!, seen);
   if (!/^#[0-9a-f]{6}$/i.test(value)) throw new Error(`Token ${name} must be a hex color, got ${value}`);
   return value;
 }
