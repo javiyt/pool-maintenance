@@ -234,6 +234,7 @@ export function evaluateActionOutcomes(
   const outcomes: ActionOutcome[] = [];
 
   for (const action of actions) {
+    if (action.status && action.status !== 'completed') continue;
     const window = getWindow(action);
     if (!window) continue; // non-evaluable action kind
 
@@ -453,6 +454,7 @@ function countInterveningActions(
   let count = 0;
   for (const other of sortedActions) {
     if (other.id === action.id) continue;
+    if (other.status && other.status !== 'completed') continue;
     if (other.performedAt > beforeMeasAt && other.performedAt < afterMeasAt) {
       count++;
     }

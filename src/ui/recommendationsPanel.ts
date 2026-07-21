@@ -1,6 +1,6 @@
 import type { MaintenanceAssistantResult, MaintenanceRecommendation } from '../domain/maintenanceAssistant';
 import type { ActionFormPrefill } from './actionForm';
-import type { MaintenanceActionKind } from '../domain/actions';
+import type { MaintenanceActionDiscardReason, MaintenanceActionKind } from '../domain/actions';
 import type { TranslationKey, TranslationParams } from '../i18n/types';
 import { t, formatNumber, formatAmount } from '../i18n/index';
 import type { LatentParameterEstimate, EstimatedAlkalinityState, EstimatedCyanuricAcidState } from '../domain/latentStateEstimator';
@@ -15,9 +15,11 @@ export class RecommendationsPanel {
   private section: HTMLElement;
   private content: HTMLElement;
   private onPerformCb: ((prefill: ActionFormPrefill) => void) | null = null;
+  private onDiscardCb: ((request: DiscardRecommendationRequest) => void) | null = null;
   private measurements: Measurement[] = [];
   private actions: MaintenanceAction[] = [];
   private settings: PoolSettings | null = null;
+  private currentRecommendations = new Map<string, MaintenanceRecommendation>();
 
   constructor() {
     this.section = document.getElementById('recommendationsSection') as HTMLElement;
@@ -28,6 +30,10 @@ export class RecommendationsPanel {
     this.onPerformCb = cb;
   }
 
+  onDiscardRecommendation(cb: (request: DiscardRecommendationRequest) => void): void {
+    this.onDiscardCb = cb;
+  }
+
   setHistory(measurements: Measurement[], actions: MaintenanceAction[], settings: PoolSettings): void {
     this.measurements = measurements;
     this.actions = actions;
@@ -36,6 +42,7 @@ export class RecommendationsPanel {
 
   show(result: MaintenanceAssistantResult): void {
     this.section.hidden = false;
+    this.currentRecommendations = new Map(result.recommendations.map((rec) => [rec.id, rec]));
 
     const parts: string[] = [];
 
@@ -68,11 +75,13 @@ export class RecommendationsPanel {
       description: t('rec.disclaimer'),
       className: 'rec-disclaimer',
     }));
+    parts.push(this.renderDiscardDialog());
 
     this.content.innerHTML = parts.join('');
 
     // Bind "Mark as performed" buttons
     this.bindPerformButtons();
+    this.bindDiscardControls();
   }
 
   hide(): void {
@@ -327,8 +336,7 @@ export class RecommendationsPanel {
       depsHtml = `<div class="rec-dependencies"><strong>${escapeHtml(t('rec.dependencies.title'))}</strong><ul>${depItems}</ul></div>`;
     }
 
-    // "Mark as performed" button for actionable recommendations
-    const performBtnHtml = this.renderPerformButton(item);
+    const actionsHtml = this.renderRecommendationActions(item);
 
     return `
       <div class="rec-item ${severityClass}" data-rec-id="${escapeHtml(item.id)}">
@@ -346,7 +354,7 @@ export class RecommendationsPanel {
         ${calcHtml}
         ${followHtml}
         <span class="rec-status rec-severity-${item.severity}">${escapeHtml(severityLabel)}</span>
-        ${performBtnHtml}
+        ${actionsHtml}
       </div>
     `;
   }
@@ -442,6 +450,14 @@ export class RecommendationsPanel {
    * Render a "Mark as performed" button if the recommendation is actionable.
    * Returns the button HTML string, or empty string if not actionable.
    */
+  private renderRecommendationActions(item: MaintenanceRecommendation): string {
+    const buttons = [
+      this.renderPerformButton(item),
+      this.renderDiscardButton(item),
+    ].filter(Boolean).join('');
+    return buttons ? `<div class="rec-actions">${buttons}</div>` : '';
+  }
+
   private renderPerformButton(item: MaintenanceRecommendation): string {
     const actionKind = recommendationToActionKind(item);
     if (!actionKind) return '';
@@ -509,6 +525,44 @@ export class RecommendationsPanel {
     return `<button class="rec-perform-btn" data-prefill='${escapeHtmlAttr(JSON.stringify(prefill))}'>${escapeHtml(t('rec.performButton'))}</button>`;
   }
 
+  private renderDiscardButton(item: MaintenanceRecommendation): string {
+    if (item.kind === 'no-action' || item.state === 'blocked') return '';
+    return `<button type="button" class="rec-discard-btn" data-rec-id="${escapeHtml(item.id)}">${escapeHtml(t('rec.discardButton'))}</button>`;
+  }
+
+  private renderDiscardDialog(): string {
+    return `
+      <div id="recDiscardDialog" class="rec-discard-dialog" role="dialog" aria-modal="true" aria-labelledby="rec-discard-title" hidden>
+        <div class="rec-discard-panel">
+          <h3 id="rec-discard-title">${escapeHtml(t('rec.discard.title'))}</h3>
+          <p>${escapeHtml(t('rec.discard.description'))}</p>
+          <form id="recDiscardForm" class="rec-discard-form" novalidate>
+            <input type="hidden" id="recDiscardId" />
+            <div class="field">
+              <label for="recDiscardReason">${escapeHtml(t('rec.discard.reason'))}</label>
+              <select id="recDiscardReason" required>
+                <option value="">${escapeHtml(t('rec.discard.reason.placeholder'))}</option>
+                ${DISCARD_REASONS.map((reason) => `<option value="${escapeHtml(reason)}">${escapeHtml(t(discardReasonKey(reason)))}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label for="recDiscardNotes">${escapeHtml(t('rec.discard.notes'))}</label>
+              <textarea id="recDiscardNotes" rows="3"></textarea>
+            </div>
+            <div class="field">
+              <label for="recDiscardReviewAt">${escapeHtml(t('rec.discard.reviewAt'))}</label>
+              <input id="recDiscardReviewAt" type="datetime-local" />
+            </div>
+            <div class="rec-discard-actions">
+              <button type="button" class="btn-secondary" data-rec-discard-cancel>${escapeHtml(t('rec.discard.cancel'))}</button>
+              <button type="submit" class="btn-primary" disabled>${escapeHtml(t('rec.discard.confirm'))}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
   /**
    * Bind "Mark as performed" buttons after rendering.
    */
@@ -531,6 +585,55 @@ export class RecommendationsPanel {
           // Silently fail if prefill data is malformed
         }
       });
+    });
+  }
+
+  private bindDiscardControls(): void {
+    const dialog = this.content.querySelector<HTMLElement>('#recDiscardDialog');
+    const form = this.content.querySelector<HTMLFormElement>('#recDiscardForm');
+    const recIdInput = this.content.querySelector<HTMLInputElement>('#recDiscardId');
+    const reasonInput = this.content.querySelector<HTMLSelectElement>('#recDiscardReason');
+    const notesInput = this.content.querySelector<HTMLTextAreaElement>('#recDiscardNotes');
+    const reviewInput = this.content.querySelector<HTMLInputElement>('#recDiscardReviewAt');
+    const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (!dialog || !form || !recIdInput || !reasonInput || !notesInput || !reviewInput || !submit) return;
+
+    const close = () => {
+      dialog.hidden = true;
+      form.reset();
+      recIdInput.value = '';
+      submit.disabled = true;
+    };
+
+    this.content.querySelectorAll<HTMLElement>('.rec-discard-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        recIdInput.value = btn.dataset.recId ?? '';
+        dialog.hidden = false;
+        reasonInput.focus();
+      });
+    });
+
+    reasonInput.addEventListener('change', () => {
+      submit.disabled = !reasonInput.value;
+    });
+
+    this.content.querySelector<HTMLElement>('[data-rec-discard-cancel]')?.addEventListener('click', close);
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) close();
+    });
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const recommendation = this.currentRecommendations.get(recIdInput.value);
+      const reason = reasonInput.value as MaintenanceActionDiscardReason;
+      if (!recommendation || !reason) return;
+      this.onDiscardCb?.({
+        recommendation,
+        reason,
+        notes: notesInput.value.trim() || undefined,
+        expectedReviewAt: reviewInput.value ? localDatetimeToISO(reviewInput.value) : undefined,
+      });
+      close();
     });
   }
 
@@ -626,6 +729,44 @@ export class RecommendationsPanel {
       </div>
     `;
   }
+}
+
+export interface DiscardRecommendationRequest {
+  recommendation: MaintenanceRecommendation;
+  reason: MaintenanceActionDiscardReason;
+  notes?: string;
+  expectedReviewAt?: string;
+}
+
+const DISCARD_REASONS: MaintenanceActionDiscardReason[] = [
+  'natural-evolution-expected',
+  'not-needed-now',
+  'measurement-uncertain',
+  'retest-first',
+  'alternative-action-applied',
+  'professional-advice',
+  'product-unavailable',
+  'not-applicable-to-pool',
+  'other',
+];
+
+function discardReasonKey(reason: MaintenanceActionDiscardReason): TranslationKey {
+  const map: Record<MaintenanceActionDiscardReason, TranslationKey> = {
+    'natural-evolution-expected': 'rec.discard.reason.naturalEvolution',
+    'not-needed-now': 'rec.discard.reason.notNeededNow',
+    'measurement-uncertain': 'rec.discard.reason.measurementUncertain',
+    'retest-first': 'rec.discard.reason.retestFirst',
+    'alternative-action-applied': 'rec.discard.reason.alternativeAction',
+    'professional-advice': 'rec.discard.reason.professionalAdvice',
+    'product-unavailable': 'rec.discard.reason.productUnavailable',
+    'not-applicable-to-pool': 'rec.discard.reason.notApplicable',
+    other: 'rec.discard.reason.other',
+  };
+  return map[reason];
+}
+
+function localDatetimeToISO(value: string): string {
+  return new Date(value).toISOString();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────

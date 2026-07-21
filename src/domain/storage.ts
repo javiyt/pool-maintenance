@@ -278,6 +278,8 @@ function migrateAction(raw: Record<string, unknown>): MaintenanceAction {
   const legacyLinkedRecommendation = Boolean(recommendationId || action.recommendationSnapshot);
 
   action.schemaVersion = action.schemaVersion ?? ACTION_SCHEMA_VERSION;
+  action.version = action.version ?? 1;
+  action.status = action.status ?? 'completed';
   action.origin = action.origin ?? (legacyLinkedRecommendation ? 'recommendation' : 'manual');
   action.relatedRecommendationId = action.relatedRecommendationId ?? action.recommendationId;
   action.recommendationId = action.recommendationId ?? action.relatedRecommendationId;
@@ -320,6 +322,14 @@ function migrateAction(raw: Record<string, unknown>): MaintenanceAction {
 
   action.evaluationEligibility = action.evaluationEligibility ?? determineEvaluationEligibility(action);
   action.chemicalCatalogVersion = action.chemicalCatalogVersion ?? CHEMICAL_CATALOG_VERSION;
+
+  if (action.status === 'discarded' && !action.discard) {
+    action.discard = {
+      discardedAt: action.performedAt,
+      reason: 'other',
+      discardedBy: action.origin === 'imported' ? 'import' : 'user',
+    };
+  }
 
   return action;
 }

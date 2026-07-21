@@ -316,6 +316,70 @@ export type MaintenanceActionOrigin =
   | 'professional'
   | 'automation';
 
+export type MaintenanceActionStatus =
+  | 'recommended'
+  | 'planned'
+  | 'in-progress'
+  | 'completed'
+  | 'discarded'
+  | 'cancelled'
+  | 'archived';
+
+export type MaintenanceActionDiscardReason =
+  | 'natural-evolution-expected'
+  | 'not-needed-now'
+  | 'measurement-uncertain'
+  | 'retest-first'
+  | 'alternative-action-applied'
+  | 'professional-advice'
+  | 'product-unavailable'
+  | 'not-applicable-to-pool'
+  | 'other';
+
+export type MaintenanceActionDiscardActor =
+  | 'user'
+  | 'professional'
+  | 'import'
+  | 'system';
+
+export type DiscardOutcome =
+  | 'appropriate'
+  | 'partially-appropriate'
+  | 'inappropriate'
+  | 'inconclusive'
+  | 'unknown';
+
+export interface MaintenanceActionDiscard {
+  discardedAt: string;
+  reason: MaintenanceActionDiscardReason;
+  notes?: string;
+  discardedBy: MaintenanceActionDiscardActor;
+  expectedReviewAt?: string;
+}
+
+export interface MaintenanceActionDiscardEvaluation {
+  evaluatedAt: string;
+  outcome: DiscardOutcome;
+  evidenceMeasurementIds: string[];
+  notes?: string;
+}
+
+export interface RecommendationIdentity {
+  poolId: string;
+  sourceMeasurementId: string;
+  recommendationType: string;
+  targetParameter?: string;
+}
+
+export interface MaintenanceActionAuditEntry {
+  at: string;
+  actor: MaintenanceActionDiscardActor;
+  from: MaintenanceActionStatus;
+  to: MaintenanceActionStatus;
+  reason?: MaintenanceActionDiscardReason;
+  notes?: string;
+}
+
 export type EvaluationEligibility =
   | 'evaluable'
   | 'conditionally-evaluable'
@@ -331,6 +395,8 @@ export type PerformedValuesProvenance =
 export interface MaintenanceAction {
   id: string;
   schemaVersion?: number;
+  version?: number;
+  status?: MaintenanceActionStatus;
   performedAt: string; // ISO 8601
   kind: MaintenanceActionKind;
   actionType?: MaintenanceActionType;
@@ -342,8 +408,12 @@ export interface MaintenanceAction {
   relatedMeasurementId?: string;
   relatedRecommendationId?: string;
   recommendationId?: string;
+  recommendationIdentity?: RecommendationIdentity;
   recommendationSnapshot?: RecommendationSnapshot;
   origin?: MaintenanceActionOrigin;
+  discard?: MaintenanceActionDiscard;
+  discardEvaluation?: MaintenanceActionDiscardEvaluation;
+  audit?: MaintenanceActionAuditEntry[];
   performedValuesProvenance?: PerformedValuesProvenance;
   performedComparison?: PerformedActionComparison;
   chemical?: MaintenanceActionChemical;
