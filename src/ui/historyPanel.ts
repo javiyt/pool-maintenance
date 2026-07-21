@@ -1,4 +1,5 @@
-import { t, formatDateTime } from '../i18n/index';
+import { t, formatDateTime, getLocale } from '../i18n/index';
+import type { Measurement } from '../domain/measurement';
 import {
   loadMeasurements,
   deleteMeasurement,
@@ -9,11 +10,23 @@ import {
   loadActions,
 } from '../domain/storage';
 
+const RECENT_MEASUREMENT_LIMIT = 10;
+
+type HistoryMode =
+  | { kind: 'recent' }
+  | { kind: 'range'; from: string; to: string };
+
+export interface MeasurementDateLimits {
+  min: string;
+  max: string;
+}
+
 export class HistoryPanel {
   private content: HTMLElement;
   private exportBtn: HTMLButtonElement;
   private importBtn: HTMLButtonElement;
   private importInput: HTMLInputElement;
+  private mode: HistoryMode = { kind: 'recent' };
   private onChangeCb: (() => void) | null = null;
 
   constructor() {
@@ -39,11 +52,31 @@ export class HistoryPanel {
       return;
     }
 
-    // Reverse chronological order by measuredAt
-    const sorted = [...list].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt));
-    const devicesById = new Map(loadMeasurementDevices().map((device) => [device.id, device]));
+    const sorted = sortMeasurementsNewestFirst(list);
+    const limits = getMeasurementDateLimits(sorted);
+    if (!limits) {
+      this.content.innerHTML = `<p class="empty-state">${t('history.empty')}</p>`;
+      return;
+    }
 
-    const items = sorted.map((m) => {
+    const devicesById = new Map(loadMeasurementDevices().map((device) => [device.id, device]));
+    const validation = this.mode.kind === 'range'
+      ? validateMeasurementDateRange(this.mode.from, this.mode.to, limits)
+      : { valid: true, error: '' };
+    const selectedMeasurements = this.mode.kind === 'range' && validation.valid
+      ? filterMeasurementsByDateRange(sorted, this.mode.from, this.mode.to)
+      : sorted.slice(0, RECENT_MEASUREMENT_LIMIT);
+    const resultsTitle = this.mode.kind === 'range' && validation.valid
+      ? t('history.range.title', {
+        from: formatLocalDate(this.mode.from),
+        to: formatLocalDate(this.mode.to),
+      })
+      : t('history.recent.title');
+    const resultsMeta = this.mode.kind === 'range' && validation.valid
+      ? t('history.range.count', { count: selectedMeasurements.length })
+      : t('history.recent.help');
+
+    const items = selectedMeasurements.map((m) => {
       const vals: string[] = [];
       if (typeof m.ph === 'number') vals.push(`pH ${m.ph.toFixed(1)}`);
       if (typeof m.ec === 'number') vals.push(`EC ${m.ec} µS/cm`);
@@ -83,17 +116,137 @@ export class HistoryPanel {
       `;
     }).join('');
 
-    this.content.innerHTML = items;
+    this.content.innerHTML = `
+      ${this.renderSearchForm(limits, validation.error)}
+      <section class="history-results" aria-labelledby="history-results-heading">
+        <div class="history-results-header">
+          <div>
+            <h3 id="history-results-heading">${escapeHtml(resultsTitle)}</h3>
+            <p>${escapeHtml(resultsMeta)}</p>
+          </div>
+          ${this.mode.kind === 'range' && validation.valid
+    ? `<button type="button" class="btn-secondary" data-history-action="clear-filter">${escapeHtml(t('history.range.clear'))}</button>`
+    : ''}
+        </div>
+        ${items || this.renderEmptyRangeState()}
+      </section>
+    `;
 
-    // Bind delete buttons
+    this.bindSearchControls(limits);
     this.content.querySelectorAll('.history-delete').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.id;
         if (id && confirm(t('history.deleteConfirm'))) {
           deleteMeasurement(id);
+          this.mode = { kind: 'recent' };
           this.render();
           this.onChangeCb?.();
         }
+      });
+    });
+  }
+
+  private renderSearchForm(limits: MeasurementDateLimits, error: string): string {
+    const from = this.mode.kind === 'range' ? this.mode.from : '';
+    const to = this.mode.kind === 'range' ? this.mode.to : '';
+    const fromMax = to || limits.max;
+    const toMin = from || limits.min;
+    const boundsText = t('history.search.bounds', {
+      from: formatLocalDate(limits.min),
+      to: formatLocalDate(limits.max),
+    });
+
+    return `
+      <section class="history-date-search" aria-labelledby="history-search-heading">
+        <div class="history-date-search-header">
+          <div>
+            <h3 id="history-search-heading">${escapeHtml(t('history.search.title'))}</h3>
+            <p>${escapeHtml(boundsText)}</p>
+          </div>
+          <button type="button" class="btn-secondary" data-history-action="view-all">${escapeHtml(t('history.search.viewAll'))}</button>
+        </div>
+        <form id="historyDateSearchForm" class="history-date-form" novalidate>
+          <div class="field">
+            <label for="historyDateFrom">${escapeHtml(t('history.search.from'))}</label>
+            <input
+              id="historyDateFrom"
+              type="date"
+              value="${escapeHtml(from)}"
+              min="${escapeHtml(limits.min)}"
+              max="${escapeHtml(fromMax)}"
+              data-history-date="from"
+            />
+          </div>
+          <div class="field">
+            <label for="historyDateTo">${escapeHtml(t('history.search.to'))}</label>
+            <input
+              id="historyDateTo"
+              type="date"
+              value="${escapeHtml(to)}"
+              min="${escapeHtml(toMin)}"
+              max="${escapeHtml(limits.max)}"
+              data-history-date="to"
+            />
+          </div>
+          <button type="submit" class="btn-primary" ${error || !from || !to ? 'disabled' : ''}>${escapeHtml(t('history.search.submit'))}</button>
+        </form>
+        <p class="history-date-help">${escapeHtml(t('history.search.emptyHint'))}</p>
+        <div class="form-errors history-date-error" aria-live="polite" role="alert">${escapeHtml(error)}</div>
+      </section>
+    `;
+  }
+
+  private renderEmptyRangeState(): string {
+    return `
+      <div class="empty-state history-range-empty">
+        <p>${escapeHtml(t('history.range.empty'))}</p>
+        <div class="history-empty-actions">
+          <button type="button" class="btn-secondary" data-history-action="clear-filter">${escapeHtml(t('history.range.clear'))}</button>
+          <button type="button" class="btn-secondary" data-history-action="latest">${escapeHtml(t('history.range.latest'))}</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private bindSearchControls(limits: MeasurementDateLimits): void {
+    const form = this.content.querySelector<HTMLFormElement>('#historyDateSearchForm');
+    const fromInput = this.content.querySelector<HTMLInputElement>('#historyDateFrom');
+    const toInput = this.content.querySelector<HTMLInputElement>('#historyDateTo');
+    const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const errorEl = this.content.querySelector<HTMLElement>('.history-date-error');
+
+    const updateValidation = () => {
+      if (!fromInput || !toInput || !submit || !errorEl) return;
+      fromInput.max = toInput.value || limits.max;
+      toInput.min = fromInput.value || limits.min;
+      const validation = validateMeasurementDateRange(fromInput.value, toInput.value, limits);
+      errorEl.textContent = validation.error;
+      submit.disabled = !validation.valid;
+    };
+
+    fromInput?.addEventListener('input', updateValidation);
+    toInput?.addEventListener('input', updateValidation);
+    form?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (!fromInput || !toInput) return;
+      const validation = validateMeasurementDateRange(fromInput.value, toInput.value, limits);
+      if (!validation.valid) {
+        updateValidation();
+        return;
+      }
+      this.mode = { kind: 'range', from: fromInput.value, to: toInput.value };
+      this.render();
+    });
+
+    this.content.querySelectorAll<HTMLElement>('[data-history-action]').forEach((element) => {
+      element.addEventListener('click', () => {
+        const action = element.dataset.historyAction;
+        if (action === 'view-all') {
+          this.mode = { kind: 'range', from: limits.min, to: limits.max };
+        } else {
+          this.mode = { kind: 'recent' };
+        }
+        this.render();
       });
     });
   }
@@ -175,4 +328,75 @@ function escapeHtml(s: string): string {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+export function sortMeasurementsNewestFirst(measurements: Measurement[]): Measurement[] {
+  return [...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt));
+}
+
+export function getMeasurementDateLimits(measurements: Measurement[]): MeasurementDateLimits | null {
+  const dates = measurements
+    .map((measurement) => localDateKeyFromISO(measurement.measuredAt))
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  if (dates.length === 0) return null;
+  return {
+    min: dates[0],
+    max: dates[dates.length - 1],
+  };
+}
+
+export function validateMeasurementDateRange(
+  from: string,
+  to: string,
+  limits: MeasurementDateLimits,
+): { valid: boolean; error: string } {
+  if (!from || !to) return { valid: false, error: '' };
+  if (!isDateKey(from) || !isDateKey(to)) return { valid: false, error: t('history.range.invalid') };
+  if (from < limits.min || from > limits.max || to < limits.min || to > limits.max) {
+    return { valid: false, error: t('history.range.outOfBounds') };
+  }
+  if (from > to) {
+    return { valid: false, error: t('history.range.orderError') };
+  }
+  return { valid: true, error: '' };
+}
+
+export function filterMeasurementsByDateRange(
+  measurements: Measurement[],
+  from: string,
+  to: string,
+): Measurement[] {
+  return measurements.filter((measurement) => {
+    const measuredDate = localDateKeyFromISO(measurement.measuredAt);
+    return measuredDate !== null && measuredDate >= from && measuredDate <= to;
+  });
+}
+
+function localDateKeyFromISO(iso: string): string | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function formatLocalDate(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString(getLocale(), {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function isDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
