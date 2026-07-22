@@ -10,9 +10,10 @@ import { DashboardPanel } from './ui/dashboardPanel';
 import { MeasurementDevicesPage } from './ui/measurementDevicesPage';
 import { AppShell } from './ui/appShell';
 import { PwaController } from './ui/pwaController';
+import { routeAfterMeasurementSubmission } from './ui/postMeasurementNavigation';
 import { addMeasurement, addFollowUp } from './domain/storage';
 import { loadSettings, saveSettings, loadMeasurements, loadActions } from './domain/storage';
-import { runPersonalizedAssistant } from './domain/maintenanceAssistant';
+import { runPersonalizedAssistant, type MaintenanceAssistantResult } from './domain/maintenanceAssistant';
 import { discardRecommendation, filterDiscardedRecommendations } from './application/discardMaintenanceAction';
 import { createFollowUp } from './domain/followUp';
 import {
@@ -34,17 +35,19 @@ function toLocalDatetime(d: Date): string {
 
 function runAndShowRecommendations(
   recommendationsPanel: RecommendationsPanel,
-): void {
+): MaintenanceAssistantResult {
   const settings = loadSettings();
   const measurements = loadMeasurements();
   const actions = loadActions();
   recommendationsPanel.setHistory(measurements, actions, settings);
   const result = runPersonalizedAssistant(measurements, actions, settings);
   const latest = [...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
-  recommendationsPanel.show({
+  const visibleResult = {
     ...result,
     recommendations: filterDiscardedRecommendations(result.recommendations, actions, latest),
-  });
+  };
+  recommendationsPanel.show(visibleResult);
+  return visibleResult;
 }
 
 function init(): void {
@@ -169,11 +172,15 @@ function init(): void {
     followUpDashboard.render();
 
     // Run the maintenance assistant with full history
-    runAndShowRecommendations(recommendationsPanel);
+    const assistantResult = runAndShowRecommendations(recommendationsPanel);
+    const nextRoute = routeAfterMeasurementSubmission(assistantResult);
+    appShell.navigate(nextRoute);
 
-    // Scroll to recommendations
     setTimeout(() => {
-      document.getElementById('recommendationsSection')?.scrollIntoView({ behavior: 'smooth' });
+      const target = nextRoute === '/actions'
+        ? document.getElementById('recommendationsSection')
+        : document.querySelector<HTMLElement>('[data-route-section="/"]');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
   });
 

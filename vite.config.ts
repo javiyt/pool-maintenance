@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { loadEnv, type Plugin } from 'vite';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { normalizeApplicationBasePath } from './src/applicationBasePath';
 import { createWebAppManifest } from './src/pwa/manifest';
 
@@ -32,13 +34,35 @@ function appManifestPlugin(baseUrl: string): Plugin {
   };
 }
 
+function spaFallbackPlugin(): Plugin {
+  let root = process.cwd();
+  let outDir = 'dist';
+
+  return {
+    name: 'pool-maintenance-spa-fallback',
+    configResolved(config) {
+      root = config.root;
+      outDir = config.build.outDir;
+    },
+    writeBundle() {
+      const outputDir = resolve(root, outDir);
+      const indexPath = resolve(outputDir, 'index.html');
+      const fallbackPath = resolve(outputDir, '404.html');
+
+      if (!existsSync(indexPath) || existsSync(fallbackPath)) return;
+
+      writeFileSync(fallbackPath, readFileSync(indexPath));
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const { baseUrl } = normalizeApplicationBasePath(env.APP_BASE_PATH);
 
   return {
     base: baseUrl,
-    plugins: [appManifestPlugin(baseUrl)],
+    plugins: [appManifestPlugin(baseUrl), spaFallbackPlugin()],
     build: {
       outDir: 'dist',
     },
