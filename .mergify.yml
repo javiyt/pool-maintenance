@@ -4,11 +4,11 @@ pull_request_rules:
     conditions:
       - "author=javiyt"
       - "status-success=*"
-      - "base=main"
+      - "base=<rama-por-defecto>"
       - "-conflict"
+      - "-draft"
     actions:
       merge:
-        method: squash
-        strict: smart
-        strict_method: rebase
+        method: squash   # o merge / rebase según el repo
+        strict: true     # asegura que la PR esté actualizada antes de mergear
       delete_head_branch: {}
