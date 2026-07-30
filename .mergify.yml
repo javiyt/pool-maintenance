@@ -8,7 +8,6 @@ pull_request_rules:
       - "-conflict"
       - "-draft"
     actions:
-      update:
-        method: rebase
+      rebase: {}
       merge:
         method: squash
