@@ -10,6 +10,4 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      update:
-        method: rebase
       delete_head_branch: {}
