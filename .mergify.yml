@@ -4,10 +4,11 @@ pull_request_rules:
     conditions:
       - "author=javiyt"
       - "status-success=*"
-      - "base=<rama-por-defecto>"
+      - "base=main"
       - "-conflict"
       - "-draft"
     actions:
+      update:
+        method: rebase
       merge:
         method: squash
-      delete_head_branch: {}
